@@ -18,9 +18,9 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
             output_filename = f"{tissue if tissue is not None else 'All-Tissues'}_{treatment}"
             file_to_output = f"{output_dir}{output_filename}_genes.csv"
             print(f"--- Starting analysis for treatment: {treatment} across all tissues ---")
-            if os.path.isfile(file_to_output):
-                print(f"+++ File already exists, skipping it to save time  +++")
-                continue
+            # if os.path.isfile(file_to_output):
+            #     print(f"+++ File already exists, skipping it to save time  +++")
+            #     continue
 
             # 1. Load and prepare data and design files
             data = pd.read_csv(f'{save_dir}/{data_type}.csv', index_col=0)
@@ -67,8 +67,9 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
 
             print(f"Found and aligned {len(design_filtered)} samples for '{treatment}' vs. 'No stress'.")
             
-# 4. Create the final metadata DataFrame for the model
+            # 4. Create the final metadata DataFrame for the model
             metadata = design_filtered[['sample_id', 'TREATMENT', 'TISSUE']].copy()
+            del design_filtered
             metadata.rename(columns={'TISSUE': 'Tissue'}, inplace=True) # Rename TISSUE
             
             # Explicitly create 'Control' and 'Treatment' labels.

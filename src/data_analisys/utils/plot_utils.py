@@ -35,7 +35,6 @@ def plot_values_bar(values,output_dir,exp_name,title:str='',y_label='',x_label='
     plt.savefig(f'{output_dir}/{exp_name}.svg')
     plt.close()
 
-
 def plot_heat_map(df:pd.DataFrame,save_loc:str, name: str,cluster:bool=True,typ:str='png',title='',log_norm:bool = True, col: Optional[pd.DataFrame] = None,col_cluster:bool=False):
     # Create directories if they don't exist
     output_dir = os.path.join(save_loc, 'heat_map')
@@ -258,560 +257,189 @@ def evaluate_cluters(clusters,out_path):
     plt.savefig(f'{out_path}/test.svg')
     return
 
-def plot_summary_scores(scores_dict: dict, title: str, file_name: str, output_dir: str):
-    """
-    Generates an improved bar plot with grouped section labels for clustering scores.
-    Labels like 'robust val TREATMENT' are split into a main group label 'robust'
-    and a bar label 'val TREATMENT'.
-
-    Args:
-        scores_dict (dict): Dictionary with labels as keys and scores as values.
-        title (str): The title for the plot.
-        file_name (str): The name of the output file (e.g., 'bar_rand_ind.svg').
-        output_dir (str): The directory to save the plot in.
-    """
-    if not scores_dict:
-        print(f"Skipping plot '{title}' because the score dictionary is empty.")
-        return
-
-    # --- 1. Prepare Data and Labels ---
-    full_labels = list(scores_dict.keys())
-    values = list(scores_dict.values())
-
-    # Split labels into the prefix (group) and the rest (bar label)
-    # e.g., 'robust val TREATMENT' -> group='robust', short_label='val TREATMENT'
-    processing_types = [label.split()[0] for label in full_labels]
-    short_labels = [' '.join(label.split()[1:]) for label in full_labels]
-
-    # --- 2. Define Colors ---
-    color_map = {
-        'TREATMENT': '#1f77b4', 'TISSUE': '#2ca02c', 'study': '#d62728',
-    }
-    # Color bars based on the last word of the original full label
-    bar_colors = [color_map.get(label.split()[-1], '#7f7f7f') for label in full_labels]
-
-    # --- 3. Create Plot ---
-    # Use subplots for better control over the layout
-    fig, ax = plt.subplots(figsize=(16, 10))
-    ax.bar(range(len(values)), values, align='center', color=bar_colors)
-
-    # --- 4. Add Dotted Separators and Section Labels ---
-    # Find where the processing type changes to draw lines and place labels
-    change_indices = [i for i in range(1, len(processing_types)) if processing_types[i] != processing_types[i-1]]
-    
-    # Define the start and end of each section
-    section_starts = [0] + change_indices
-    section_ends = change_indices + [len(full_labels)]
-
-    # Increase the bottom margin to make space for the new section labels
-    fig.subplots_adjust(bottom=0.25)
-
-    for start, end in zip(section_starts, section_ends):
-        # Draw a vertical line at the start of each new section (except the first)
-        if start > 0:
-            ax.axvline(x=start - 0.5, color='gray', linestyle='--', linewidth=1.5)
-
-        # Calculate the midpoint of the section to place the group label
-        mid_point = start + (end - 1 - start) / 2
-        label_text = processing_types[start]
-        
-        # mapping to show paper friendly labels
-        name_map ={
-            'robust': 'Robust Normalization',
-            'standardized': 'Standardized',
-            'robust+': 'Robust Norm two waysalization',
-            'standardized+': 'Standardized two ways',
-            '2_way_norm': 'Two-way normalized',
-            'study_corrected': 'Study corrected',
-            'imputed': 'No correction'
-        }
-        label_text = name_map[label_text]
-        # Add the group label text below the x-axis
-        ax.text(mid_point, -0.35, label_text, ha='center', va='top', fontsize=14, weight='bold',
-                transform=ax.get_xaxis_transform(),rotation = 45)
-
-    # --- 5. Final Plot Adjustments ---
-    ax.set_xticks(range(len(full_labels)))
-    ax.set_xticklabels(short_labels, rotation=90, fontsize=10)
-    ax.set_ylabel('Score', fontsize=12)
-    ax.set_title(title, fontsize=16)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Ensure the output directory exists and save the figure
-    os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, file_name))
-    plt.close()
-
-def plot_iteration_scores(scores_dict: dict, y_label: str, title: str, file_name: str, output_path: str):
-    """
-    Generates and saves a colored bar plot for scores from a single processing iteration.
-
-    Args:
-        scores_dict (dict): Dictionary with labels as keys and scores as values.
-        y_label (str): The label for the Y-axis.
-        title (str): The title for the plot.
-        file_name (str): The name of the output file (e.g., 'silhouette_scores.svg').
-        output_path (str): The directory path to save the plot in.
-    """
-    if not scores_dict:
-        print(f"Skipping plot '{title}' because the score dictionary is empty.")
-        return
-
-    labels = list(scores_dict.keys())
-    values = list(scores_dict.values())
-
-    # Define a color map for different label types
-    color_map = {
-        'TREATMENT': '#1f77b4',  # Muted blue
-        'TISSUE': '#2ca02c',     # Green
-        'study': '#d62728',      # Red
-    }
-    # Assign a color to each bar based on its label, with a default gray
-    bar_colors = [color_map.get(label, '#7f7f7f') for label in labels]
-
-    # --- Create the plot ---
-    plt.figure(figsize=(10, 7))
-    plt.bar(labels, values, color=bar_colors)
-
-    # --- Final plot adjustments ---
-    plt.ylabel(y_label, fontsize=12)
-    plt.title(title, fontsize=16)
-    plt.xticks(rotation=45, ha="right", fontsize=10)
-    plt.grid(axis='y', linestyle='--', alpha=0.6)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_path, file_name))
-    plt.close()
-
-
-def plot_iteration_scores_modified(scores_dict: dict, y_label: str, title: str, file_name: str, output_path: str):
-    """
-    Generates and saves a colored bar plot for scores, restructured to compare
-    Treatment, Tissue, and Study scores for each matrix type.
-
-    Args:
-        scores_dict (dict): Dictionary with labels as keys and scores as values.
-        y_label (str): The label for the Y-axis.
-        title (str): The title for the plot.
-        file_name (str): The name of the output file (e.g., 'rand_index_scores.svg').
-        output_path (str): The directory path to save the plot in.
-    """
-    if not scores_dict:
-        print(f"Skipping plot '{title}' because the score dictionary is empty.")
-        return
-
-    # 1. Data Restructuring and Parsing
-    parsed_data = {}
-    for label, score in scores_dict.items():
-        # Regex to capture the three parts: Matrix_Val, Classification Target
-        # The pattern looks for: (matrix_name val) (Classification Target)
-        # Note: study scores usually don't have 'val' but this regex covers it
-        match = re.search(r'(.+?(?:val|study)) (\w+)$', label)
-        if match:
-            matrix_name_val = match.group(1).strip() # e.g., 'robust val' or 'robust study'
-            target = match.group(2).strip().lower()  # e.g., 'treatment' or 'tissue'
-        else:
-            # Handle cases that don't fit the expected pattern gracefully (e.g., 'imputed val study')
-            print(f"Warning: Could not fully parse label '{label}'. Skipping...")
-            continue
-        
-        # We need a unique key for each group of 3 bars (e.g., 'robust val')
-        group_key = matrix_name_val.replace(' val', '').replace(' study', '')
-        
-        if group_key not in parsed_data:
-            parsed_data[group_key] = {'treatment': 0, 'tissue': 0, 'study': 0, 'order': len(parsed_data)}
-
-        # Map the original target to the new, simplified key
-        simplified_target = target
-        if simplified_target not in ['treatment', 'tissue', 'study']:
-             # Fallback for unexpected targets, though likely not needed here
-             simplified_target = 'study'
-
-        parsed_data[group_key][simplified_target] = score
-
-    # 2. Prepare Data for Plotting
-    # Sort groups based on their appearance in the original dictionary
-    sorted_groups = sorted(parsed_data.items(), key=lambda item: item[1]['order'])
-    
-    # Create lists for plotting
-    matrix_names = []  # The labels to appear once under the group of bars
-    scores = []        # The actual values for all bars
-    colors = []        # The color for each bar
-    
-    # Define an explicit color map for the simplified targets
-    color_map_simplified = {
-        'treatment': '#1f77b4',  # Muted blue
-        'tissue': '#2ca02c',     # Green
-        'study': '#d62728',      # Gray (for comparison)
-    }
-
-    # Order the scores for plotting: Treatment, Tissue, Study for each matrix
-    for matrix_name, data in sorted_groups:
-        matrix_names.append(matrix_name) # Used for tick labels
-
-        # Append scores and colors in the desired order
-        scores.extend([data['treatment'], data['tissue'], data['study']])
-        colors.extend([color_map_simplified['treatment'], 
-                       color_map_simplified['tissue'], 
-                       color_map_simplified['study']])
-        
-    # The X-axis labels for individual bars will just be 'treatment', 'tissue', 'study'
-    x_bar_labels = (['treatment', 'tissue', 'study'] * len(matrix_names))
-    
-    # 3. Create the Plot
-    
-    plt.figure(figsize=(12, 7)) # Increased size for better readability
-    
-    # Generate positions for the bars
-    bar_width = 0.25
-    x_positions = []
-    
-    # Calculate positions for grouped bars
-    for i, _ in enumerate(matrix_names):
-        center = i * (3 * bar_width + 0.2) # Group separation
-        x_positions.append(center - bar_width)     # Treatment position
-        x_positions.append(center)                 # Tissue position
-        x_positions.append(center + bar_width)     # Study position
-
-    plt.bar(x_positions, scores, color=colors, width=bar_width, align='center')
-
-    # --- Final plot adjustments ---
-    plt.ylabel(y_label, fontsize=12)
-    plt.title(title, fontsize=16)
-    
-    # Set the main tick labels (the matrix names) to be centered under the group
-    main_tick_positions = [i * (3 * bar_width + 0.2) for i, _ in enumerate(matrix_names)]
-    plt.xticks(main_tick_positions, matrix_names, rotation=45, ha="right", fontsize=10)
-
-    # Add a second, minor x-axis for 'treatment', 'tissue', 'study' labels
-    ax = plt.gca()
-    # Create the minor ticks (one for each bar)
-    ax.set_xticks(x_positions, minor=True)
-    # Set the minor tick labels (the bar types)
-    ax.set_xticklabels(['TRT', 'TIS', 'STD'] * len(matrix_names), 
-                       minor=True, rotation=90, ha='center', fontsize=8) 
-    
-    # Minor tick labels need to be adjusted to appear *under* the main labels
-    # This requires a bit of manual tweaking often, but for this structure, we'll
-    # rely on the minor ticks property for a basic look.
-    
-    # Add grid lines
-    plt.grid(axis='y', linestyle='--', alpha=0.6)
-    
-    # Add vertical lines to delineate the matrix groups clearly
-    for i in range(1, len(matrix_names)):
-         plt.axvline(x=main_tick_positions[i] - (1.5 * bar_width), color='gray', linestyle='--', alpha=0.4)
-    
-    plt.tight_layout()
-    
-    # Ensure the output directory exists
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-        
-    plt.savefig(os.path.join(output_path, file_name))
-    plt.close()
-
-
+# new plots:
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import seaborn as sns
+import pandas as pd
 import os
 import re
-name_map ={
+
+# --- Configuration ---
+name_map = {
     'robust': 'Robust',
     'standardized': 'Standardized',
     'robust+': 'Robust Norm\ntwo ways',
     'standardized+': 'Standardized\ntwo ways',
-    # '2_way_norm_og': 'Study corrected\nthen genes Robust Normalized OG',
     '2_way_norm': 'Two-way\nNormalized',
     'study_corrected': 'Study\nCorrected',
     'imputed': 'No correction'
 }
 
-def plot_summary_scores_modified(scores_dict: dict, title: str, file_name: str, output_dir: str):
-    """
-    Generates an improved bar plot with grouped section labels for clustering scores,
-    with bars re-ordered to group TREATMENT, TISSUE, and study scores consecutively
-    for each matrix type. Includes a legend for TISSUE, TREATMENT, and study.
+color_map = {
+    'treatment': '#1f77b4',       # Blue
+    'tissue': '#2ca02c',          # Green
+    'study': '#d62728',           # Red
+    'treatment_on_tissues': "#fbff00",
+    'treatment_on_tissues_median': "#9900ff" # Handle potential casing differences
+}
 
-    Args:
-        scores_dict (dict): Dictionary with labels as keys and scores as values.
-        title (str): The title for the plot.
-        file_name (str): The name of the output file (e.g., 'bar_rand_ind_grouped.svg').
-        output_dir (str): The directory to save the plot in.
+def plot_scores(scores: dict, color_map: dict, name_map: dict, title: str, file_name: str, output_dir: str):
     """
-    # Note: This function assumes 're', 'os', and 'matplotlib.pyplot as plt' 
-    # are imported in the global scope where this function is defined.
+    Backbone plotting function using Seaborn.
     
-    # Import required for custom legend patches
-    import matplotlib.patches as mpatches
-    
-    if not scores_dict:
-        print(f"Skipping plot '{title}' because the score dictionary is empty.")
+    Args:
+        scores (dict): Nested dict {data_name: {score_type: int/float, ...}, ...}
+    """
+    if not scores:
+        print(f"Skipping plot '{title}' - empty data.")
         return
 
-    # --- 1. Data Restructuring and Parsing ---
-    parsed_data = {}
-    original_order_keys = []
+    # 1. Convert Dictionary to Tidy DataFrame for Seaborn
+    data_list = []
+    order_list = [] # To preserve insertion order of groups
     
-    # Regex to capture the three parts: Matrix_Name, Validation_Status, Classification Target
-    # Example: '2_way_norm_og val TREATMENT'
-    # Group 1: (.+?(?:val|study)) -> '2_way_norm_og val' or 'robust study'
-    # Group 2: (\w+)$ -> 'TREATMENT', 'TISSUE', or 'study'
-    
-    # Pre-parse and structure the data
-    for label, score in scores_dict.items():
-        match = re.search(r'(.+?(?:val)) (\w+)$', label)
-        
-        # Special case: handling 'study' scores which often don't have 'val'
-        if not match:
-             match = re.search(r'(.+?) (study)$', label)
-        
-        if not match:
-            print(f"Warning: Could not fully parse label '{label}'. Skipping...")
-            continue
+    for group_key, metrics in scores.items():
+        # Use name_map for the group label immediately, fallback to key if not found
+        display_name = name_map.get(group_key, group_key)
+        if display_name not in order_list:
+            order_list.append(display_name)
             
-        # Example: 'robust val' or 'robust'
-        matrix_val = match.group(1).strip()
-        # Example: 'treatment' or 'tissue' or 'study'
-        target = match.group(2).strip().lower()
+        for metric_name, score in metrics.items():
+            data_list.append({
+                'Group': display_name,
+                'Metric': metric_name,
+                'Score': score
+            })
 
-        # Determine the group key (Matrix Name) and ensure it's recorded only once
-        group_key = matrix_val.replace(' val', '').replace(' val study', '').replace(' study', '')
-        
-        if group_key not in parsed_data:
-            # Initialize with default values and record insertion order
-            parsed_data[group_key] = {'treatment': 0, 'tissue': 0, 'study': 0, 'order': len(original_order_keys)}
-            original_order_keys.append(group_key)
+    df = pd.DataFrame(data_list)
 
-        # Map the original target to the simplified key (treatment, tissue, study)
-        simplified_target = target
-        if simplified_target == 'treatment':
-            parsed_data[group_key]['treatment'] = score
-        elif simplified_target == 'tissue':
-            parsed_data[group_key]['tissue'] = score
-        elif simplified_target == 'study':
-            parsed_data[group_key]['study'] = score
-        else:
-             # This should ideally not happen if targets are only TREATMENT/TISSUE/study
-             print(f"Warning: Unhandled target '{target}' for group '{group_key}'.")
-
-
-    # 2. Re-order and Flatten Data for Plotting
+    # 2. Setup Plot
+    plt.figure(figsize=(16, 8))
     
-    full_labels = []   # The simplified labels for the x-axis (TREATMENT, TISSUE, study)
-    values = []        # The actual scores
-    bar_colors = []    # The color for each bar
-    
-    # Define an explicit color map for the simplified targets
-    color_map = {
-        'treatment': '#1f77b4',  # Blue
-        'tissue': '#2ca02c',     # Green
-        'study': '#d62728',      # Red (as per hex, though comment said Gray)
-    }
-    
-    # List to track the group type for the section labels
-    processing_types = []
-    
-    # Sort groups based on their original appearance
-    for group_key in original_order_keys:
-        data = parsed_data[group_key]
-        
-        # Plot the three targets consecutively: Treatment, Tissue, Study
-        values.extend([data['treatment'], data['tissue'], data['study']])
-        full_labels.extend(['TREATMENT', 'TISSUE', 'study'])
-        bar_colors.extend([color_map['treatment'], color_map['tissue'], color_map['study']])
-        
-        # Repeat the group key three times for section label tracking
-        processing_types.extend([group_key, group_key, group_key])
-        
-    # --- 3. Create Plot ---
-    fig, ax = plt.subplots(figsize=(16, 8))
-    ax.bar(range(len(values)), values, align='center', color=bar_colors)
+    # Create the barplot
+    # 'hue' automatically creates the legend and grouped bars
+    ax = sns.barplot(
+        data=df, 
+        x='Group', 
+        y='Score', 
+        hue='Metric', 
+        palette=color_map,
+        order=order_list,
+        edgecolor='black', # Optional: adds definition to bars
+        linewidth=0.5
+    )
 
-    # --- 4. Add Dotted Separators and Section Labels ---
-    
-    # Find where the processing type changes (which is every 3 bars in the new structure)
-    change_indices = [i for i in range(1, len(processing_types)) if processing_types[i] != processing_types[i-1]]
-    
-    section_starts = [0] + change_indices
-    section_ends = change_indices + [len(full_labels)]
+    # 3. Add Dotted Separators
+    # In matplotlib/seaborn categorical plots, x-coords are 0, 1, 2...
+    # We place lines at 0.5, 1.5, etc.
+    for x in range(len(order_list) - 1):
+        ax.axvline(x + 0.5, color='gray', linestyle='--', linewidth=1.5, alpha=0.7)
 
-    # Increase the bottom margin to make space for the new section labels
-    fig.subplots_adjust(bottom=0.25)
-
-    # This assumes 'name_map' exists in the scope where the function is called
-    for start, end in zip(section_starts, section_ends):
-        # Draw a vertical line at the start of each new section (except the first)
-        if start > 0:
-            ax.axvline(x=start - 0.5, color='gray', linestyle='--', linewidth=1.5)
-
-        # Calculate the midpoint of the section to place the group label
-        mid_point = start + (end - 1 - start) / 2
-        
-        # The key is the same for all three bars in the section
-        raw_label_text = processing_types[start] 
-        label_text = name_map.get(raw_label_text, raw_label_text)
-        
-        # Add the group label text below the x-axis
-        ax.text(mid_point, -0.08, label_text, ha='center', va='top', fontsize=16, weight='bold',
-                transform=ax.get_xaxis_transform(), rotation=0)
-
-    # --- 5. Final Plot Adjustments ---
-    
-    # **MODIFICATION**: Remove the x-axis tick marks and labels
-    ax.set_xticks([])
-    
-    # **MODIFICATION**: Add a custom legend
-    treatment_patch = mpatches.Patch(color=color_map['treatment'], label='TREATMENT')
-    tissue_patch = mpatches.Patch(color=color_map['tissue'], label='TISSUE')
-    study_patch = mpatches.Patch(color=color_map['study'], label='study')
-    ax.legend(handles=[treatment_patch, tissue_patch, study_patch], fontsize=12)
-
-    ax.set_ylabel('Score', fontsize=12)
+    # 4. Formatting
     ax.set_title(title, fontsize=16)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.set_ylabel("Score", fontsize=14)
+    ax.set_xlabel("") # Hide x-axis label (implied by ticks)
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
     
-    # Ensure the output directory exists and save the figure
+    # Add a zero line if data contains negatives (common in relative plots)
+    ax.axhline(0, color='black', linewidth=1)
+
+    # Adjust Legend title
+    plt.legend(title='Metric', fontsize=12, title_fontsize=12)
+
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+
+    # 5. Save
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, file_name),bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, file_name), bbox_inches='tight')
     plt.close()
+
+def _parse_flat_dict(scores_dict: dict) -> dict:
+    """
+    Helper: Parses the flat 'regex-based' keys into the nested dictionary structure
+    required by plot_scores.
+    """
+    parsed_data = {}
+    
+    # Preserve insertion order
+    keys_order = []
+
+    for label, score in scores_dict.items():
+        # Logic adapted from original regex
+        match = re.search(r'(.+?(?:val|study)) (\w+)$', label)
+        if not match:
+            match = re.search(r'(.+?) (study)$', label)
+        
+        if not match:
+            continue
+
+        matrix_val = match.group(1).strip()
+        target = match.group(2).strip().lower() # treatment, tissue, study
+
+        # Clean group key
+        group_key = matrix_val.replace(' val', '').replace(' val study', '').replace(' study', '')
+
+        if group_key not in parsed_data:
+            parsed_data[group_key] = {}
+            keys_order.append(group_key)
+        
+        parsed_data[group_key][target] = score
+        
+    # Return dict sorted by original appearance
+    return {k: parsed_data[k] for k in keys_order}
+
+def plot_summary_scores(scores_dict: dict, title: str, file_name: str, output_dir: str):
+    """
+    Wrapper: Parses data and calls the backbone plotting function.
+    """
+    # 1. Transform flat keys to nested dict
+    nested_scores = _parse_flat_dict(scores_dict)
+    
+    # 2. Call backbone
+    plot_scores(
+        scores=nested_scores,
+        color_map=color_map,
+        name_map=name_map,
+        title=title,
+        file_name=file_name,
+        output_dir=output_dir
+    )
 
 def plot_summary_scores_relative(scores_dict: dict, title: str, file_name: str, output_dir: str):
     """
-    Generates a bar plot showing scores for TREATMENT and TISSUE relative to the
-    Study score (X - Study Score). Study scores are not plotted.
-    Includes a legend for TISSUE and TREATMENT colors.
-
-    Args:
-        scores_dict (dict): Dictionary with labels as keys and scores as values.
-        title (str): The title for the plot.
-        file_name (str): The name of the output file (e.g., 'bar_rand_ind_relative.svg').
-        output_dir (str): The directory to save the plot in.
+    Wrapper: Parses data, calculates Relative Score (Value - Study), 
+    removes 'study' column, and calls backbone.
     """
-    # Note: This function assumes 're', 'os', and 'matplotlib.pyplot as plt' 
-    # are imported in the global scope where this function is defined.
+    # 1. Transform flat keys to nested dict
+    nested_scores = _parse_flat_dict(scores_dict)
     
-    # Import required for custom legend patches
-    import matplotlib.patches as mpatches
-    
-    if not scores_dict:
-        print(f"Skipping plot '{title}' because the score dictionary is empty.")
-        return
+    processed_scores = {}
 
-    # --- 1. Data Restructuring, Parsing, and Calculation ---
-    parsed_data = {}
-    original_order_keys = []
-    
-    # First pass: Gather all scores including Study to calculate the difference
-    for label, score in scores_dict.items():
-        # Capture Matrix_Name and Classification Target
-        match = re.search(r'(.+?(?:val|study)) (\w+)$', label)
-        
-        if not match:
-            print(f"Warning: Could not fully parse label '{label}'. Skipping...")
+    # 2. Calculate Relative Scores
+    for group, metrics in nested_scores.items():
+        if 'study' not in metrics:
+            # If no study score exists to subtract, skip or copy as is (depending on preference).
+            # Here we skip to be safe, or you could handle imputation.
             continue
             
-        # Example: 'robust val' or 'imputed val study'
-        matrix_val = match.group(1).strip()
-        target = match.group(2).strip().lower()
-
-        # Determine the group key (Matrix Name)
-        # Handle cases like 'imputed val study' where 'study' is part of the name
-        group_key = matrix_val.replace(' val', '').replace(' val study', '').replace(' study', '')
+        study_val = metrics['study']
         
-        if group_key not in parsed_data:
-            # Initialize with default values and record insertion order
-            parsed_data[group_key] = {'treatment': 0, 'tissue': 0, 'study': 0, 'order': len(original_order_keys)}
-            original_order_keys.append(group_key)
+        new_metrics = {}
+        for key, val in metrics.items():
+            if key == 'study':
+                continue # Remove study score
+            new_metrics[key] = val - study_val
+            
+        processed_scores[group] = new_metrics
 
-        # Store the raw score
-        parsed_data[group_key][target] = score
-
-
-    # Second pass: Calculate relative scores (Score - Study Score)
-    for group_key, data in parsed_data.items():
-        study_score = data['study']
-        
-        # Calculate Treatment and Tissue scores relative to Study
-        data['treatment'] = data['treatment'] - study_score
-        data['tissue'] = data['tissue'] - study_score
-
-    # --- 2. Flatten Data for Plotting (Excluding Study) ---
-    
-    full_labels = []   # The simplified labels for the x-axis (TREATMENT, TISSUE)
-    values = []        # The relative scores (X - Study Score)
-    bar_colors = []    # The color for each bar
-    
-    # Define an explicit color map 
-    color_map = {
-        'treatment': '#1f77b4',  # Blue
-        'tissue': '#2ca02c',     # Green
-    }
-    
-    # List to track the group type for the section labels
-    processing_types = []
-    
-    # Sort groups based on their original appearance
-    for group_key in original_order_keys:
-        data = parsed_data[group_key]
-        
-        # Plot the two targets consecutively: Treatment, Tissue
-        values.extend([data['treatment'], data['tissue']])
-        full_labels.extend(['TREATMENT', 'TISSUE'])
-        bar_colors.extend([color_map['treatment'], color_map['tissue']])
-        
-        # Repeat the group key twice for section label tracking
-        processing_types.extend([group_key, group_key])
-        
-    # --- 3. Create Plot ---
-    fig, ax = plt.subplots(figsize=(16, 8))
-    ax.bar(range(len(values)), values, align='center', color=bar_colors)
-
-    # Add a horizontal line at y=0 for reference, as scores are now relative
-    ax.axhline(0, color='black', linewidth=0.8, linestyle='-')
-
-    # --- 4. Add Dotted Separators and Section Labels ---
-    
-    # Find where the processing type changes (which is every 2 bars in the new structure)
-    change_indices = [i for i in range(1, len(processing_types)) if processing_types[i] != processing_types[i-1]]
-    
-    section_starts = [0] + change_indices
-    section_ends = change_indices + [len(full_labels)]
-
-    # Increase the bottom margin to make space for the new section labels
-    fig.subplots_adjust(bottom=0.25)
-
-    # mapping to show paper friendly labels for the group names
-    # This assumes 'name_map' exists in the scope where the function is called
-    for start, end in zip(section_starts, section_ends):
-        # Draw a vertical line at the start of each new section (except the first)
-        if start > 0:
-            ax.axvline(x=start - 0.5, color='gray', linestyle='--', linewidth=1.5)
-
-        # Calculate the midpoint of the section to place the group label
-        mid_point = start + (end - 1 - start) / 2
-        
-        raw_label_text = processing_types[start] 
-        label_text = name_map.get(raw_label_text, raw_label_text)
-        
-        # Add the group label text below the x-axis
-        ax.text(mid_point, -0.08, label_text, ha='center', va='top', fontsize=16, weight='bold',
-                transform=ax.get_xaxis_transform(), rotation=0)
-
-    # --- 5. Final Plot Adjustments ---
-    
-    # **MODIFICATION**: Remove the x-axis tick marks and labels
-    ax.set_xticks([])
-    
-    # **MODIFICATION**: Add a custom legend for TISSUE and TREATMENT
-    treatment_patch = mpatches.Patch(color=color_map['treatment'], label='TREATMENT')
-    tissue_patch = mpatches.Patch(color=color_map['tissue'], label='TISSUE')
-    ax.legend(handles=[treatment_patch, tissue_patch], fontsize=14)
-
-    # **MODIFICATION**: Update Y-label (more robustly)
-    ax.set_ylabel('Relative Score (X - Study Score)', fontsize=14)
-    ax.set_title(title, fontsize=16)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Ensure the output directory exists and save the figure
-    os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, file_name),bbox_inches='tight')
-    plt.close()
+    # 3. Call backbone
+    plot_scores(
+        scores=processed_scores,
+        color_map=color_map,
+        name_map=name_map,
+        title=title,
+        file_name=file_name,
+        output_dir=output_dir
+    )

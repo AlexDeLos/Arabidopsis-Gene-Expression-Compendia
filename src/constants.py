@@ -1,8 +1,8 @@
 import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
-CLUSTER_RUN = True
-EXPERIMENT_NAME = '3.0'
+CLUSTER_RUN = False
+EXPERIMENT_NAME = '3.1'
 
 
 DATA_IMPORT_DIR = './data/downloads/'
@@ -15,7 +15,7 @@ else:
     COMBINED_DATA_OUTPUT_FILE = f'{PROCESSED_DATA_FOLDER}combined_expression_data.csv'
 CORE_DATA_DIR = './data/core_data/'
 SOFT_PATH = f'{CORE_DATA_DIR}old_geo_downloads/'
-FIGURES_DIR = './outputs/'
+FIGURES_DIR = f'./outputs/{EXPERIMENT_NAME}/'
 FILTERING_FIGURES = f'{FIGURES_DIR}filter_figures/{EXPERIMENT_NAME}/'
 CLUSTER_EXPLORATION_FIGURES_DIR=f'{FIGURES_DIR}exploration_figures/{EXPERIMENT_NAME}/'
 MODEL = 'extractors_and_gemini'

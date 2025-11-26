@@ -291,3 +291,58 @@ def fuse_columns_by_sample(df):
         print("No column pairs found for fusion")
     
     return result_df
+
+def apply_mask_to_maps(maps,mask):
+    maps_ = maps.copy()
+    for map in maps:
+        map_ = list(compress(maps_[map], mask))
+        maps_[map] = map_
+    return maps_
+def pca_variance(robust_df,path):
+    pca = PCA()
+    #
+    # Determine transformed features
+    #
+    X_train_pca = pca.fit_transform(robust_df.T)
+    #
+    # Determine explained variance using explained_variance_ration_ attribute
+    #
+    exp_var_pca = pca.explained_variance_ratio_
+    #
+    # Cumulative sum of eigenvalues; This will be used to create step plot
+    # for visualizing the variance explained by each principal component.
+    #
+    cum_sum_eigenvalues = np.cumsum(exp_var_pca)
+    #
+    # Create the visualization plot
+    #
+    plt.bar(range(0,len(exp_var_pca)), exp_var_pca, alpha=0.5, align='center', label='Individual explained variance')
+    plt.step(range(0,len(cum_sum_eigenvalues)), cum_sum_eigenvalues, where='mid',label='Cumulative explained variance')
+    plt.ylabel('Explained variance ratio')
+    plt.xlabel('Principal component index')
+    plt.legend(loc='best')
+    plt.tight_layout()
+    plt.savefig(f'{path}/test.svg')
+    plt.close()
+
+
+def plot_var(df,path):
+    plt.plot(np.sort(np.array(df.var())))
+    # plt.plot(np.array(df.var()))
+    plt.savefig(f'{path}/gene_var.svg')
+    plt.close()
+    
+def get_df_and_maps(df:pd.DataFrame,maps:dict,key:str,label:str):
+    df_copy = df.copy()
+    cols_to_keep = []
+    samples = []
+    maps_copy = maps.copy()
+    for col in df.columns:
+        col_sample_id = col.split('_')[-1]
+        if maps[col_sample_id][key] == label:
+            cols_to_keep.append(col)
+            samples.append(col_sample_id)
+
+    maps_copy = {key: maps_copy[key] for key in samples}
+    df_copy = df_copy[cols_to_keep]
+    return df_copy, maps_copy

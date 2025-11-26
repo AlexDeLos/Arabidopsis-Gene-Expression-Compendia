@@ -10,7 +10,7 @@ from src.data_analisys.diff_exp_and_enrichment.plot_enrichment_new import plot_e
 from src.data_analisys.diff_exp_and_enrichment.diff_expr import diff_exp_combine_tissues
 
 
-iterations = 100000
+iterations = 1000
 
 treatments = [
     "Drought Stress",
@@ -38,7 +38,7 @@ STRESS_GO_ROOTS_small = {
     "GO:0009409": "Cold Stress", # response to cold
     "GO:0009644": "High Light Stress", # response to high light intensity
 }
-def get_spider_plots(path, results_path, data_types, Fulls, tissues, pures,filter):
+def get_spider_plots(path, results_path, data_types, Fulls, tissues, pures,filter,full=False):
     """
     Generates spider plots comparing a single GO term across all experiment combinations.
     """
@@ -102,14 +102,50 @@ def get_spider_plots(path, results_path, data_types, Fulls, tissues, pures,filte
         # as an HTML file (like plot_enrichment_scatter_interactive).
         try:
             clean_term = STRESS_GO_ROOTS_small[term].replace(':', '_')
-            plot_filename = f"{path}{clean_term}_spider_plot.svg"
+            plot_filename = f"{path}{clean_term}_spider_plot{'_full' if full else ''}.svg"
             #TODO: check why this is needed.
-            plot = df[df['Name'].isin(['study_corrected Combined Tissues Combined Studies',
-                                       'study_corrected Single Tissue Combined Studies',
-                                       'study_corrected Single Tissue Single study',
-                                       'imputed Combined Tissues Combined Studies',
-                                       'imputed Single Tissue Combined Studies',
-                                       'imputed Single Tissue Single study'])]
+            if full:
+                plot = df[df['Name'].isin(['study_corrected Combined Tissues Combined Studies',
+                                        'study_corrected Single Tissue Combined Studies',
+                                        'study_corrected Single Tissue Single study',
+
+                                        'imputed Combined Tissues Combined Studies',
+                                        'imputed Single Tissue Combined Studies',
+                                        'imputed Single Tissue Single study',
+
+                                        '2_way_norm Combined Tissues Combined Studies',
+                                        '2_way_norm Single Tissue Combined Studies',
+                                        '2_way_norm Single Tissue Single study',
+
+                                        'standardized Combined Tissues Combined Studies',
+                                        'standardized Single Tissue Combined Studies',
+                                        'standardized Single Tissue Single study',
+
+                                        'robust Combined Tissues Combined Studies',
+                                        'robust Single Tissue Combined Studies',
+                                        'robust Single Tissue Single study'
+
+                                        'tissue_normalized Combined Tissues Combined Studies',
+                                        'tissue_normalized Single Tissue Combined Studies',
+                                        'tissue_normalized Single Tissue Single study'])]
+
+            else:
+                plot = df[df['Name'].isin([
+                                        'study_corrected Combined Tissues Combined Studies',
+                                        'study_corrected Single Tissue Combined Studies',
+                                        'study_corrected Single Tissue Single study',
+
+                                        'tissue_normalized Combined Tissues Combined Studies',
+                                        'tissue_normalized Single Tissue Combined Studies',
+                                        'tissue_normalized Single Tissue Single study'
+
+                                        'tissue_normalized_2 Combined Tissues Combined Studies',
+                                        'tissue_normalized_2 Single Tissue Combined Studies',
+                                        'tissue_normalized_2 Single Tissue Single study'
+
+                                        'imputed Combined Tissues Combined Studies',
+                                        'imputed Single Tissue Combined Studies',
+                                        'imputed Single Tissue Single study'])]
             create_gsea_spider_plot(plot, save_path=plot_filename, term=STRESS_GO_ROOTS_small[term])
             print(f"Saved plot to {plot_filename}")
         except Exception as e:
@@ -120,7 +156,7 @@ def get_spider_plots(path, results_path, data_types, Fulls, tissues, pures,filte
 
 
 def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
-                                data_types = ['study_corrected','imputed'],#,'2_way_norm','standardized', 'robust'],#,],#,'standardized+'],#,'standardized','standardized', 'robust'],#'robust+','2_way_norm_og',,
+                                data_types = ['tissue_normalized','study_corrected','imputed','2_way_norm','tissue_normalized_2'],#,],#,'standardized+'],#,'standardized','standardized', 'robust'],#'robust+','2_way_norm_og',,
                                 pures = [True,False],
                                 Fulls = [True,False],
                                 filter_low_combination = [0,15],
@@ -161,7 +197,8 @@ def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
                         for stress in treatments:
                             try:
                                 if (not just_plot) and (not os.path.isfile(f'{diff_exp_out_path}{stress}_gsea_go_enrichment_results_{iterations}.csv')):
-                                    STRESS_IDS = {key for key, val in STRESS_GO_ROOTS_small.items() if val == stress}
+                                    STRESS_IDS = {key for key, val in STRESS_GO_ROOTS_small.items() if True}
+                                    # STRESS_IDS =None
                                     obodag, geneid2gos = get_go_data(GO_OBO_FILE, ANNOTATION_FILE,stress_root_go_ids=STRESS_IDS)
                                     # filter
                                     obodag = {key: value for key, value in obodag.items() if key in STRESS_IDS}  
@@ -188,7 +225,7 @@ def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
                                     
                                     # Save results to a file
                                     gsea_results_df.to_csv(f'{diff_exp_out_path}{stress}_gsea_go_enrichment_results_{iterations}.csv', index=False)
-                                    del gsea_results_df
+                                    # del gsea_results_df
                                     print(f"\nResults saved to {f'{diff_exp_out_path}{stress}_gsea_go_enrichment_results_{iterations}.csv'}")
                                 else:
                                     print(f"\nLoading pre existing results from: {f'{diff_exp_out_path}{stress}_gsea_go_enrichment_results_{iterations}.csv'}")
@@ -208,7 +245,8 @@ def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
                 Fulls=Fulls,
                 tissues=tissues,
                 pures=pure,
-                filter=fil
+                filter=fil,
+                full=False
             )
 
     print("DONE with enrichment pipeline")

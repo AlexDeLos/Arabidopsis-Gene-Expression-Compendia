@@ -255,9 +255,11 @@ def _flatten_covariate(value):
         return '_'.join(map(str, value))
     return value
 
-def normalize_by_tissue():
+def normalize_by_cov(df_small,cov = 'treatment'):
     labels = load_labels_study(LABELS_PATH)
-    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv', index_col=0)
+    # df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv', index_col=0)
+    # df_small = pd.concat([df.filter(like='GSE34188', axis=1),df.filter(like='GSE58620', axis=1)],axis =1)
+    df = df_small
     study_map = list(map(get_study,df.columns))
     
     d = dict([(y,x+1) for x,y in enumerate(sorted(set(study_map)))])
@@ -302,7 +304,8 @@ def normalize_by_tissue():
 
     
     # By default, assume we have to drop both.
-    confounded_vars = ['treatment']
+    confounded_vars = ['treatment','tissue']
+    confounded_vars.remove(cov)
     covar_mod_fixed = covar_mod.drop(columns=confounded_vars, errors='ignore')
 
     # If dropping those columns results in an empty DataFrame,
@@ -312,17 +315,52 @@ def normalize_by_tissue():
         covar_mod_fixed = None
     else:
         print(f"Removed confounded variables: {confounded_vars}")
-
+    if len(covar_mod_fixed.value_counts()) ==1:
+        confounded_vars = None
     # Pass the fixed covariate model (or None) to the function.
-    df_corrected = pycombat_norm(df, 
-                                 batches, 
-                                 covar_mod=covar_mod_fixed, 
-                                 na_cov_action='fill')
-
+    try:
+        df_corrected = pycombat_norm(df, 
+                                    batches, 
+                                    covar_mod=covar_mod_fixed, 
+                                    na_cov_action='fill')
+    except ValueError:
+        df_corrected = pycombat_norm(df, 
+                                    batches)
     print("ComBat normalization successful.")
     print(df_corrected.head())
     return df_corrected
 
+def normalize_by_tissue_2():
+    # get all samples grouped by tissue
+
+    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv', index_col=0)
+    labels = load_labels_study(LABELS_PATH)
+    labels = keys_upper(labels)
+    # Fuse the labels
+
+    labels_types = ['TREATMENT','TISSUE','MEDIUM']
+    labels_df = make_df_from_labels(labels, labels_types)
+    maps = get_label_map_new(df,labels_df)
+    df_normalized = pd.DataFrame()
+    for tissue in ["root", "leaf", "shoot", "rosette", "whole_plant", "callus", "seedling"]: # "flower","bud","silique","seed", 
+        df_copy, maps_copy = get_df_and_maps(df,maps,'TISSUE',tissue)
+        df_small = normalize_by_cov(df_copy)
+        df_normalized= pd.concat([df_normalized,df_small],axis=1)
+
+    # combat norm using treatment as a covarience
+    df_normalized.to_csv(PROCESSED_DATA_FOLDER+'/tissue_normalized.csv')
+
+
+    study_map = list(map(get_study,df_normalized.columns))
+    batches = []
+    d = dict([(y,x+1) for x,y in enumerate(sorted(set(study_map)))])
+    for el in study_map:
+        batches.append(d[el])
+    df_norm_2 = pycombat_norm(df_normalized,batches)
+    df_norm_2.to_csv(PROCESSED_DATA_FOLDER+'/tissue_normalized_2.csv')
+    # return df_normalized
+
+
 if __name__ == '__main__':
-    normalize_by_tissue()
+    normalize_by_tissue_2()
     run_preprocessing()
