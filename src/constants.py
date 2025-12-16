@@ -2,13 +2,15 @@ import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
 CLUSTER_RUN = False
-EXPERIMENT_NAME = '3.1'
+EXPERIMENT_NAME = '3.2'
+
+STORAGE_DIR = f'./storage/{EXPERIMENT_NAME}/'
 
 
-DATA_IMPORT_DIR = './data/downloads/'
-GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads/'
-METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata/'
-PROCESSED_DATA_FOLDER = f'{DATA_IMPORT_DIR}processed_data/'
+DATA_IMPORT_DIR = './data/downloads_test/'
+GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_test/'
+METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata_test/'
+PROCESSED_DATA_FOLDER = f'{DATA_IMPORT_DIR}processed_data_test/'
 if CLUSTER_RUN:
     PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/AT GE Datasets/process_data_final/processed_data'
 else:

@@ -5,14 +5,120 @@ import matplotlib.pyplot as plt
 # import umap
 import os
 import math
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.impute import KNNImputer
 import matplotlib.cm as cm
-from scipy.cluster.hierarchy import dendrogram, linkage
-import seaborn
-from matplotlib.colors import LogNorm
+import seaborn as sns
+import polars as pl
 import sys
+import logging
+import json
+module_dir = './'
+sys.path.append(module_dir)
+from src.constants import *
+
+def apply_KNN_impute(df:pd.DataFrame,n_neighbors: int):
+    imputer = KNNImputer(n_neighbors=n_neighbors)
+
+    # Fit and transform the dataset
+    df_imputed = pd.DataFrame(imputer.fit_transform(df), columns=df.columns, index=df.index)
+    return df_imputed
+
+def setup_directories():
+    """Create output directories if they don't exist."""
+    logging.info("Setting up output directories...")
+    os.makedirs(GEO_DOWNLOAD_DIR, exist_ok=True)
+    os.makedirs(METADATA_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(PROCESSED_DATA_FOLDER, exist_ok=True)
+
+def create_probe_to_gene_map(gpl):
+    """
+    Creates a mapping from probe IDs to gene symbols by searching for common
+    gene symbol column names in the GPL table.
+    """
+    possible_gene_columns = ['ORF', 'Gene Symbol', 'GENE_SYMBOL', 'ILMN_Gene', 'Symbol']
+    for col_name in possible_gene_columns:
+        if col_name in gpl.table.columns:
+            logging.info(f"Found gene symbol column: '{col_name}'")
+            mapping_df = gpl.table[['ID', col_name]].dropna()
+            return dict(zip(mapping_df['ID'], mapping_df[col_name]))
+    logging.warning(f"Could not find a recognized gene symbol column in GPL {gpl.name}.")
+    return None
+
+def process_metadata(geo_accession, gse, gsm):
+    """Filters and saves metadata for a given sample to the ./metadata folder."""
+    excluded_keys = [
+        'contact', 'date', '_id', 'taxid', 'data_', 'status', 'type', 
+        'contributor', 'relation', 'geo_accession', 'row_count', 'organism', 
+        'label', 'supplementary_file'
+    ]
+    filtered_study_meta = {k: v for k, v in gse.metadata.items() if not any(ex in k for ex in excluded_keys)}
+    filtered_sample_meta = {k: v for k, v in gsm.metadata.items() if not any(ex in k for ex in excluded_keys)}
+    final_metadata = {
+        'study_id': geo_accession,
+        'sample_id': gsm.name,
+        'study_metadata': filtered_study_meta,
+        'sample_metadata': filtered_sample_meta
+    }
+    output_path = os.path.join(METADATA_OUTPUT_DIR, f"{geo_accession}_{gsm.name}.json")
+    try:
+        with open(output_path, "w") as fp:
+            json.dump(final_metadata, fp, indent=4)
+    except Exception as e:
+        logging.error(f"Failed to save metadata for {gsm.name}: {e}")
+
+def process_sample_data(geo_accession, gsm, probe_to_gene_map):
+    """
+    Processes expression data for a sample and returns it as a DataFrame
+    with a single, uniquely named column.
+    """
+    if gsm.table.empty:
+        logging.warning(f"Sample {gsm.name} from study {geo_accession} has no data table. Skipping.")
+        return None
+
+    df = gsm.table.copy()
+    df['gene_symbol'] = df['ID_REF'].map(probe_to_gene_map)
+    df.dropna(subset=['gene_symbol'], inplace=True)
+    df['gene_symbol'] = df['gene_symbol'].map(lambda x: x.split("_")[0])
+    if df.empty:
+        logging.warning(f"No genes could be mapped for sample {gsm.name}. Trying a diferent mapping.")
+        #TODO: a lot of the entries here already have proper mappings, so just let them through
+        df = gsm.table.copy()
+        df['gene_symbol'] = df['ID_REF'].map(lambda x: x.split("_")[0])
+        # del df['ID_REF']
+        # return None
+
+    # Filter for Arabidopsis thaliana genes (AtXgXXXXX format)
+    at_gene_regex = r'^At[1-5MC]g\d{5}$'
+    df = df[df['gene_symbol'].str.match(at_gene_regex, case=False)]
+    if df.empty:
+        logging.error(f"No Arabidopsis thaliana genes found in {gsm.name}. Skipping.")
+        return None
+
+    df.set_index('gene_symbol', inplace=True)
+    df = df[['VALUE']]
+    
+    # Handle duplicate genes by averaging their expression
+    df = df.groupby(df.index).mean()
+    
+    # Create a unique name for the sample's data column
+    unique_sample_id = f"{geo_accession}_{gsm.name}"
+    df = df.rename(columns={'VALUE': unique_sample_id})
+    
+    return df
+
+def handle_duplicates(df_index,sample_df):
+
+    if sample_df.index.duplicated().any():
+        # print('Duplicates in df:', in_df[in_df.index.duplicated(keep=False)])
+
+        # Create a dictionary to keep track of the count of duplicates
+        duplicate_count = sample_df.index.value_counts().to_dict()
+
+        # Group by the index column and calculate the mean of the values
+        sample_df = sample_df.groupby('gene_symbol')[sample_df.columns[0]].mean().reset_index() # assuming there is only one value
+    return sample_df
+
 
 def get_geo_list(path:str):
     read =  pd.read_csv(path)
@@ -35,68 +141,6 @@ def get_first_indexs(df_index,chromo:list[str]):
         array.append(df_index.get_loc(gene))
     return array
 
-
-def get_Umap(matrix: np.array, study_map: list = None, name: str = '',
-             save_loc: str = '', title: str = 'UMAP projection of the dataset'):
-    """
-    Generate and save UMAP projection plot, creating directories if needed.
-    
-    Args:
-        matrix: Input data matrix
-        study_map: List of labels for coloring points (optional)
-        name: Additional identifier for output filename
-        save_loc: Directory to save the plot
-        title: Plot title
-    """
-    # Create directory if it doesn't exist
-    os.makedirs(save_loc, exist_ok=True)
-    
-    # Perform UMAP transformation
-    reducer = umap.UMAP()
-    scaled_data = StandardScaler().fit_transform(matrix)
-    embedding = reducer.fit_transform(scaled_data)
-    
-    # Create plot
-    plt.figure(figsize=(10, 8))
-    
-    if study_map is None:
-        plt.scatter(
-            embedding[:, 0],
-            embedding[:, 1]
-        )
-    else:
-        colors = cm.rainbow(np.linspace(0, 1, max(study_map)+1))
-        for num, emb in enumerate(embedding):
-            plt.scatter(
-                emb[0],
-                emb[1],
-                color=colors[study_map[num]]
-            )
-    
-    plt.gca().set_aspect('equal', 'datalim')
-    plt.title(title, fontsize=24)
-    
-    # Construct save path and save figure
-    output_path = os.path.join(save_loc, f'umap{name}.svg')
-    plt.savefig(output_path, format='svg', bbox_inches='tight')
-    plt.close()
-    
-    # print(f"UMAP plot saved to: {output_path}")
-
-
-def normalize(arr, t_min, t_max):
-    norm_arr = []
-    diff = t_max - t_min
-    diff_arr = max(arr) - min(arr)    
-    for i in arr:
-        temp = (((i - min(arr))*diff)/diff_arr) + t_min
-        norm_arr.append(temp)
-    return norm_arr
-
-def normalize_2d(matrix):
-    norm = np.linalg.norm(matrix)
-    matrix = matrix/norm  # normalized matrix
-    return matrix
 
 def plot_sim_matrix(matrix: np.array, indices: list = None, chromosomes: list = None, 
                    name: str = '', save_loc: str = '', title: str = ''):
@@ -150,34 +194,7 @@ def plot_sim_matrix(matrix: np.array, indices: list = None, chromosomes: list = 
     plt.close()
     # print('Done with all similarity plots')
 
-def plot_heat_map(df:pd.DataFrame,save_loc:str, name: str,cluster:bool=True):
-    # Create directories if they don't exist
-    output_dir = os.path.join(save_loc, 'heat_map')
-    os.makedirs(output_dir, exist_ok=True)
-    o = sys.getrecursionlimit()
-    sys.setrecursionlimit(10000)
-    seaborn.clustermap(df,row_cluster=cluster, col_cluster=False,method='complete', norm=LogNorm())
-    plt.savefig(output_dir+'/'+name+'.png')
-    plt.close()
-    sys.setrecursionlimit(o)
 
-def apply_KNN_impute(df:pd.DataFrame,n_neighbors: int):
-    imputer = KNNImputer(n_neighbors=n_neighbors)
-
-    # Fit and transform the dataset
-    df_imputed = pd.DataFrame(imputer.fit_transform(df), columns=df.columns, index=df.index)
-    return df_imputed
-
-
-def hierarchical_clustering(data_matrix:np.array):
-    linkage_data = linkage(data_matrix, method='ward', metric='euclidean')
-    return linkage_data
-
-def hierarchical_clustering_plot(data_matrix:np.array, path:str, name:str):
-    linkage_data = linkage(data_matrix, method='ward', metric='euclidean', optimal_ordering=True)
-    dendrogram(linkage_data, no_labels= True)
-    plt.savefig(path+'cluster_ordered_'+name+'.svg')
-    plt.close()
 
 def box_plot(df: pd.DataFrame, cols_per_plot: int, out_path: str):
     """
@@ -233,9 +250,6 @@ def box_plot(df: pd.DataFrame, cols_per_plot: int, out_path: str):
         # Save the figure and close it to free up memory
         plt.savefig(os.path.join(out_path, f'boxplot_group_{plot_num + 1}.png'))
         plt.close()
-
-import matplotlib.pyplot as plt
-import pandas as pd
 
 def find_and_plot_missing_genes(present_genes,out_opath, chr):
     """
@@ -372,3 +386,130 @@ def find_and_plot_missing_genes(present_genes,out_opath, chr):
     plt.tight_layout()
     plt.savefig(f'{out_opath}missingGenesChr{chr}.svg')
     # plt.show()
+
+def plot_platform_usage(df,save_dir):
+    """
+    Function 1: Plots a histogram (countplot) showing how many samples 
+    use a given platform (by id).
+    
+    Parameters:
+    - df: A Polars DataFrame.
+    """
+    os.makedirs(save_dir,exist_ok=True)
+    plt.figure(figsize=(10, 6))
+    
+    # Extract IDs as a list or numpy array for Seaborn
+    # Seaborn accepts sequences (lists/arrays) directly
+    platform_ids = df['id'].to_list()
+    
+    ax = sns.countplot(x=platform_ids, palette='viridis', hue=platform_ids, legend=False)
+    
+    plt.title('Number of Samples per Platform ID')
+    plt.xlabel('Platform ID')
+    plt.ylabel('Count of Samples')
+    plt.xticks(rotation=45)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig(save_dir+'platform_use.svg')
+    plt.close()
+
+def plot_platform_intensities(df:pl.DataFrame, save_dir, key,lengend =False):
+    """
+    Function 2: For each platform (by id), plots an intensity plot of the data.
+    Uses a different color for each sample with transparency.
+    
+    Parameters:
+    - df: A Polars DataFrame containing the data.
+    - bucket_size: The bin width for the histogram (intensity bucket).
+    """
+    os.makedirs(save_dir,exist_ok=True)
+    # Get unique platforms
+    platforms = df['id'].unique().to_list()
+
+    for platform_id in platforms:
+        # platform_id ='GPL198'
+        # 1. Filter data for this specific platform using Polars syntax
+        platform_subset = df.filter(pl.col('id') == platform_id)
+        
+        
+        # 2. Explode the 'data' column using Polars syntax.
+        # This expands the list[float] column into individual rows.
+        exploded_data = platform_subset.explode('data')
+        
+        # 3. Plotting
+        # Create a dictionary of numpy arrays for Seaborn
+        # This avoids converting the entire object to a Pandas DataFrame
+        data_array = np.nan_to_num(exploded_data['data'].to_numpy())
+        plot_data = {
+            'data': data_array,
+            'sample_id': exploded_data['sample_id'].to_numpy(),
+            'study_id': exploded_data['study_id'].to_numpy()
+        }
+        bucket_size = data_array.max()/300
+
+        
+
+        plt.figure(figsize=(12, 7))
+        
+        ax = sns.histplot(
+            data=plot_data,
+            x='data',
+            hue=key,       # Different color for each sample
+            binwidth=bucket_size,  # The requested bucket size
+            element="step",        # 'step' style is cleaner for overlapping distributions
+            fill=True,             # Fill the area under the curve/step
+            alpha=0.1,             # Transparency to see overlaps
+            # kde=False              # Disable KDE
+            legend=lengend
+        )
+        df.remove(pl.col('id')==platform_id)
+        plt.title(f'Intensity Distribution: {platform_id}')
+        plt.xlabel('Intensity Value')
+        plt.ylabel('Frequency')
+        plt.grid(True, linestyle=':', alpha=0.6)
+        plt.tight_layout()
+        plt.savefig(save_dir+f'platform_intensity_{platform_id}.svg')
+        plt.close()
+        # return
+
+
+
+class tracker():
+    def __init__(self,storage) -> None:
+        self.schema_dic:dict = {'id':str,'sample_id':str,'study_id':str,'data':list[float]}
+        self.platform_counter:pl.DataFrame = pl.DataFrame(schema=self.schema_dic)#.set_index('id')
+        os.makedirs(storage,exist_ok=True)
+        self.storage_loc:str = storage+'tracker.json'
+    
+    def update_counter(self,sample_id,sample_info,study_id,data) -> None:
+        # new_data = np.array(data)
+        new_record:pl.DataFrame = pl.DataFrame([{'id':sample_info.name,'sample_id':sample_id,'study_id':study_id,'data':data}],schema=self.schema_dic)#.set_index('id')
+        new_df= pl.concat([self.platform_counter,new_record])
+        self.platform_counter = new_df
+        pass
+
+    def store(self):
+        self.platform_counter.write_json(self.storage_loc)
+
+    def load(self):
+        self.platform_counter = pl.read_json(self.storage_loc).match_to_schema(self.schema_dic)
+
+    def log_transform_high_intensity_studies(self):
+        df = self.platform_counter
+        max = df.explode('data')['data'].to_numpy().max()
+        self.platform_counter = df.with_columns(
+            pl.when(
+                pl.col("data").list.max().max().over("study_id") > 300
+            ).then(
+                # Apply log2 to every element in the list using list.eval
+                pl.col("data").list.eval((pl.element()+1).log(2))
+            ).otherwise(
+                pl.col("data")
+            )
+        )
+    def plot(self):
+        df = self.platform_counter.clone()
+
+        plot_platform_usage(df,'test_plots/')
+        # plot_platform_intensities(df,'test_plots/intensity_plots_by_sample/','sample_id')
+        plot_platform_intensities(df,'test_plots/intensity_plots_by_study/','study_id',False)

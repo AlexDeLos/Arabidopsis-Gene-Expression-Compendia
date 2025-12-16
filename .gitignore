@@ -213,3 +213,8 @@ __marimo__/
 /outputs
 /outputs_full_test
 /outputs_
+/data/downloads_test
+/study_data_test
+/test_plots
+*.zip
+/storage

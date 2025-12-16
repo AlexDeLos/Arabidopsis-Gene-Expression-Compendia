@@ -362,5 +362,5 @@ def normalize_by_tissue_2():
 
 
 if __name__ == '__main__':
-    normalize_by_tissue_2()
     run_preprocessing()
+    normalize_by_tissue_2()
