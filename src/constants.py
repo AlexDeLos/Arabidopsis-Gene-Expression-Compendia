@@ -7,10 +7,11 @@ EXPERIMENT_NAME = '3.2'
 STORAGE_DIR = f'./storage/{EXPERIMENT_NAME}/'
 
 
-DATA_IMPORT_DIR = './data/downloads_test/'
-GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_test/'
-METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata_test/'
-PROCESSED_DATA_FOLDER = f'{DATA_IMPORT_DIR}processed_data_test/'
+DATA_IMPORT_DIR = './data/downloads_new/'
+GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_new/'
+METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata_new/'
+PROCESSED_DATA_FOLDER = f'{DATA_IMPORT_DIR}processed_data_new/'
+
 if CLUSTER_RUN:
     PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/AT GE Datasets/process_data_final/processed_data'
 else:

@@ -45,7 +45,7 @@ def create_probe_to_gene_map(gpl):
     logging.warning(f"Could not find a recognized gene symbol column in GPL {gpl.name}.")
     return None
 
-def process_metadata(geo_accession, gse, gsm):
+def process_metadata(geo_accession, gse, gsm, save_path = METADATA_OUTPUT_DIR):
     """Filters and saves metadata for a given sample to the ./metadata folder."""
     excluded_keys = [
         'contact', 'date', '_id', 'taxid', 'data_', 'status', 'type', 
@@ -57,10 +57,11 @@ def process_metadata(geo_accession, gse, gsm):
     final_metadata = {
         'study_id': geo_accession,
         'sample_id': gsm.name,
+        'platform': gse.metadata['platform_id'][0],
         'study_metadata': filtered_study_meta,
         'sample_metadata': filtered_sample_meta
     }
-    output_path = os.path.join(METADATA_OUTPUT_DIR, f"{geo_accession}_{gsm.name}.json")
+    output_path = os.path.join(save_path, f"{geo_accession}_{gsm.name}.json")
     try:
         with open(output_path, "w") as fp:
             json.dump(final_metadata, fp, indent=4)
@@ -513,3 +514,392 @@ class tracker():
         plot_platform_usage(df,'test_plots/')
         # plot_platform_intensities(df,'test_plots/intensity_plots_by_sample/','sample_id')
         plot_platform_intensities(df,'test_plots/intensity_plots_by_study/','study_id',False)
+
+
+
+##### FOR THE new_download.py file
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def plot_tracker_results(json_file="tracker_results.json", output_dir="."):
+    """
+    Reads tracker JSON and saves SVG plots:
+    1. Pie Chart: Total Studies (Used vs Skipped)
+    2. Pie Chart: Total Samples (Used vs Skipped)
+    3. Bar Charts: Platforms (Filtered by >0 samples used)
+    """
+    # 1. Load Data
+    try:
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: {json_file} not found.")
+        return
+
+    totals = data['totals']
+    platform_data = data['platform_counts']
+
+    # --- PLOT 1: PIE CHART (STUDIES) ---
+    studies_used = totals['total_studies_used']
+    studies_seen = totals['total_studies_seen']
+    studies_skipped = studies_seen - studies_used
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(
+        [studies_used, studies_skipped], 
+        labels=[f'Used ({studies_used})', f'Skipped ({studies_skipped})'],
+        autopct='%1.1f%%',
+        colors=sns.color_palette('pastel')[0:2],
+        startangle=140
+    )
+    plt.title(f"Total Studies Seen: {studies_seen}")
+    plt.savefig(f"{output_dir}/tracker_pie_studies.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_pie_studies.svg")
+
+    # --- PLOT 2: PIE CHART (SAMPLES) ---
+    samples_used = totals['total_samples_used']
+    samples_seen = totals['total_sample_seen']
+    samples_skipped = samples_seen - samples_used
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(
+        [samples_used, samples_skipped], 
+        labels=[f'Used ({samples_used})', f'Skipped ({samples_skipped})'],
+        autopct='%1.1f%%',
+        colors=sns.color_palette('pastel')[2:4],
+        startangle=140
+    )
+    plt.title(f"Total Samples Seen: {samples_seen}")
+    plt.savefig(f"{output_dir}/tracker_pie_samples.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_pie_samples.svg")
+
+    # --- PLOT 3: BAR CHARTS (PLATFORMS) ---
+    # Filter and Reshape Data
+    records = []
+    
+    for platform, stats in platform_data.items():
+        # CRITICAL FILTER: Only include platforms where we actually used samples
+        if stats['samples_used'] > 0:
+            
+            # Add Seen Data
+            records.append({
+                'Platform': platform,
+                'Count': stats['studies_seen'],
+                'Metric': 'Studies',
+                'Status': 'Seen'
+            })
+            records.append({
+                'Platform': platform,
+                'Count': stats['samples_seen'],
+                'Metric': 'Samples',
+                'Status': 'Seen'
+            })
+            
+            # Add Used Data
+            records.append({
+                'Platform': platform,
+                'Count': stats['studies_used'],
+                'Metric': 'Studies',
+                'Status': 'Used'
+            })
+            records.append({
+                'Platform': platform,
+                'Count': stats['samples_used'],
+                'Metric': 'Samples',
+                'Status': 'Used'
+            })
+
+    if not records:
+        print("No platforms found with used samples. Skipping bar plots.")
+        return
+
+    df = pd.DataFrame(records)
+
+    # Sort by Used Samples to make the plot readable
+    # We find the order of platforms based on 'Samples' + 'Used' count
+    sorter = df[(df['Metric'] == 'Samples') & (df['Status'] == 'Used')].sort_values('Count', ascending=False)
+    order = sorter['Platform'].tolist()
+
+    # Create Subplots (1 Row, 2 Columns)
+    sns.set_theme(style="whitegrid")
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
+
+    # Subplot A: Studies
+    studies_df = df[df['Metric'] == 'Studies']
+    sns.barplot(
+        data=studies_df, 
+        x='Count', y='Platform', hue='Status', 
+        order=order, ax=axes[0], palette="muted"
+    )
+    axes[0].set_title("Studies per Platform (Filtered)")
+    axes[0].set_xlabel("Number of Studies")
+
+    # Subplot B: Samples
+    samples_df = df[df['Metric'] == 'Samples']
+    sns.barplot(
+        data=samples_df, 
+        x='Count', y='Platform', hue='Status', 
+        order=order, ax=axes[1], palette="muted"
+    )
+    axes[1].set_title("Samples per Platform (Filtered)")
+    axes[1].set_xlabel("Number of Samples")
+
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/tracker_platforms.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_platforms.svg")
+
+def plot_tracker_results_RNA(json_file="tracker_results.json", output_dir="."):
+    """
+    Reads tracker JSON and saves SVG plots:
+    1. Pie Chart: Total Studies (Used vs Skipped)
+    2. Pie Chart: Total Samples (Used vs Skipped)
+    3. Bar Charts: Platforms (Filtered by >0 samples used)
+    """
+    # 1. Load Data
+    try:
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: {json_file} not found.")
+        return
+
+    totals = data['totals']
+    platform_data = data['platform_counts']
+
+    # --- PLOT 1: PIE CHART (STUDIES) ---
+    studies_used = totals['total_studies_used']
+    studies_seen = totals['total_studies_seen']
+    studies_skipped = studies_seen - studies_used
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(
+        [studies_used, studies_skipped], 
+        labels=[f'Used ({studies_used})', f'Skipped ({studies_skipped})'],
+        autopct='%1.1f%%',
+        colors=sns.color_palette('pastel')[0:2],
+        startangle=140
+    )
+    plt.title(f"Total Studies Seen: {studies_seen}")
+    plt.savefig(f"{output_dir}/tracker_pie_studies.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_pie_studies.svg")
+
+    # --- PLOT 2: PIE CHART (SAMPLES) ---
+    samples_used = totals['total_samples_used']
+    samples_seen = totals['total_sample_seen']
+    samples_skipped = samples_seen - samples_used
+
+    plt.figure(figsize=(6, 6))
+    plt.pie(
+        [samples_used, samples_skipped], 
+        labels=[f'Used ({samples_used})', f'Skipped ({samples_skipped})'],
+        autopct='%1.1f%%',
+        colors=sns.color_palette('pastel')[2:4],
+        startangle=140
+    )
+    plt.title(f"Total Samples Seen: {samples_seen}")
+    plt.savefig(f"{output_dir}/tracker_pie_samples.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_pie_samples.svg")
+
+    # --- PLOT 3: BAR CHARTS (PLATFORMS) ---
+    # Filter and Reshape Data
+    records = []
+    
+    for platform, stats in platform_data.items():
+        # CRITICAL FILTER: Only include platforms where we actually used samples
+        if stats['samples_with_raw'] > 0:
+            
+            # Add Seen Data
+            records.append({
+                'Platform': platform,
+                'Count': stats['studies_seen'],
+                'Metric': 'Studies',
+                'Status': 'Seen'
+            })
+            records.append({
+                'Platform': platform,
+                'Count': stats['samples_seen'],
+                'Metric': 'Samples',
+                'Status': 'Seen'
+            })
+            
+            # Add Used Data
+            records.append({
+                'Platform': platform,
+                'Count': stats['studies_with_raw'],
+                'Metric': 'Studies',
+                'Status': 'Used'
+            })
+            records.append({
+                'Platform': platform,
+                'Count': stats['samples_with_raw'],
+                'Metric': 'Samples',
+                'Status': 'Used'
+            })
+
+    if not records:
+        print("No platforms found with used samples. Skipping bar plots.")
+        return
+
+    df = pd.DataFrame(records)
+
+    # Sort by Used Samples to make the plot readable
+    # We find the order of platforms based on 'Samples' + 'Used' count
+    sorter = df[(df['Metric'] == 'Samples') & (df['Status'] == 'Used')].sort_values('Count', ascending=False)
+    order = sorter['Platform'].tolist()
+
+    # Create Subplots (1 Row, 2 Columns)
+    sns.set_theme(style="whitegrid")
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
+
+    # Subplot A: Studies
+    studies_df = df[df['Metric'] == 'Studies']
+    sns.barplot(
+        data=studies_df, 
+        x='Count', y='Platform', hue='Status', 
+        order=order, ax=axes[0], palette="muted"
+    )
+    axes[0].set_title("Studies per Platform (Filtered)")
+    axes[0].set_xlabel("Number of Studies")
+
+    # Subplot B: Samples
+    samples_df = df[df['Metric'] == 'Samples']
+    sns.barplot(
+        data=samples_df, 
+        x='Count', y='Platform', hue='Status', 
+        order=order, ax=axes[1], palette="muted"
+    )
+    axes[1].set_title("Samples per Platform (Filtered)")
+    axes[1].set_xlabel("Number of Samples")
+
+    plt.tight_layout()
+    plt.savefig(f"{output_dir}/tracker_platforms.svg", format='svg')
+    plt.close()
+    print(f"Saved {output_dir}/tracker_platforms.svg")
+
+
+def combine_files_microarray(folder: str, new_file_name: str, new_file_location: str)->pd.DataFrame:
+    """
+    Combines individual GSE RMA CSV files into a single large expression matrix.
+    
+    Args:
+        folder (str): The root directory containing the GSE subfolders (e.g., "./microarray_processed_data").
+        new_file_name (str): The name of the output file (e.g., "combined_microarray_data.csv").
+        new_file_location (str): The folder where the new file should be saved.
+    """
+    
+    # 1. Setup Output Directory
+    if not os.path.exists(new_file_location):
+        try:
+            os.makedirs(new_file_location)
+        except OSError as e:
+            print(f"Error creating directory {new_file_location}: {e}")
+            raise e
+
+    dataframes = []
+    
+    print(f"Scanning '{folder}' for processed files...")
+
+    # 2. Iterate over the folder structure
+    # We look for folders (e.g., GSE75182) and then check for the CSV inside
+    for root, dirs, files in os.walk(folder):
+        for d in dirs:
+            # We assume the folder name is the GSE ID (e.g., GSE75182)
+            # and the file follows the pattern: {GSE_ID}_RMA_Genes.csv
+            expected_csv_name = f"{d}_RMA_Genes.csv"
+            file_path = os.path.join(root, d, expected_csv_name)
+            
+            if os.path.exists(file_path):
+                print(f"  - Found: {expected_csv_name}")
+                try:
+                    # Read the CSV (Assuming Gene Symbols are the index, col 0)
+                    df = pd.read_csv(file_path, index_col=0)
+                    
+                    # Requirement: Set all genes to full capitalization
+                    df.index = df.index.str.upper()
+                    
+                    # Requirement: No repetition in index
+                    # If a single file somehow has duplicates, average them
+                    if df.index.duplicated().any():
+                        df = df.groupby(df.index).mean()
+                    
+                    dataframes.append(df)
+                    
+                except Exception as e:
+                    print(f"    ! Error reading {expected_csv_name}: {e}")
+            else:
+                # Silently ignore folders that don't have the CSV (per requirements)
+                pass
+
+    if not dataframes:
+        print("No valid CSV files found to combine.")
+        raise ValueError("No valid CSV files found to combine.")
+
+    # 3. Combine Dataframes
+    print(f"\nMerging {len(dataframes)} datasets... (This may take a moment)")
+    
+    # concat with axis=1 aligns by Index (Gene) and adds Columns (Samples)
+    # join='outer' ensures we keep all genes, filling missing data with NaN
+    combined_df = pd.concat(dataframes, axis=1, join='outer', sort=True)
+    
+    # Final Safety Check: Ensure the combined index is unique 
+    # (pd.concat generally handles this, but grouping ensures strict uniqueness)
+    if combined_df.index.duplicated().any():
+        print("  - resolving duplicate indices in final merge...")
+        combined_df = combined_df.groupby(combined_df.index).mean()
+
+    # 4. Save to Disk
+    output_path = os.path.join(new_file_location, new_file_name)
+    print(f"Saving combined matrix to: {output_path}")
+    
+    try:
+        combined_df.to_csv(output_path)
+        print("SUCCESS: File saved.")
+        print(f"Final Dimensions: {combined_df.shape[0]} Genes x {combined_df.shape[1]} Samples")
+    except Exception as e:
+        print(f"Error saving file: {e}")
+    return combined_df
+
+def plot_intensity_distributions(df, save_file_location):
+    """
+    Generates a KDE plot. converting data to numeric to prevent TypeErrors.
+    """
+    # Ensure the output directory exists
+    directory = os.path.dirname(save_file_location)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # SAFETY CHECK: Ensure data is numeric
+    # This coerces any "null", "N/A" strings to proper NaN floats
+    # and ignores columns that cannot be converted.
+    df_numeric = df.apply(pd.to_numeric, errors='coerce')
+    
+    # Drop columns that ended up being all NaNs (completely non-numeric)
+    df_numeric = df_numeric.dropna(axis=1, how='all')
+
+    if df_numeric.empty:
+        print("Error: No numeric data to plot.")
+        return
+
+    # Set up the figure
+    plt.figure(figsize=(12, 8))
+    sns.set_theme(style="whitegrid")
+
+    # Plot KDE
+    print("Generating plot... (this might take time for large datasets)")
+    sns.kdeplot(data=df_numeric, legend=False, linewidth=1, alpha=0.6)
+
+    # Labeling
+    plt.title(f"Intensity Distribution of {df_numeric.shape[1]} Samples")
+    plt.xlabel("Expression Intensity (Log Scale)")
+    plt.ylabel("Density")
+    
+    plt.tight_layout()
+    plt.savefig(save_file_location, dpi=300)
+    plt.close()
+    print(f"Intensity plot saved to: {save_file_location}")
