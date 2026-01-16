@@ -783,14 +783,31 @@ def plot_tracker_results_RNA(json_file="tracker_results.json", output_dir="."):
     print(f"Saved {output_dir}/tracker_platforms.svg")
 
 
-def combine_files_microarray(folder: str, new_file_name: str, new_file_location: str)->pd.DataFrame:
+import os
+import pandas as pd
+import sys
+from typing import Union, Callable, Tuple, Dict
+
+def combine_files_microarray(
+    folder: str, 
+    new_file_name: str, 
+    new_file_location: str, 
+    combine_genes: bool = False, 
+    combination_method: Union[str, Callable] = 'mean'
+) -> Tuple[pd.DataFrame, Dict[str, str]]:
     """
-    Combines individual GSE RMA CSV files into a single large expression matrix.
+    Combines individual GSE RMA CSV files into a single large expression matrix
+    and generates a mapping of Samples to Study IDs.
     
     Args:
-        folder (str): The root directory containing the GSE subfolders (e.g., "./microarray_processed_data").
-        new_file_name (str): The name of the output file (e.g., "combined_microarray_data.csv").
-        new_file_location (str): The folder where the new file should be saved.
+        folder (str): Root directory containing GSE subfolders.
+        new_file_name (str): Output filename (e.g. 'combined_data.csv').
+        new_file_location (str): Output directory.
+        combine_genes (bool): If True, merges 'Gene.1', 'Gene.2' into 'Gene'.
+        combination_method (str or callable): Method to merge overlapping values.
+
+    Returns:
+        Tuple[pd.DataFrame, Dict]: (The combined expression dataframe, Dictionary {SampleID: StudyID})
     """
     
     # 1. Setup Output Directory
@@ -802,39 +819,41 @@ def combine_files_microarray(folder: str, new_file_name: str, new_file_location:
             raise e
 
     dataframes = []
+    sample_to_study_map = {} # Dictionary to store Sample -> Study relationship
     
     print(f"Scanning '{folder}' for processed files...")
 
     # 2. Iterate over the folder structure
-    # We look for folders (e.g., GSE75182) and then check for the CSV inside
     for root, dirs, files in os.walk(folder):
         for d in dirs:
-            # We assume the folder name is the GSE ID (e.g., GSE75182)
-            # and the file follows the pattern: {GSE_ID}_RMA_Genes.csv
+            # The folder name 'd' is assumed to be the Study ID (e.g., GSE12345)
+            study_id = d 
+            
             expected_csv_name = f"{d}_RMA_Genes.csv"
             file_path = os.path.join(root, d, expected_csv_name)
             
             if os.path.exists(file_path):
-                print(f"  - Found: {expected_csv_name}")
+                print(f"  - Found: {expected_csv_name} (Study: {study_id})")
                 try:
-                    # Read the CSV (Assuming Gene Symbols are the index, col 0)
                     df = pd.read_csv(file_path, index_col=0)
                     
                     # Requirement: Set all genes to full capitalization
                     df.index = df.index.str.upper()
                     
-                    # Requirement: No repetition in index
-                    # If a single file somehow has duplicates, average them
+                    # Local deduplication
                     if df.index.duplicated().any():
                         df = df.groupby(df.index).mean()
                     
+                    # --- NEW LOGIC: Map Samples to Study ---
+                    # df.columns contains the GSM (Sample) IDs
+                    for sample_id in df.columns:
+                        sample_to_study_map[sample_id] = study_id
+                    # ---------------------------------------
+
                     dataframes.append(df)
                     
                 except Exception as e:
                     print(f"    ! Error reading {expected_csv_name}: {e}")
-            else:
-                # Silently ignore folders that don't have the CSV (per requirements)
-                pass
 
     if not dataframes:
         print("No valid CSV files found to combine.")
@@ -843,63 +862,376 @@ def combine_files_microarray(folder: str, new_file_name: str, new_file_location:
     # 3. Combine Dataframes
     print(f"\nMerging {len(dataframes)} datasets... (This may take a moment)")
     
-    # concat with axis=1 aligns by Index (Gene) and adds Columns (Samples)
-    # join='outer' ensures we keep all genes, filling missing data with NaN
     combined_df = pd.concat(dataframes, axis=1, join='outer', sort=True)
     
-    # Final Safety Check: Ensure the combined index is unique 
-    # (pd.concat generally handles this, but grouping ensures strict uniqueness)
-    if combined_df.index.duplicated().any():
-        print("  - resolving duplicate indices in final merge...")
+    # 4. Optional: Combine Gene Variants (Gene.1 -> Gene)
+    if combine_genes:
+        print(f"  - Consolidating gene variants (e.g., 'Gene.1' -> 'Gene') using method: {combination_method}...")
+        cleaned_index = combined_df.index.str.split('.').str[0]
+        combined_df.index = cleaned_index
+        combined_df = combined_df.groupby(combined_df.index).agg(combination_method)
+
+    elif combined_df.index.duplicated().any():
+        print("  - resolving duplicate indices in final merge (using mean)...")
         combined_df = combined_df.groupby(combined_df.index).mean()
 
-    # 4. Save to Disk
+    # 5. Save Data Matrix
     output_path = os.path.join(new_file_location, new_file_name)
     print(f"Saving combined matrix to: {output_path}")
     
     try:
         combined_df.to_csv(output_path)
-        print("SUCCESS: File saved.")
+        print("SUCCESS: Data matrix saved.")
         print(f"Final Dimensions: {combined_df.shape[0]} Genes x {combined_df.shape[1]} Samples")
     except Exception as e:
-        print(f"Error saving file: {e}")
-    return combined_df
+        print(f"Error saving data file: {e}")
 
-def plot_intensity_distributions(df, save_file_location):
+    # 6. Save Sample Map
+    # We generate a filename based on the input name: "data.csv" -> "data_sample_map.csv"
+    base_name = os.path.splitext(new_file_name)[0]
+    map_filename = f"{base_name}_sample_map.csv"
+    map_output_path = os.path.join(new_file_location, map_filename)
+    
+    print(f"Saving sample map to: {map_output_path}")
+    try:
+        # Convert dict to DataFrame for easy saving
+        map_df = pd.DataFrame.from_dict(sample_to_study_map, orient='index', columns=['StudyID'])
+        map_df.index.name = 'SampleID'
+        map_df.to_csv(map_output_path)
+        print("SUCCESS: Sample map saved.")
+    except Exception as e:
+        print(f"Error saving map file: {e}")
+        
+    return combined_df, sample_to_study_map
+import matplotlib
+# Force matplotlib to not use any Xwindow/GUI backend.
+# This must be called BEFORE importing pyplot.
+matplotlib.use('Agg') 
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import os
+
+import datashader as ds
+import datashader.transfer_functions as tf
+from datashader.utils import export_image
+import pandas as pd
+import numpy as np
+import os
+import datashader as ds
+import datashader.transfer_functions as tf
+from datashader.utils import export_image
+import pandas as pd
+import numpy as np
+import os
+
+def plot_study_distributions_datashader(df, sample_map, save_file_path, bins=200, width=1200, height=800):
     """
-    Generates a KDE plot. converting data to numeric to prevent TypeErrors.
+    Uses Datashader to plot density curves aggregated by STUDY.
+    Instead of 1 line per sample, it plots 1 line per Study.
+    
+    Args:
+        df (pd.DataFrame): Genes (rows) x Samples (columns).
+        sample_map (dict): Dictionary mapping {SampleID: StudyID}.
+        save_file_path (str): Output path (without extension).
     """
-    # Ensure the output directory exists
-    directory = os.path.dirname(save_file_location)
+    # 1. Ensure output directory exists
+    directory = os.path.dirname(save_file_path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory)
+        
+    print("  - [Datashader] Preparing study-level data...")
 
-    # SAFETY CHECK: Ensure data is numeric
-    # This coerces any "null", "N/A" strings to proper NaN floats
-    # and ignores columns that cannot be converted.
-    df_numeric = df.apply(pd.to_numeric, errors='coerce')
+    # 2. Clean Data
+    df_numeric = df.apply(pd.to_numeric, errors='coerce').dropna(axis=1, how='all')
     
-    # Drop columns that ended up being all NaNs (completely non-numeric)
-    df_numeric = df_numeric.dropna(axis=1, how='all')
-
     if df_numeric.empty:
         print("Error: No numeric data to plot.")
         return
 
-    # Set up the figure
-    plt.figure(figsize=(12, 8))
-    sns.set_theme(style="whitegrid")
+    # 3. Group samples by Study
+    # Invert map for easier access: {StudyID: [Sample1, Sample2, ...]}
+    study_groups = {}
+    for sample, study in sample_map.items():
+        if sample in df_numeric.columns:
+            if study not in study_groups:
+                study_groups[study] = []
+            study_groups[study].append(sample)
 
-    # Plot KDE
-    print("Generating plot... (this might take time for large datasets)")
-    sns.kdeplot(data=df_numeric, legend=False, linewidth=1, alpha=0.6)
+    n_studies = len(study_groups)
+    print(f"  - [Datashader] Aggregating {df_numeric.shape[1]} samples into {n_studies} study distributions...")
 
-    # Labeling
-    plt.title(f"Intensity Distribution of {df_numeric.shape[1]} Samples")
-    plt.xlabel("Expression Intensity (Log Scale)")
-    plt.ylabel("Density")
+    # 4. Pre-allocate arrays
+    # One line per study -> n_studies lines
+    total_rows = n_studies * (bins + 1)
     
-    plt.tight_layout()
-    plt.savefig(save_file_location, dpi=300)
-    plt.close()
-    print(f"Intensity plot saved to: {save_file_location}")
+    xs = np.zeros(total_rows, dtype=np.float32)
+    ys = np.zeros(total_rows, dtype=np.float32)
+    
+    global_min = df_numeric.min().min()
+    global_max = df_numeric.max().max()
+    bin_edges = np.linspace(global_min, global_max, bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # 5. Compute Density per Study
+    for i, (study_id, samples) in enumerate(study_groups.items()):
+        # Extract all data for this study as a single flat array
+        # This treats the study as one giant distribution of values
+        study_data = df_numeric[samples].values.flatten()
+        
+        # Remove NaNs
+        study_data = study_data[~np.isnan(study_data)]
+        
+        if len(study_data) == 0:
+            continue
+            
+        # Compute Histogram
+        hist, _ = np.histogram(study_data, bins=bin_edges, density=True)
+        
+        # Fill arrays
+        start_idx = i * (bins + 1)
+        end_idx = start_idx + bins
+        
+        xs[start_idx:end_idx] = bin_centers
+        ys[start_idx:end_idx] = hist
+        
+        # NaN separator
+        xs[end_idx] = np.nan
+        ys[end_idx] = np.nan
+
+    # 6. Render
+    print("  - [Datashader] Rendering...")
+    line_df = pd.DataFrame({'x': xs, 'y': ys})
+    
+    cvs = ds.Canvas(plot_width=width, plot_height=height)
+    agg = cvs.line(line_df, 'x', 'y', agg=ds.count())
+    img = tf.shade(agg, cmap=['lightblue', 'darkblue', 'red'], how='log')
+    
+    if save_file_path.endswith('.png'):
+        save_file_path = save_file_path[:-4]
+        
+    export_image(img, save_file_path, background="white", export_path=".")
+    print(f"  - [Datashader] Success! Saved to {save_file_path}.png")
+
+
+import datashader as ds
+import datashader.transfer_functions as tf
+from datashader.utils import export_image
+import pandas as pd
+import numpy as np
+import os
+
+def plot_study_distributions_incremental(folder_path, save_file_path, bins=200, width=1200, height=800):
+    """
+    Scans a folder of processed CSVs (e.g., GSE123_RMA_Genes.csv), calculates the 
+    density distribution for each study, and incrementally adds it to a Datashader plot.
+    
+    Args:
+        folder_path (str): Directory containing the per-study CSV files.
+        save_file_path (str): Output path (without extension).
+    """
+    
+    # 1. Setup Output
+    directory = os.path.dirname(save_file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+        
+    print(f"Scanning '{folder_path}' for study files...")
+    
+    # 2. Initialize Datashader Canvas
+    # We need to know the global min/max to set the canvas range correctly.
+    # Since we can't load all data to find min/max, we estimate or do a quick pre-scan.
+    # For normalized expression (Log2), 0 to 16 is a safe standard range.
+    x_range = (0, 16) 
+    y_range = (0, 1.0) # Density usually falls 0-1
+    
+    cvs = ds.Canvas(plot_width=width, plot_height=height, x_range=x_range, y_range=y_range)
+    
+    # This will hold the aggregated counts (the 'image' data)
+    agg = None 
+
+    studies_processed = 0
+    
+    # 3. Iterate over files
+    for root, dirs, files in os.walk(folder_path):
+        for d in dirs:
+            # Construct path to the expected CSV
+            csv_path = os.path.join(root, d, f"{d}_RMA_Genes.csv")
+            
+            if os.path.exists(csv_path):
+                try:
+                    # Load ONE study into memory
+                    df = pd.read_csv(csv_path, index_col=0)
+                    
+                    # Ensure numeric
+                    df = df.apply(pd.to_numeric, errors='coerce')
+                    
+                    # --- METHOD: One line per study (Mean of samples) ---
+                    # We average all samples to get a "Study Consensus" profile
+                    study_profile = df.mean(axis=1).dropna().values
+                    
+                    if len(study_profile) == 0:
+                        continue
+                        
+                    # Compute Histogram for this study
+                    # We map this profile into x,y coordinates for Datashader
+                    hist, bin_edges = np.histogram(study_profile, bins=bins, range=x_range, density=True)
+                    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                    
+                    # Create a mini dataframe for just this line
+                    line_df = pd.DataFrame({'x': bin_centers, 'y': hist})
+                    
+                    # Add to the global aggregation
+                    # If this is the first study, create the agg. Otherwise, add to it.
+                    new_agg = cvs.line(line_df, 'x', 'y', agg=ds.count())
+                    
+                    if agg is None:
+                        agg = new_agg
+                    else:
+                        agg = agg + new_agg
+                    
+                    studies_processed += 1
+                    if studies_processed % 50 == 0:
+                        print(f"  - Processed {studies_processed} studies...")
+                        
+                except Exception as e:
+                    print(f"    ! Error reading {d}: {e}")
+
+    if agg is None:
+        print("Error: No valid data found to plot.")
+        return
+
+    # 4. Render and Save
+    print(f"  - Rendering final image for {studies_processed} studies...")
+    
+    # 'log' mapping works best to see the "main trend" vs "outlier studies"
+    img = tf.shade(agg, cmap=['lightblue', 'darkblue', 'red'], how='log')
+    
+    # if save_file_path.endswith('.png'):
+    #     save_file_path = save_file_path[:-4]
+        
+    export_image(img, save_file_path, background="white", export_path=".")
+    print(f"  - Success! Saved to {save_file_path}.png")
+
+
+import seaborn as sns
+import seaborn.objects as so
+import matplotlib
+# Use Agg backend to prevent display errors/crashes
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import os
+
+def plot_study_distributions_seaborn(folder_path, save_file_path, bins=200):
+    """
+    Scans processed CSVs and plots density distributions using the Seaborn Objects API.
+    
+    Visualization Layers:
+    1. Individual Study Lines (Light Blue)
+    2. Standard Deviation Band (Gray Area)
+    3. Mean Distribution Line (Red Line)
+    """
+    
+    # 1. Setup Output
+    directory = os.path.dirname(save_file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    print(f"Scanning '{folder_path}' for study files...")
+    
+    # Standard bounds for Log2 Expression
+    x_range = (0, 16) 
+    bin_edges = np.linspace(x_range[0], x_range[1], bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    bin_width = (x_range[1] - x_range[0]) / bins
+
+    plot_data_list = []
+    studies_processed = 0
+
+    # 2. Iterate and Compute Densities
+    for root, dirs, files in os.walk(folder_path):
+        for d in dirs:
+            csv_path = os.path.join(root, d, f"{d}_RMA_Genes.csv")
+            
+            if os.path.exists(csv_path):
+                try:
+                    # Load ONE study
+                    df = pd.read_csv(csv_path, index_col=0)
+                    df = df.apply(pd.to_numeric, errors='coerce')
+                    
+                    # Calculate Study Consensus (Mean of samples)
+                    study_profile = df.mean(axis=1).dropna().values
+                    
+                    if len(study_profile) == 0:
+                        continue
+                        
+                    # Compute Histogram (Density)
+                    hist, _ = np.histogram(study_profile, bins=bin_edges, density=True)
+                    
+                    # --- ASSERTION CHECK ---
+                    integral = np.sum(hist) * bin_width
+                    assert np.isclose(integral, 1.0, atol=1e-4), \
+                        f"Integration Check Failed for {d}: Area = {integral}"
+                    # -----------------------
+
+                    # Store as a lightweight DataFrame
+                    temp_df = pd.DataFrame({
+                        'Expression': bin_centers,
+                        'Density': hist,
+                        'Study': d
+                    })
+                    
+                    plot_data_list.append(temp_df)
+                    studies_processed += 1
+                    
+                    if studies_processed % 50 == 0:
+                        print(f"  - Processed {studies_processed} studies...")
+                        
+                except Exception as e:
+                    print(f"    ! Error reading {d}: {e}")
+
+    if not plot_data_list:
+        print("Error: No valid data found to plot.")
+        return
+
+    print(f"  - Aggregating data for plotting...")
+    plotting_df = pd.concat(plot_data_list, ignore_index=True)
+
+    # 3. Plotting with Seaborn Objects
+    print("  - Generating Seaborn Objects plot...")
+    
+    # Ensure correct extension
+    if not save_file_path.endswith('.svg'):
+        save_file_path += '.svg'
+
+    (
+        so.Plot(plotting_df, x='Expression', y='Density')
+        # Layer 1: Individual Study Lines (Background)
+        # We group by 'Study' so each study gets its own thin line
+        .add(so.Line(color='cornflowerblue', alpha=0.1, linewidth=0.5), group='Study')
+        
+        # Layer 2: Standard Deviation (Band)
+        # so.Est(errorbar='sd') calculates the standard deviation at each X point
+        .add(so.Band(color='red', alpha=0.2), so.Est(errorbar="sd"))
+        
+        # Layer 3: Mean (Line)
+        # so.Agg() calculates the mean at each X point
+        .add(so.Line(color='red', linewidth=1.5), so.Agg())
+        
+        # Layout & Labels
+        .label(
+            title=f"Gene Expression Density (N={studies_processed})",
+            x="Log2 Expression Intensity",
+            y="Density"
+        )
+        .limit(x=x_range, y=(0, 1.2))
+        .layout(size=(10, 6))
+        
+        # Save
+        .save(save_file_path, format='svg', dpi=150)
+    )
+    
+    print(f"  - Success! Saved to {save_file_path}")
