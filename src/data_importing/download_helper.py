@@ -8,9 +8,9 @@ module_dir = './'
 sys.path.append(module_dir)
 
 # Import the processing classes
-def search_geo_accessions(query, max_results=20):
+def search_geo_accessions(query, max_results=20, filter_organism="Arabidopsis thaliana"):
     '''
-    Searches NCBI GEO for datasets matching the query.
+    Searches NCBI GEO for datasets matching the query and strict-filters the organism.
     '''
     print(f'Searching GEO with query: {query}...')
     try:
@@ -35,9 +35,20 @@ def search_geo_accessions(query, max_results=20):
             
             for summary in summaries:
                 acc = summary.get('Accession', '')
+                
+                # --- FIX: Verify Organism ---
+                # 'taxon' field contains the organism name (e.g., "Homo sapiens")
+                taxon = summary.get('taxon', '')
+                
+                # If we requested a filter, checking it matches the metadata
+                if filter_organism and filter_organism.lower() not in taxon.lower():
+                    # print(f"  Skipping {acc} (Organism: {taxon})") # Optional debug
+                    continue
+
                 if acc.startswith('GSE'):
                     gse_ids.append(acc)
         
+        print(f"Returned {len(gse_ids)} validated {filter_organism} IDs.")
         return list(set(gse_ids))
         
     except Exception as e:
@@ -94,5 +105,26 @@ def check_metadata_for_counts(gse):
         for key, value in gsm.metadata.items():
             val_str = str(value).lower()
             if 'supplementary_file' in key and any(ext in val_str for ext in valid_exts):
+                return True
+    return False
+
+def check_metadata_for_sra(gse):
+    """
+    Checks if the study has SRA (Sequence Read Archive) links.
+    This indicates 'Raw Data' (FASTQ) is available in SRA, even if not in GEO.
+    """
+    for gsm_name, gsm in gse.gsms.items():
+        # Method 1: Check Relation field
+        for relation in gsm.metadata.get('relation', []):
+            if "SRA:" in relation or "BioProject:" in relation:
+                return True
+        # Method 2: Check explicit SRA field
+        if 'sra_id' in gsm.metadata:
+            return True
+            
+        # Method 3: Check supplementary files for FASTQ (Rare in GEO, but possible)
+        for key, value in gsm.metadata.items():
+            val_str = str(value).lower()
+            if "supplementary_file" in key and (".fastq" in val_str or ".fq" in val_str):
                 return True
     return False

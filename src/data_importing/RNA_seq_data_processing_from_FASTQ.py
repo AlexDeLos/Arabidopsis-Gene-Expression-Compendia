@@ -318,32 +318,12 @@ class RNASeq_processor:
             print(f"  - Pipeline FAILED: {e}")
             raise e
         
-def check_metadata_for_sra(gse):
-    """
-    Checks if the study has SRA (Sequence Read Archive) links.
-    This indicates 'Raw Data' (FASTQ) is available in SRA, even if not in GEO.
-    """
-    for gsm_name, gsm in gse.gsms.items():
-        # Method 1: Check Relation field
-        for relation in gsm.metadata.get('relation', []):
-            if "SRA:" in relation or "BioProject:" in relation:
-                return True
-        # Method 2: Check explicit SRA field
-        if 'sra_id' in gsm.metadata:
-            return True
-            
-        # Method 3: Check supplementary files for FASTQ (Rare in GEO, but possible)
-        for key, value in gsm.metadata.items():
-            val_str = str(value).lower()
-            if "supplementary_file" in key and (".fastq" in val_str or ".fq" in val_str):
-                return True
-    return False
 
 import os
 import shutil # Required for folder deletion
 from tqdm import tqdm
 
-def download_experiments_RNA_seq(gse_list, output_dir, tracker, download_raw=True, scan=True):
+def download_experiments_RNA_seq(gse_list, output_dir, tracker, download_raw=True, scan=False):
     """
     Downloads and Processes RNA-Seq experiments.
     Implements 'Stream-Process-Delete' to minimize storage footprint.
