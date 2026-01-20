@@ -268,7 +268,7 @@ def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker,
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     
-    processor = RNASeq_processor(threads=1, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF)
+    processor = RNASeq_processor(threads=8, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF)
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
     
     if not os.path.exists(output_dir): os.makedirs(output_dir)
