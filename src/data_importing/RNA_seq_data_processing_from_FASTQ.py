@@ -6,6 +6,10 @@ import shutil
 from Bio import Entrez
 from tqdm import tqdm
 import GEOparse
+import sys
+module_dir = './'
+sys.path.append(module_dir)
+from src.data_importing.download_helper import check_metadata_for_sra
 
 # Standard Nextflow command template
 # Adjust 'profile' to 'singularity' or 'conda' if needed
@@ -328,7 +332,7 @@ def download_experiments_RNA_seq(gse_list, output_dir, tracker, download_raw=Tru
     Downloads and Processes RNA-Seq experiments.
     Implements 'Stream-Process-Delete' to minimize storage footprint.
     """
-    from src.data_importing.RNA_seq_data_processing import RNASeq_processor
+    # from src.data_importing.RNA_seq_data_processing import RNASeq_processor
     
     # Initialize Processor
     processor = RNASeq_processor()

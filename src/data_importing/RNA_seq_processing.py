@@ -112,6 +112,37 @@ class RNASeq_processor:
                 cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
                 subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def _find_adapter_file(self, filename="TruSeq3-PE.fa"):
+        """
+        Dynamically finds the absolute path of the adapter file 
+        within the current Conda environment.
+        """
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        
+        if not conda_prefix:
+            raise EnvironmentError("CONDA_PREFIX not found. Are you running this inside a Conda environment?")
+
+        # Construct the find command: find $CONDA_PREFIX -name filename
+        try:
+            # check_output runs the command and returns the stdout result as bytes
+            # text=True converts bytes to string
+            output = subprocess.check_output(
+                ["find", conda_prefix, "-name", filename], 
+                text=True
+            ).strip()
+            
+            # If multiple are found, 'output' might contain newlines. Take the first one.
+            if "\n" in output:
+                output = output.split("\n")[0]
+                
+            if not output or not os.path.exists(output):
+                raise FileNotFoundError(f"Could not find {filename} in {conda_prefix}")
+                
+            return output
+            
+        except subprocess.CalledProcessError as e:
+            raise FileNotFoundError(f"Error searching for adapters: {e}")
+        
     def run_pipeline_on_study(self, gse_id, fastq_folder, output_folder):
         """
         Executes the Bio-protocol PDF workflow:
@@ -145,19 +176,29 @@ class RNASeq_processor:
             
             # --- STEP 1: TRIMMOMATIC (Cleaning) ---
             # Command structure based on Bio-protocol PDF recommendations
+            adapter_path = self._find_adapter_file("TruSeq3-PE.fa")
+
+            # 2. Build the command
             is_paired = len(fqs) == 2
             
             trim_cmd = ["trimmomatic", "PE" if is_paired else "SE", "-threads", self.threads]
+            
             if is_paired:
                 trim_cmd.extend([fqs[0], fqs[1], trimmed_1, unpaired_1, trimmed_2, unpaired_2])
             else:
-                trim_cmd.extend([fqs[0], trimmed_1]) # Reuse var name for single output
-                
-            # Standard trimming parameters from protocol
-            trim_cmd.extend(["ILLUMINACLIP:TruSeq3-PE.fa:2:30:10", "LEADING:3", "TRAILING:3", "SLIDINGWINDOW:4:15", "MINLEN:36"])
+                trim_cmd.extend([fqs[0], trimmed_1]) 
+
+            # 3. Add the Clipping parameter using the dynamic path
+            # Note the f"..." string formatting
+            trim_cmd.extend([
+                f"ILLUMINACLIP:{adapter_path}:2:30:10", 
+                "LEADING:3", 
+                "TRAILING:3", 
+                "SLIDINGWINDOW:4:15", 
+                "MINLEN:36"
+            ])
             
-            subprocess.run(trim_cmd, check=True, stderr=subprocess.DEVNULL)
-            
+            subprocess.run(trim_cmd, check=True, stderr=subprocess.DEVNULL)            
             # --- STEP 2: HISAT2 (Alignment) ---
             # We pipe HISAT2 directly to Samtools Sort to avoid huge SAM files
             
@@ -169,7 +210,7 @@ class RNASeq_processor:
                 hisat_cmd.extend(["-U", trimmed_1])
                 
             # Pipeline: HISAT2 -> Samtools View (BAM) -> Samtools Sort
-            p1 = subprocess.Popen(hisat_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p1 = subprocess.Popen(hisat_cmd, stdout=subprocess.PIPE)
             p2 = subprocess.Popen(["samtools", "sort", "-@", self.threads, "-o", bam_out], stdin=p1.stdout)
             p1.stdout.close()
             p2.communicate()
@@ -222,12 +263,10 @@ class RNASeq_processor:
         
         return True
     
-def download_experiments_RNA_seq(gse_list, output_dir, tracker, download_raw=True, scan=True,run_and_delete:bool=True):
+def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker, download_raw=True, scan=True,run_and_delete:bool=True):
     
-    # CONFIGURATION
-    # You MUST set these paths for the pipeline to work
-    PATH_TO_INDEX = "/path/to/hisat2_index/genome" 
-    PATH_TO_GTF = "/path/to/annotation.gtf"
+    PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
+    PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     
     processor = RNASeq_processor(threads=1, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF)
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
@@ -247,6 +286,7 @@ def download_experiments_RNA_seq(gse_list, output_dir, tracker, download_raw=Tru
         results_folder = os.path.join(output_dir, "processed_rnaseq", gse_id)
         temp_files = os.path.join(output_dir,'temp')
         if not os.path.exists(temp_files): os.makedirs(temp_files)
+        if not os.path.exists(results_folder): os.makedirs(results_folder)
         try:
             # 1. Metadata
             try:

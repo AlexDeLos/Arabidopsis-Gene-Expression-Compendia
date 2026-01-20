@@ -59,10 +59,11 @@ if __name__ == "__main__":
 
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
     RNA_tracker = RNASeq_tracker()
-    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=1, filter_organism="Arabidopsis thaliana")
-    download_experiments_RNA_seq(rnaseq_ids, f"{root_storage_dir}/rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
+    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=1, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    RNA_tracker = RNASeq_tracker.load_from_json('new_storage/rnaseq_data/rnaseq_tracker_stats.json')
+    download_experiments_RNA_seq(rnaseq_ids,root_storage_dir, f"{root_storage_dir}/rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
     # RNA_tracker.print_summary()
-    # RNA_tracker = RNASeq_tracker.load_from_json(f"{root_storage_dir}/RNA_seq_scan/RNA_tracker_stats.json")
+    #
     RNA_tracker.save_to_json(f"{root_storage_dir}/RNA_seq_scan/RNA_tracker_stats.json")
     plot_tracker_results_RNA(f"{root_storage_dir}/RNA_seq_scan/RNA_tracker_stats.json",output_dir=f'{root_storage_dir}/RNA_seq_scan')
     print("\nDone!")

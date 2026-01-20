@@ -3,7 +3,6 @@ import json
 import pandas as pd
 import numpy as np
 import sys
-import shutil
 from tqdm import tqdm
 import json
 import GEOparse

@@ -21,5 +21,5 @@
 module use /opt/insy/modulefiles
 module load miniconda/3.9
 conda activate dataset_fusion_micro
-python3 src/main.py
+python3 src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/AT GE Datasets/'
 echo "done with main.py"
