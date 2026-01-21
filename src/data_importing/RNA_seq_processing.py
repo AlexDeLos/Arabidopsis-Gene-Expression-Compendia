@@ -10,6 +10,7 @@ import sys
 module_dir = './'
 sys.path.append(module_dir)
 from src.data_importing.download_helper import check_metadata_for_sra
+from src.constants import *
 
 class RNASeq_tracker:
     # ... (Keep the exact same Tracker class from previous iterations) ...
@@ -103,13 +104,15 @@ class RNASeq_processor:
         
         # Filter empty
         sra_map = {k:v for k,v in sra_map.items() if v}
-        
+        fasterq_path = '/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/sratools.3.0.10'
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
                 # Check existence
                 if any(f.startswith(srr) for f in os.listdir(output_folder)): continue
-                
-                cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
+                if CLUSTER_RUN:
+                    cmd = [fasterq_path, "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
+                else:
+                    cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
                 subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _find_adapter_file(self, filename="TruSeq3-PE.fa"):

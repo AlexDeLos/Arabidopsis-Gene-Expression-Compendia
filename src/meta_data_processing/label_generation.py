@@ -6,12 +6,14 @@ import sys
 module_dir = './'
 sys.path.append(module_dir)
 from src.meta_data_processing.utils.extractors_full import *
-from src.meta_data_processing.utils.llm_utils import get_condensed_labels
+from src.meta_data_processing.utils.llm_utils import get_condensed_labels,get_metadata_script
 from src.meta_data_processing.utils.classes import LabelMap
 from src.constants import *
 from src.meta_data_processing.utils.llm_utils import get_condensed_labels
 from src.meta_data_processing.utils.classes import LabelMap
+import dotenv
 
+dotenv.load_dotenv()
 
 def load_labels_study(path):
     labels = {}
@@ -29,68 +31,134 @@ def load_json(path:str):
         object = json.load(file)
     return object
 
+import os
+import json
+import sys
+from tqdm import tqdm
 
-def condense_labels(Studies=Studies,in_folder=f'{METADATA_OUTPUT_DIR}/study_batch_metadata/', saving_path=LABELS_PATH,llm_grounding:bool = True):
-    os.makedirs(saving_path,exist_ok=True)
-    labels= {}
+def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray_data/', saving_path=LABELS_PATH, llm_grounding:bool = True, model=None):
+    os.makedirs(saving_path, exist_ok=True)
+    labels = {}
     seen = LabelMap('./data/maps')
-    for file in tqdm(os.listdir(in_folder)):
-        if file.endswith('.json'):
-            file_path = os.path.join(in_folder, file)
+    
+    # Check if input directory exists
+    if not os.path.exists(in_folder):
+        print(f"Error: Input folder '{in_folder}' not found.")
+        return
+
+    # 1. Iterate over Study Directories
+    study_dirs = [d for d in os.listdir(in_folder) if os.path.isdir(os.path.join(in_folder, d))]
+    
+    for study_id in tqdm(study_dirs, desc="Processing Studies"):
+        # Filter by Studies list if provided
+        if Studies and (study_id not in Studies):
+            continue
+
+        study_path = os.path.join(in_folder, study_id)
+        
+        # Initialize study entry in labels if not present
+        if study_id not in labels:
+            labels[study_id] = {}
+
+        # 2. Iterate over Sample JSON files inside the study folder
+        sample_files = [f for f in os.listdir(study_path) if f.endswith('.json')]
+        
+        for sample_file in sample_files:
+            file_path = os.path.join(study_path, sample_file)
             
-            
-            study_id = file_path.split('/')[-1].split('.')[0]
-            
-            study_info = load_json(file_path)
-            for sample_id in study_info:
-                if sample_id == 'study_metadata':
-                    continue
-                if not (study_id in Studies):
-                    continue
-                # if  study_id in labels:
-                #     if sample_id in labels[study_id]:
-                #         continue
-                # if not (sample_id in ['GSM2406811']):# ,'GSM2109731'
-                    # continue
+            try:
+                # Load the JSON containing both study and sample metadata
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
                 
-                sample_info = study_info[sample_id]
-                # if study_id == 'GSE41935':
-                #     temp.append(sample_id)
-                fun = eval(f'{study_id}_extractor')
-                python_object = fun(sample_info)
-                # add the possibly missing control treatments:
-                if python_object['treatment'] == []:
+                # Extract relevant sections
+                study_meta = data.get('study_metadata', {})
+                sample_meta = data.get('sample_metadata', {})
+                sample_id = data.get('sample_id', sample_file.replace('.json', ''))
+                
+            except Exception as e:
+                print(f"Error loading {sample_file}: {e}")
+                continue
+
+            # 3. Dynamic Extractor Check & Generation
+            extractor_name = f'{study_id}_extractor'
+            
+            # Check if the extractor function exists in the global scope
+            if extractor_name not in globals():
+                tqdm.write(f"Warning: Extractor function '{extractor_name}' not defined.")
+                tqdm.write(f"Generating new extractor for {study_id}...")
+                
+                try:
+                    # Generate the script using the LLM utility
+                    # We pass the sample metadata as a reference for the schema generation
+                    new_script = get_metadata_script(sample_meta, study_id=study_id, model=model)
+                    
+                    # Append the new function to the extractors file
+                    with open('extractors_full.py', 'a') as f:
+                        f.write('\n\n')
+                        f.write(new_script)
+                    
+                    # Execute the new script string to load the function into the current runtime
+                    exec(new_script, globals())
+                    tqdm.write(f"  -> Successfully generated and loaded {extractor_name}.")
+                    
+                except Exception as e:
+                    tqdm.write(f"  -> Failed to generate extractor for {study_id}: {e}")
+                    continue # Skip this sample if we can't extract
+
+            # 4. Run the Extractor
+            try:
+                # Retrieve the function from globals and execute
+                extractor_func = globals()[extractor_name]
+                python_object = extractor_func(sample_meta)
+                
+                # --- Post-Processing Logic (Same as original) ---
+                
+                # Handle missing treatments
+                if not python_object.get('treatment'):
                     python_object['treatment'] = ['no treatment/control']
-                x=0
-                if   "Light 24h" in python_object['treatment']:
+                
+                # Debug print for specific condition
+                if "Light 24h" in python_object['treatment']:
                     print(f'study: {study_id} sample: {sample_id}')
+                
+                # LLM Grounding / Mapping
                 if llm_grounding and seen.check_past(python_object):
-                    condensed = dict(get_condensed_labels(study_info=study_info['study_metadata'], sample_info=python_object))
-                    seen.add_mapping(python_object,condensed)
+                    # Note: Using study_meta extracted from the JSON
+                    condensed = dict(get_condensed_labels(study_info=study_meta, sample_info=python_object))
+                    seen.add_mapping(python_object, condensed)
                     python_object = condensed
                 else:
                     condensed = seen.apply_mappings(python_object)
-                if not (study_id in labels):
-                    labels[study_id] = {}
-                def flatten(lst,ret = []):
+                
+                # Helper to flatten lists
+                def flatten(lst, ret=None):
+                    if ret is None: ret = []
                     for el in lst:
-                        if type(el) == list:
-                            flatten(el,ret)
+                        if isinstance(el, list):
+                            flatten(el, ret)
                         else:
                             ret.append(el)
                     return ret
 
+                # Flatten treatments and save
                 condensed['treatment'] = list(set(flatten(condensed['treatment'])))
                 labels[study_id][sample_id] = dict(condensed)
                 seen.save_map()
 
-    for study in labels:
-        with open(f'{saving_path}/{study}.json', 'w') as handle:
-            json.dump(labels[study], handle)
+            except Exception as e:
+                print(f"Error processing sample {sample_id} in {study_id}: {e}")
+                continue
 
+    # 5. Save Results
+    print("Saving condensed labels...")
+    for study in labels:
+        if labels[study]: # Only save if we actually processed data for this study
+            with open(f'{saving_path}/{study}.json', 'w') as handle:
+                json.dump(labels[study], handle, indent=4)
 
 if __name__ == '__main__':
-    condense_labels()
+    condense_labels(model='gemini-1.5-pro')
 
     labels_1 = load_labels_study(LABELS_PATH)
     res = []

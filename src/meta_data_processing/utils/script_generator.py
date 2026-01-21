@@ -2,13 +2,6 @@ import json
 import os
 from tqdm import tqdm
 from llm_utils import get_metadata, get_metadata_script
-import dotenv
-
-dotenv.load_dotenv()
-
-# TODO
-#repeated function:
-
 def load_labels_study(path):
     labels = {}
     for file in tqdm(os.listdir(path)):

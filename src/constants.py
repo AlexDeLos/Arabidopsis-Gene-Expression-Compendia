@@ -1,21 +1,21 @@
 import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
-CLUSTER_RUN = False
+CLUSTER_RUN = True
 EXPERIMENT_NAME = '3.2'
 
-STORAGE_DIR = f'./storage/{EXPERIMENT_NAME}/'
+STORAGE_DIR = f'./new_storage/'
 
 
 DATA_IMPORT_DIR = './data/downloads_new/'
 GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_new/'
 METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata_new/'
-PROCESSED_DATA_FOLDER = f'{DATA_IMPORT_DIR}processed_data_new/'
+PROCESSED_DATA_FOLDER = f'new_storage/final_data/'
 
 if CLUSTER_RUN:
-    PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/AT GE Datasets/process_data_final/processed_data'
-else:
-    COMBINED_DATA_OUTPUT_FILE = f'{PROCESSED_DATA_FOLDER}combined_expression_data.csv'
+    PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/AT GE Datasets/final_data/'
+
+COMBINED_DATA_OUTPUT_FILE = f'{PROCESSED_DATA_FOLDER}RMA_Microarray_Combined.csv'
 CORE_DATA_DIR = './data/core_data/'
 SOFT_PATH = f'{CORE_DATA_DIR}old_geo_downloads/'
 FIGURES_DIR = f'./outputs/{EXPERIMENT_NAME}/'

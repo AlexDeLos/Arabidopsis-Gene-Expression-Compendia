@@ -33,14 +33,11 @@ def run_preprocessing(
         # filtered_df_og = pd.read_csv('./data/downloads/old_plocessed_data/'+'filter.csv', index_col=0)
         # filtered_df_og.columns = list(map(lambda x: x.split('_')[2]+'_'+x.split('_')[0],filtered_df_og.columns))
         print('succesfully loaded data')
-        raise FileNotFoundError
     except FileNotFoundError:
         if no_change:
             raise FileNotFoundError
         
         big_df = pd.read_csv(COMBINED_DATA_OUTPUT_FILE,index_col=0)
-        # big_df = pd.read_csv('./data/downloads/old_plocessed_data/df_last.csv',index_col=0)
-        # big_df.columns = list(map(lambda x: x.split('_')[2]+'_'+x.split('_')[0],big_df.columns))
         big_df = fuse_columns_by_sample(big_df)
         # filter the data on 20%
         nan_percentage_genes = big_df.isna().mean(axis=1) * 100
@@ -65,18 +62,7 @@ def run_preprocessing(
     
     print('data loaded')
     big_df = filtered_df
-    find_and_plot_missing_genes(list(big_df.index), out_opath=FIGURES_DIR,chr='2')
-    #! Remove columns from the datafram
-    #TODO: static
-    # big_df.loc[:, ~(big_df > 1000000).any()]
-    big_df = big_df.filter(regex=r'^(?!.*GSM463683).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463684).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463685).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463686).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463687).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463688).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463689).*$')
-    big_df = big_df.filter(regex=r'^(?!.*GSM463690).*$')
+    find_and_plot_missing_genes(list(big_df.index), out_opath=FIGURES_DIR)
 
     matrix = big_df.to_numpy()
     matrix_nan = big_df.isna().to_numpy()

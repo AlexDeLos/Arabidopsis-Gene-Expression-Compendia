@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-# import umap
+import re
 import os
 import math
 from sklearn.metrics.pairwise import cosine_similarity
@@ -251,141 +251,155 @@ def box_plot(df: pd.DataFrame, cols_per_plot: int, out_path: str):
         plt.savefig(os.path.join(out_path, f'boxplot_group_{plot_num + 1}.png'))
         plt.close()
 
-def find_and_plot_missing_genes(present_genes,out_opath, chr):
+def find_and_plot_missing_genes(present_genes, out_opath):
     """
-    Identifies and plots the location of missing AGI gene locus identifiers 
-    (assumed to follow the ATxGyzzzz pattern with increments of 10) 
-    within each chromosome.
-
-    Args:
-        present_genes (list): A list of existing AGI locus identifiers (strings).
+    Identifies and plots missing AGI gene locus identifiers for Chr 1-5,
+    and visualizes the presence of non-standard/non-chromosomal genes.
     """
+    
+    # Ensure output directory exists
+    if not os.path.exists(out_opath):
+        os.makedirs(out_opath)
 
-    # --- 1. SIMULATION and DATA CLEANING ---
-    # Extract chromosome and numeric location from present genes
+    # --- 1. DATA PARSING ---
+    # Standard Regex for Arabidopsis chromosomal genes: AT[1-5]G[0-9]{5}
+    # We allow flexible length for the numeric part, but typically it is 5 digits.
+    chromosomal_pattern = re.compile(r'^AT([1-5])G(\d{5})$', re.IGNORECASE)
+    
     parsed_present = []
+    non_chromosomal = []
+    
     for gene_id in present_genes:
-        try:
-            # Assuming AGI format: AT[1-5]G[00000-99990]
-            # Chromosome is the 3rd character (index 2)
-            chromosome = gene_id[2]
-            # Numeric ID is the last 5 digits (index -5 onwards)
-            numeric_id = int(gene_id[-5:])
+        match = chromosomal_pattern.match(str(gene_id).strip())
+        if match:
+            chromosome = match.group(1)
+            numeric_id = int(match.group(2))
             parsed_present.append((chromosome, numeric_id, gene_id))
-        except (ValueError, IndexError):
-            # Skip any IDs that don't match the expected structure
-            continue
+        else:
+            # Store non-chromosomal for the 6th plot
+            non_chromosomal.append(str(gene_id))
 
-    if not parsed_present:
-        print("Error: No valid AGI gene IDs found in the input list (e.g., AT1G01010).")
-        return
+    present_gene_set = set(g for _, _, g in parsed_present)
 
-    # Find the maximum numeric ID seen for each chromosome to set the simulation range
+    # Determine max locus ID per chromosome to define the range
     max_ids = {}
     for chr, num_id, _ in parsed_present:
         max_ids[chr] = max(max_ids.get(chr, 0), num_id)
 
-    # Convert the present genes back into a set for fast lookup
-    present_gene_set = set(g for _, _, g in parsed_present)
-    
-    # --- 2. IDENTIFY MISSING GENES ---
+    # --- 2. IDENTIFY MISSING GENES (Chr 1-5) ---
     missing_genes = []
     
-    # Iterate through all chromosomes (1 to 5) and the simulated range
     for chr_num in range(1, 6):
         chr_label = str(chr_num)
         max_id = max_ids.get(chr_label, 0)
         
-        # Simulate all expected gene IDs for this chromosome
-        # AGI locus identifiers end in zero, e.g. 10010, 10020...
-        # We start at the smallest possible ID (01010) and go up to the max seen
-        # plus some buffer to ensure we capture the full range.
-        
-        # Max expected ID is 99990, but we use max_id as a practical limit
-        # plus a 100-gene buffer (1000 numeric steps) to cover any potential high-end gaps.
-        sim_max = min(99990, max_id + 1000) 
+        if max_id == 0: continue # Skip if no genes found for this chromosome
 
-        # Iterate through expected numeric IDs (increments of 10)
-        for num_id in range(1010, sim_max + 10, 10): 
-            # Format the 5-digit number, e.g., 1010 -> '01010'
+        # Standard AGI IDs usually increment by 10 (e.g., 00100, 00110)
+        # We assume range starts around 100
+        sim_max = max_id + 100 
+
+        for num_id in range(100, sim_max + 10, 10): 
             formatted_num = f'{num_id:05d}'
-            # Construct the expected AGI ID
             expected_id = f'AT{chr_label}G{formatted_num}'
             
             if expected_id not in present_gene_set:
-                # Store the missing gene and its numeric location/chromosome
                 missing_genes.append({
                     'chromosome': chr_label,
                     'locus_id': expected_id,
                     'location_index': num_id
                 })
 
-    if not missing_genes:
-        print("All expected genes within the range of your input list appear to be present.")
-        return
-
-    # Convert missing genes to a DataFrame for easier plotting
     missing_df = pd.DataFrame(missing_genes)
     
-    # --- 3. PLOTTING ---
-    
-    print(f"Found {len(missing_genes)} missing gene IDs across chromosomes 1-5.")
-    
-    # Set up the plot (5 subplots for 5 chromosomes)
-    fig, axes = plt.subplots(
-        nrows=5, 
-        ncols=1, 
-        figsize=(12, 10), 
-        sharex=True,
-        sharey=True
-    )
-    plt.suptitle('🔍 Missing Arabidopsis thaliana Genes by Chromosome', fontsize=16, y=1.02)
-    
-    # AGI genes are numbered top (north) to bottom (south)
-    plt.xlabel('Gene Location Index (Southward)', fontsize=14) 
-    
-    # Create the visualization of a karyotype or a chromosome map.
-    # 
+    print(f"Analysis Summary:")
+    print(f"  - Standard Chromosomal Genes Present: {len(parsed_present)}")
+    print(f"  - Non-Chromosomal/Symbol Genes Present: {len(non_chromosomal)}")
+    print(f"  - Missing Chromosomal Loci (Estimated): {len(missing_genes)}")
 
+    # --- 3. PLOTTING ---
+    # 6 Rows: Chr 1, 2, 3, 4, 5, and "Other"
+    fig, axes = plt.subplots(
+        nrows=6, 
+        ncols=1, 
+        figsize=(12, 14), 
+        sharex=False, # "Other" might have different scale/nature
+        gridspec_kw={'height_ratios': [1, 1, 1, 1, 1, 1.5]}
+    )
+    plt.suptitle('Gene Distribution: Missing Loci (Chr 1-5) & Non-Chromosomal Genes', fontsize=16, y=0.95)
+
+    # Plot Chromosomes 1-5 (Missing Genes)
     for i, chr_num in enumerate(range(1, 6)):
         chr_label = str(chr_num)
         ax = axes[i]
         
-        # Filter data for the current chromosome
-        chr_data = missing_df[missing_df['chromosome'] == chr_label]
-        
-        # Plot each missing gene as a point on the chromosome axis
-        ax.scatter(
-            chr_data['location_index'], 
-            # Use a constant y-value to represent the chromosome line
-            [1] * len(chr_data), 
-            s=5, # size of the marker
-            color='red', 
-            alpha=0.6,
-            label=f'Missing Genes ({len(chr_data)})'
-        )
-        
-        # Set y-axis properties to make it look like a single line
-        ax.set_yticks([]) # Remove y-axis ticks
-        ax.set_ylim(0.5, 1.5) # A small range to center the line
-        
-        # Add a horizontal line to represent the chromosome
-        ax.axhline(1, color='lightgray', linestyle='-', linewidth=2)
-        
-        # Add the chromosome label on the left
-        ax.set_ylabel(f'Chr {chr_label}', rotation=0, labelpad=30, fontsize=12, weight='bold')
-        
-        # Set x-axis limit based on the maximum ID for clarity
-        max_idx = max_ids.get(chr_label, 1000)
-        ax.set_xlim(1000, max_idx + 100)
-        
-        # Add a title or legend
-        ax.legend(loc='upper right', frameon=False)
+        # Draw the chromosome "backbone"
+        max_loc = max_ids.get(chr_label, 30000)
+        ax.plot([0, max_loc], [1, 1], color='lightgray', linewidth=4, zorder=1)
 
+        # Plot Missing Genes on top
+        if not missing_df.empty:
+            chr_data = missing_df[missing_df['chromosome'] == chr_label]
+            if not chr_data.empty:
+                ax.scatter(
+                    chr_data['location_index'], 
+                    [1] * len(chr_data), 
+                    s=2, 
+                    color='red', 
+                    alpha=0.7, 
+                    marker='|',
+                    label='Missing'
+                )
+
+        ax.set_yticks([])
+        ax.set_ylim(0.8, 1.2)
+        ax.set_ylabel(f'Chr {chr_label}', rotation=0, labelpad=40, fontsize=12, weight='bold')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.spines['bottom'].set_visible(False) # Hide x-axis line for cleaner look
+        
+        # Only put legend on first plot
+        if i == 0:
+            ax.legend(loc='upper right', frameon=False, title="Red ticks = Missing Loci")
+
+    # Plot 6: Non-Chromosomal Genes (Presence Cloud)
+    ax_other = axes[5]
+    
+    if non_chromosomal:
+        # Since these don't have a specific "location", we plot them as a density cloud 
+        # or simple count visualization. Here we simply visualize the volume.
+        
+        # We distribute them arbitrarily along an x-axis to show density
+        x_vals = range(len(non_chromosomal))
+        ax_other.scatter(
+            x_vals, 
+            [1] * len(non_chromosomal), 
+            s=1, 
+            color='cornflowerblue', 
+            alpha=0.5,
+            label='Present Genes'
+        )
+        ax_other.text(
+            len(non_chromosomal)/2, 
+            1.1, 
+            f"Total Count: {len(non_chromosomal)}", 
+            ha='center', 
+            fontsize=10
+        )
+    else:
+        ax_other.text(0.5, 1, "No Non-Chromosomal Genes Found", ha='center')
+
+    ax_other.set_yticks([])
+    ax_other.set_ylim(0.8, 1.3)
+    ax_other.set_ylabel('Other\n(Mt/Cp/Sym)', rotation=0, labelpad=40, fontsize=12, weight='bold')
+    ax_other.set_xlabel('Index Count (Arbitrary Order)', fontsize=12)
+    ax_other.legend(loc='upper right', frameon=False)
 
     plt.tight_layout()
-    plt.savefig(f'{out_opath}missingGenesChr{chr}.svg')
-    # plt.show()
+    save_path = os.path.join(out_opath, 'missingGenes_Distribution.svg')
+    plt.savefig(save_path)
+    print(f"Plot saved to: {save_path}")
 
 def plot_platform_usage(df,save_dir):
     """
