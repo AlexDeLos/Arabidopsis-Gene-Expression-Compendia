@@ -97,23 +97,42 @@ class RNASeq_processor:
         except:
             return []
 
-    def download_fastq(self, gse, output_folder,temp_files):
+def download_fastq(self, gse, output_folder, temp_files):
         """Downloads FASTQ files."""
         if not os.path.exists(output_folder): os.makedirs(output_folder)
+        
+        # Ensure temp directory exists (Critical for fasterq-dump)
+        if not os.path.exists(temp_files): os.makedirs(temp_files)
+
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
         
         # Filter empty
         sra_map = {k:v for k,v in sra_map.items() if v}
-        fasterq_path = '/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/sratools.3.0.10'
+        
+        # --- FIX 1: Point to the correct binary name ---
+        # Was: .../bin/sratools.3.0.10
+        # Now: .../bin/fasterq-dump
+        fasterq_path = '/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/fasterq-dump'
+        
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
                 # Check existence
                 if any(f.startswith(srr) for f in os.listdir(output_folder)): continue
+                
                 if CLUSTER_RUN:
-                    cmd = [fasterq_path, "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
+                    cmd = [fasterq_path, "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
                 else:
-                    cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder,"--temp", temp_files , "--threads", self.threads, srr]
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
+                
+                # --- FIX 2: Remove DEVNULL so you can see errors in the log ---
+                # stdout=subprocess.DEVNULL is fine, but keep stderr visible
+                try:
+                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                except subprocess.CalledProcessError as e:
+                    print(f"\nCRITICAL ERROR downloading {srr}:")
+                    print(f"Command tried: {' '.join(cmd)}")
+                    # This will print the actual error from the tool (e.g. 'disk full' or 'not found')
+                    raise e
 
     def _find_adapter_file(self, filename="TruSeq3-PE.fa"):
         """
