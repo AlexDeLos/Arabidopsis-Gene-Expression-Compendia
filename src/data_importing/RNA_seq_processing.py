@@ -97,7 +97,7 @@ class RNASeq_processor:
         except:
             return []
 
-def download_fastq(self, gse, output_folder, temp_files):
+    def download_fastq(self, gse, output_folder, temp_files):
         """Downloads FASTQ files."""
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         
