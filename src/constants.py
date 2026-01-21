@@ -4,7 +4,10 @@ GLOBAL_DIR_PATH = F'{os.getcwd()}/'
 CLUSTER_RUN = True
 EXPERIMENT_NAME = '3.2'
 
-STORAGE_DIR = f'./new_storage/'
+if CLUSTER_RUN:
+    STORAGE_DIR ='/tudelft.net/staff-umbrella/AT GE Datasets/'
+else:
+    STORAGE_DIR = f'./new_storage/'
 
 
 DATA_IMPORT_DIR = './data/downloads_new/'
