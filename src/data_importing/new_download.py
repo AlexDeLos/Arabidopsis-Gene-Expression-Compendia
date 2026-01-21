@@ -11,6 +11,7 @@ from src.data_importing.microarray_data_processing import Microarray_tracker,dow
 from src.data_importing.RNA_seq_processing import RNASeq_tracker, download_experiments_RNA_seq
 from src.data_importing.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
 from src.data_importing.download_helper import search_geo_accessions
+from src.constants import *
 
 # --- CONFIGURATION ---
 Entrez.email = "your.email@example.com" 
@@ -48,8 +49,8 @@ if __name__ == "__main__":
     # ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
     # plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
-    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
-    combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
+    # combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
+    # combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
 
     # plot_study_distributions_seaborn(processed_folder, "new_storage/new_plots/intensity/intensity_plot_matplot_test.svg")
     # plot_study_distributions_incremental(processed_folder, "new_storage/new_plots/intensity/intensity_plot_incremental")
