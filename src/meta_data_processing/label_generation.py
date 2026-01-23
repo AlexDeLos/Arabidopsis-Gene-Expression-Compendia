@@ -1,18 +1,15 @@
 import json
 import os
 from tqdm import tqdm
-# from extraction_test_core import *
+import dotenv
 import sys
 module_dir = './'
 sys.path.append(module_dir)
 import src.meta_data_processing.utils.extractors_full as extractors_full
-from src.meta_data_processing.utils.llm_utils import get_condensed_labels,get_metadata_script
-from src.meta_data_processing.utils.classes import LabelMap
 from src.constants import *
-from src.meta_data_processing.utils.llm_utils import get_condensed_labels
-from src.meta_data_processing.utils.classes import LabelMap
-import dotenv
-
+from src.meta_data_processing.utils.classes import *
+from src.meta_data_processing.utils.llm_utils import get_batch_labels_treatment,get_batch_labels_tissues,get_metadata_script
+from src.meta_data_processing.utils.universal_extractor import UniversalExtractor
 dotenv.load_dotenv()
 
 def load_labels_study(path):
@@ -39,149 +36,13 @@ def save_labels(labels,saving_path):
             with open(f'{saving_path}/{study}.json', 'w') as handle:
                 json.dump(labels[study], handle, indent=4)
 
-import os
-import json
-import sys
-from tqdm import tqdm
-
-module_dir = './'
-sys.path.append(module_dir)
-from src.constants import *
-from src.meta_data_processing.utils.classes import *
-
-from src.meta_data_processing.utils.llm_utils import get_batch_labels
-def condense_labels_old(in_folder='new_storage/processed_microarray_data/',extractors_path = 'src/meta_data_processing/utils/extractors_full.py', saving_path=LABELS_PATH, llm_grounding:bool = True, model:str='gemini-2.5-flash'):
-    os.makedirs(saving_path, exist_ok=True)
-    labels = {}
-    seen = LabelMap('./data/maps')
-    
-    # Check if input directory exists
-    if not os.path.exists(in_folder):
-        print(f"Error: Input folder '{in_folder}' not found.")
-        return
-
-    # 1. Iterate over Study Directories
-    study_dirs = [d for d in os.listdir(in_folder) if os.path.isdir(os.path.join(in_folder, d))]
-    
-    for study_id in tqdm(study_dirs, desc="Processing Studies"):
-        # Filter by Studies list if provided
-        # if Studies and (study_id not in Studies):
-        #     continue
-
-        study_path = os.path.join(in_folder, study_id)
-        
-        # Initialize study entry in labels if not present
-        if study_id not in labels:
-            labels[study_id] = {}
-
-        # 2. Iterate over Sample JSON files inside the study folder
-        sample_files = [f for f in os.listdir(study_path) if f.endswith('.json')]
-        
-        for sample_file in sample_files:
-            file_path = os.path.join(study_path, sample_file)
-            
-            try:
-                # Load the JSON containing both study and sample metadata
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                
-                # Extract relevant sections
-                study_meta = data.get('study_metadata', {})
-                sample_meta = data.get('sample_metadata', {})
-                sample_id = data.get('sample_id', sample_file.replace('.json', ''))
-                
-            except Exception as e:
-                print(f"Error loading {sample_file}: {e}")
-                save_labels(labels,saving_path)
-                continue
-
-            # 3. Dynamic Extractor Check & Generation
-            extractor_name = f'{study_id}_extractor'
-            extractor_func = None
-
-            # 1. Check if function exists in the imported file (The Toolbox)
-            if hasattr(extractors_full, extractor_name):
-                extractor_func = getattr(extractors_full, extractor_name)
-            
-            # 2. Check if function exists in globals (Just generated in this run)
-            elif extractor_name in globals():
-                extractor_func = globals()[extractor_name]
-
-            # 3. If neither, GENERATE IT
-            else:
-                tqdm.write(f"Warning: Extractor function '{extractor_name}' not defined.")
-                tqdm.write(f"Generating new extractor for {study_id}...")
-                
-                try:
-                    new_script = get_metadata_script(sample_meta, study_id=study_id, model=model)
-                    
-                    # Append to file
-                    with open(extractors_path, 'a') as f:
-                        f.write('\n\n')
-                        f.write(new_script)
-                    
-                    # Load into current runtime
-                    exec(new_script, globals())
-                    extractor_func = globals()[extractor_name] # Now we can grab it
-                    tqdm.write(f"  -> Successfully generated and loaded {extractor_name}.")
-                    
-                except Exception as e:
-                    tqdm.write(f"  -> Failed to generate extractor for {study_id}: {e}")
-                    continue
-
-            # 4. Run the Extractor
-            try:
-                # Retrieve the function from globals and execute
-                # extractor_func = globals()[extractor_name]
-                python_object = extractor_func(sample_meta)
-                
-                # --- Post-Processing Logic (Same as original) ---
-                
-                # Handle missing treatments
-                if not python_object.get('treatment'):
-                    python_object['treatment'] = ['no treatment/control']
-                
-                # Debug print for specific condition
-                if "Light 24h" in python_object['treatment']:
-                    print(f'study: {study_id} sample: {sample_id}')
-                
-                # LLM Grounding / Mapping
-                if llm_grounding and seen.need_new_mapping(python_object):
-                    # Note: Using study_meta extracted from the JSON
-                    condensed = dict(get_condensed_labels(study_info=study_meta, sample_info=python_object))
-                    seen.add_mapping(python_object, condensed)
-                    python_object = condensed
-                else:
-                    condensed = seen.apply_mappings(python_object)
-                
-                # Helper to flatten lists
-                def flatten(lst, ret=None):
-                    if ret is None: ret = []
-                    for el in lst:
-                        if isinstance(el, list):
-                            flatten(el, ret)
-                        else:
-                            ret.append(el)
-                    return ret
-
-                # Flatten treatments and save
-                condensed['treatment'] = list(set(flatten(condensed['treatment'])))
-                labels[study_id][sample_id] = dict(condensed)
-                seen.save_map()
-
-            except Exception as e:
-                print(f"Error processing sample {sample_id} in {study_id}: {e}")
-                save_labels(labels,saving_path)
-                continue
-    save_labels(labels,saving_path)
-
 
 def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/meta_data_processing/utils/extractors_full.py'):
     os.makedirs(saving_path, exist_ok=True)
-    
+    uni_extractor = UniversalExtractor()
     # --- COMPONENT 1: Restore LabelMap ---
     # This loads your historical mappings (map.json, map_treatment.json, etc.)
-    seen = LabelMap('./data/maps')
+    seen = LabelMap('./new_storage/maps')
     
     # Initialize Optimizer
     optimizer = GroundingOptimizer()
@@ -209,26 +70,32 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
                     data = json.load(f)
                 
                 # Verify extractor exists before processing files
-                extractor_name = f'{study_id}_extractor'
-                if hasattr(extractors_full, extractor_name):
-                    extractor = getattr(extractors_full, extractor_name)
-                elif extractor_name in globals():
-                    extractor = globals()[extractor_name]
+                if False:
+                    extractor_name = f'{study_id}_extractor'
+                    if hasattr(extractors_full, extractor_name):
+                        extractor = getattr(extractors_full, extractor_name)
+                    elif extractor_name in globals():
+                        extractor = globals()[extractor_name]
+                    else:
+                        # You might want to generate it here if missing, or skip
+                        new_extractor = get_metadata_script(sample_metadata=data,study_id=study_id)
+                        
+                        # Append to file
+                        with open(extractors_path, 'a') as f:
+                            f.write('\n\n')
+                            f.write(new_extractor)
+                        
+                        # Load into current runtime
+                        exec(new_extractor, globals())
+                        extractor = globals()[extractor_name] # Now we can grab it
+                    
+                    
+                    extracted = extractor(data.get('sample_metadata', {}))
                 else:
-                    # You might want to generate it here if missing, or skip
-                    new_extractor = get_metadata_script(sample_metadata=data,study_id=study_id)
-                    
-                    # Append to file
-                    with open(extractors_path, 'a') as f:
-                        f.write('\n\n')
-                        f.write(new_extractor)
-                    
-                    # Load into current runtime
-                    exec(new_extractor, globals())
-                    extractor = globals()[extractor_name] # Now we can grab it
-                
-                
-                extracted = extractor(data.get('sample_metadata', {}))
+                    extracted = uni_extractor.extract(
+                        sample_metadata=data.get('sample_metadata', {}),
+                        study_metadata=data.get('study_metadata', {})
+                       )
                 
                 # IMPORTANT: Keep 'sample_id' for tracking, but we will remove it before saving
                 extracted['sample_id'] = data.get('sample_id', sample_file.replace('.json',''))
@@ -245,7 +112,8 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
             grounded_samples = optimizer.batch_process_study(
                 data=data, # type: ignore
                 extracted_samples=raw_samples,
-                llm_func=get_batch_labels,
+                llm_func=get_batch_labels_treatment,
+                llm_func_tis= get_batch_labels_tissues,
                 label_map_obj=seen
             )
             
@@ -273,7 +141,7 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
 
 
 if __name__ == '__main__':
-    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)
+    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)#, Studies=['GSE5622','GSE119383','GSE10670'])
 
 
     labels_1 = load_labels_study(LABELS_PATH)

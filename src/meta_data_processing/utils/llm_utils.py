@@ -4,35 +4,20 @@ from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain.chat_models import init_chat_model
 from typing import List, Literal
 from pydantic import ValidationError, BaseModel, Field
-
+import sys
+module_dir = './'
+sys.path.append(module_dir)
+from src.constants import *
 
 class MetaData(BaseModel):
-    tissue: Literal["root", "leaf", "flower", "shoot", "rosette", "bud", "whole_plant", "silique", "callus", "seed", "seedling", "unknown"] = Field(..., description="Tissue the samples was extracted from.") # "stem", 
+    tissue: TissueEnum = Field(..., description="Tissue the samples was extracted from.") # "stem", 
     # tissue: str = Field(..., description="Tissue the samples was extracted from.") # "stem", 
 
     # Field with description explaining its purpose
-    treatment: List[Literal[
-    "Drought Stress",
-    "Dehidration Stress",
-    "Salinity Stress",
-    "Heat Stress",
-    "Cold Stress",
-    "Chemical Stress",
-    "Nutrient Deficiency",
-    "Biotic Stress",
-    "Low Light Stress",
-    "High Light Stress",
-    "Red Light Stress",
-    "Other Light Stress",
-    "Other stress",
-    "No stress"]] = Field(..., description="List of treatments and stresses that was applied to the sample, each unique stress or treatment should have one, and only one, entry in this list")
+    treatment: List[TreatmentEnum] = Field(..., description="List of treatments and stresses that was applied to the sample, each unique stress or treatment should have one, and only one, entry in this list")
     
     # Field with description explaining its purpose
-    medium: str = Field(..., description="Growth medium of the sample.")
-    # Field with description explaining its purpose
-    # age: float = Field(..., description="The age of the plant since germination in days.") 
-    # # Field with description explaining its purpose
-    # treatment_time: float = Field(..., description="Time in hours that between the application of the treatment to the sample being harvested.") #! this is not as accurate
+    medium: MediumEnum = Field(..., description="Growth medium of the sample.")
 
 
 
@@ -76,83 +61,6 @@ def get_metadata(study_info:dict,sample_info:dict,model:str='gemini-2.5-flash',t
             raise e#-> GSM1126262 ->GSM843683
         return get_metadata(study_info,sample_info, model='gemini-2.5-pro', temp=0.1)
     return result
-
-# def get_metadata_script(sample_metadata: dict, study_id: str, model: str = 'gemini-2.5-flash', temp: float = 0):
-#     """
-#     Generates a Python extractor function for a specific study based on a sample's metadata.
-#     """
-    
-#     # Initialize the LLM
-#     llm = init_chat_model(model=model,
-#                         model_provider="google_genai",
-#                         temperature=temp)
-    
-#     # Setup the Parser to get the target Schema instructions
-#     parser = PydanticOutputParser(pydantic_object=MetaData)
-#     format_instructions = parser.get_format_instructions()
-
-#     # Define the System Prompt
-#     # We ask for a Python function that outputs the specific JSON schema
-#     prompt = ChatPromptTemplate.from_messages([
-#         ("system", "Produce a python code function that can extract the following schema from the data dictionary object provided by the user. \nReturn ONLY the python code.\n{format_instructions}"),
-#         ("human", "{text}"),
-#     ]).partial(format_instructions=format_instructions)
-
-#     parsing_llm = prompt | llm | StrOutputParser()
-
-#     # Construct the Task Prompt
-#     # We removed 'study_info' as it is not passed in the new signature.
-#     # We focus purely on the sample_metadata structure.
-#     parsing_prompt = '''
-#     <task>
-#     Provide a python function with the signature:
-#     def {study_id}_extractor(sample_metadata: dict) -> dict:
-    
-#     This function should extract the relevant biological experimental information (tissue, treatment, medium) from the input dictionary following the schema defined in the system prompt.
-#     </task>
-
-#     <guidance>
-#     1. The input `sample_metadata` will have the structure shown below.
-#     2. Note that values in the dictionary are often lists of strings (e.g., "title": ["Name"]). You usually want to access the first element or join them.
-#     3. Look for keywords in fields like 'characteristics_ch1', 'source_name_ch1', 'title', or 'description'.
-#     4. If specific information (like medium) is missing, infer "unspecified" or a logical default (e.g. "soil" for whole plants) if strongly implied, otherwise "unspecified".
-#     5. Return only the valid Python code, no markdown backticks.
-#     </guidance>
-
-#     <metadata_structure>
-#         The following is an example of the sample_metadata dictionary this function will process:
-#         <sample_metadata>
-#             {sample_metadata}
-#         </sample_metadata>
-#     </metadata_structure>
-#     '''
-
-#     try:
-#         # Invoke the chain
-#         result = parsing_llm.invoke({
-#             "text": parsing_prompt.format(
-#                 study_id=study_id, 
-#                 sample_metadata=sample_metadata
-#             )
-#         })
-        
-#         # Simple cleanup to remove markdown code blocks if the LLM adds them
-#         result = result.replace("```python", "").replace("```", "").strip()
-        
-#     except Exception as e:
-#         print(f'Error generating script with {model}: {e}')
-        
-#         # Retry logic with a more powerful model if Flash fails
-#         if 'flash' in model:
-#             print('Retrying with a Pro model...')
-#             # Update to use Pro model for retry (using 1.5-pro as standard)
-#             return get_metadata_script(sample_metadata, study_id, model='gemini-1.5-pro', temp=temp)
-#         else:
-#             raise e
-
-#     return result
-
-
 
 def get_condensed_labels(study_info:dict,sample_info:dict,model:str='gemini-2.5-flash',temp:float=0):
     llm = init_chat_model(model=model,
@@ -213,7 +121,7 @@ def clean_metadata_for_context(metadata: dict) -> dict:
         'stress', 'incubated', 'light', 'dark', 'cycles', 'conditions', 'tissue', 
         'genotype', 'mutant', 'wild type', 'col-0', 'sample', 'seedling', 'rosette', 
         'leaf', 'root', 'mm', 'celsius', 'hours', 'days', 'h', 'd'
-    ]
+    ]+ VALID_MEDIUMS + VALID_TISSUES + VALID_TREATMENTS
     
     # Keys we ALWAYS keep full (High Density)
     # Fixed typo: 'overall_desing' -> 'overall_design'
@@ -361,7 +269,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 # Ensure init_chat_model is imported (it seems to be in your llm_utils already)
 
-def get_batch_labels(terms: List[str],context, model: str = 'gemini-2.5-flash', temp: float = 0.0) -> Dict[str, str]:
+def get_batch_labels_treatment(terms: List[str],context, model: str = 'gemini-2.5-flash', temp: float = 0.0) -> Dict[str, str]:
     """
     Maps a list of raw experimental terms to standardized ontology labels using an LLM.
     
@@ -379,12 +287,7 @@ def get_batch_labels(terms: List[str],context, model: str = 'gemini-2.5-flash', 
         return {}
 
     # 2. Define your strict ontology (Matching your MetaData class in llm_utils)
-    valid_labels = [
-        "Drought Stress", "Dehidration Stress", "Salinity Stress", "Heat Stress", 
-        "Cold Stress", "Chemical Stress", "Nutrient Deficiency", "Biotic Stress", 
-        "Low Light Stress", "High Light Stress", "Red Light Stress", "Other Light Stress", 
-        "Other stress", "No stress"
-    ]
+    valid_labels = VALID_TREATMENTS
 
     # 3. Initialize LLM
     llm = init_chat_model(model=model, model_provider="google_genai", temperature=temp)
@@ -445,4 +348,87 @@ def get_batch_labels(terms: List[str],context, model: str = 'gemini-2.5-flash', 
         return {} # Return empty dict on failure so pipeline continues
     except Exception as e:
         print(f"Error in get_batch_labels: {e}")
+        return {}
+def get_batch_labels_tissues(terms: List[str], context, model: str = 'gemini-2.5-flash', temp: float = 0.0) -> Dict[str, str]:
+    """
+    Maps a list of raw tissue/organ terms to standardized ontology labels using an LLM.
+    
+    Args:
+        terms: List of unique raw strings (e.g. ['rosette leaves', 'whole seedling'])
+        context: The study/sample metadata dictionary
+        model: LLM model name
+        temp: Temperature (0 is best for classification)
+        
+    Returns:
+        Dict mapping input term -> standardized label
+    """
+    
+    # 1. Handle empty input immediately
+    if not terms:
+        return {}
+
+    # 2. Define your strict ontology (Matching TissueEnum in src.constants)
+    valid_tissues = VALID_TISSUES
+
+    # 3. Initialize LLM
+    llm = init_chat_model(model=model, model_provider="google_genai", temperature=temp)
+
+    # 4. Construct Prompt
+    # Adapted specifically for Tissue mapping rules
+    prompt_template = ChatPromptTemplate.from_template("""
+    You are an expert biological data curator.
+    Your task is to map the provided list of raw tissue descriptions to the most appropriate Standardized Label from the specific list below.
+
+    <standard_labels>
+    {ontology}
+    </standard_labels>
+
+    <rules>
+    1. Output MUST be a valid JSON dictionary.
+    2. Keys must be the exact strings from the Input List.
+    3. Values must be one of the Standard Labels.
+    4. "Aerial parts" or "ground parts" should generally map to "shoot" (unless it is clearly a rosette, then "rosette").
+    5. "Cotyledons" should map to "leaf" (or "seedling" if context implies whole young plant).
+    6. If the term implies the whole organism (e.g., "whole organism", "entire plant"), map to "whole_plant" (or "seedling" if age < 14 days).
+    7. If a term is ambiguous or fits none of the specific categories, use "unknown".
+    8. Do not include markdown formatting (like ```json). Just the raw JSON string.
+    </rules>
+
+    <condensed_context>
+    {context}
+    </condensed_context>
+    <input_list>
+    {terms}
+    </input_list>
+    
+    JSON Output:
+    """)
+
+    # 5. Build Chain
+    chain = prompt_template | llm | StrOutputParser()
+
+    try:
+        # 6. Execute
+        ontology_str = ", ".join([f'"{x}"' for x in valid_tissues])
+        
+        # Use the existing cleaner to reduce token usage
+        context_metadata = clean_metadata_for_context(context)
+        
+        response_str = chain.invoke({
+            "ontology": ontology_str,
+            "context": json.dumps(context_metadata),
+            "terms": json.dumps(terms)
+        })
+
+        # 7. Clean and Parse Response
+        cleaned_response = response_str.replace("```json", "").replace("```", "").strip()
+        result_dict = json.loads(cleaned_response)
+        
+        return result_dict
+
+    except json.JSONDecodeError:
+        print(f"Error: LLM returned invalid JSON for tissue batch.")
+        return {} 
+    except Exception as e:
+        print(f"Error in get_batch_tissues: {e}")
         return {}

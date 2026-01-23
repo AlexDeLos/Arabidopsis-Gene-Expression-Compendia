@@ -5971,3 +5971,160 @@ def GSE44781_extractor(sample_metadata: dict) -> dict:
     # Default is "unspecified" as per initialization if no match is found
 
     return extracted_data
+
+
+import re
+
+def GSE31593_extractor(sample_metadata: dict) -> dict:
+    """
+    Extracts tissue, treatment, and medium information from the GSE31593 sample metadata.
+
+    Args:
+        sample_metadata (dict): A dictionary containing metadata for a sample,
+                                typically including 'study_metadata' and 'sample_metadata' keys.
+
+    Returns:
+        dict: A dictionary formatted according to the specified schema, containing
+              'tissue', 'treatment', and 'medium' information.
+    """
+    extracted_data = {
+        "tissue": "unknown",
+        "treatment": ["No stress"],
+        "medium": "Unspecified"
+    }
+
+    # Helper to safely get the first element of a list or a direct value
+    def get_first_or_none(data, key):
+        if data and key in data:
+            value = data[key]
+            if isinstance(value, list) and value:
+                return value[0]
+            return value
+        return None
+
+    # Combine relevant text fields for comprehensive searching, converting to lowercase
+    all_text_elements = []
+    if 'study_metadata' in sample_metadata:
+        for key in ['title', 'summary', 'overall_design']:
+            val = get_first_or_none(sample_metadata['study_metadata'], key)
+            if val:
+                all_text_elements.append(val.lower())
+    if 'sample_metadata' in sample_metadata:
+        for key in ['title', 'source_name_ch1', 'description', 'growth_protocol_ch1']:
+            val = get_first_or_none(sample_metadata['sample_metadata'], key)
+            if val:
+                all_text_elements.append(val.lower())
+        if 'characteristics_ch1' in sample_metadata['sample_metadata']:
+            all_text_elements.extend([item.lower() for item in sample_metadata['sample_metadata']['characteristics_ch1']])
+
+    combined_text = " ".join(all_text_elements)
+
+    # 1. Extract Tissue
+    # Prioritize 'characteristics_ch1' for specific organism part
+    if 'sample_metadata' in sample_metadata and 'characteristics_ch1' in sample_metadata['sample_metadata']:
+        for char_item in sample_metadata['sample_metadata']['characteristics_ch1']:
+            char_item_lower = char_item.lower()
+            if "organism part:" in char_item_lower:
+                if "po:0009005 root" in char_item_lower or "organ: root" in char_item_lower:
+                    extracted_data["tissue"] = "root"
+                    break
+                # Add more specific PO terms or organ names if encountered in other GSEs
+            elif "organ:" in char_item_lower:
+                if "root" in char_item_lower:
+                    extracted_data["tissue"] = "root"
+                    break
+
+    # Fallback to 'source_name_ch1' if tissue not found in characteristics
+    if extracted_data["tissue"] == "unknown":
+        source_name = get_first_or_none(sample_metadata.get('sample_metadata', {}), 'source_name_ch1')
+        if source_name:
+            source_name_lower = source_name.lower()
+            if "root" in source_name_lower:
+                extracted_data["tissue"] = "root"
+            elif "leaf" in source_name_lower:
+                extracted_data["tissue"] = "leaf"
+            elif "flower" in source_name_lower:
+                extracted_data["tissue"] = "flower"
+            elif "shoot" in source_name_lower:
+                extracted_data["tissue"] = "shoot"
+            elif "seedling" in source_name_lower:
+                extracted_data["tissue"] = "seedling"
+            elif "whole plant" in source_name_lower:
+                extracted_data["tissue"] = "whole_plant"
+            # Add more tissue types as needed based on TissueEnum
+
+    # 2. Extract Medium
+    # Prioritize 'characteristics_ch1' for growth media
+    if 'sample_metadata' in sample_metadata and 'characteristics_ch1' in sample_metadata['sample_metadata']:
+        for char_item in sample_metadata['sample_metadata']['characteristics_ch1']:
+            char_item_lower = char_item.lower()
+            if "growth media:" in char_item_lower:
+                medium_str = char_item_lower.split("growth media:")[1].strip()
+                if "knop" in medium_str or "liquid culture" in medium_str:
+                    extracted_data["medium"] = "Liquid culture"
+                    break
+                elif "ms medium" in medium_str:
+                    extracted_data["medium"] = "MS medium"
+                    break
+                elif "gamborg b5" in medium_str:
+                    extracted_data["medium"] = "Gamborg B5 medium"
+                    break
+                elif "agar" in medium_str:
+                    extracted_data["medium"] = "Agar plate"
+                    break
+                elif "soil" in medium_str:
+                    extracted_data["medium"] = "Soil"
+                    break
+                elif "vermiculite" in medium_str:
+                    extracted_data["medium"] = "Vermiculite"
+                    break
+                elif "perlite" in medium_str:
+                    extracted_data["medium"] = "Perlite"
+                    break
+                elif "sand" in medium_str:
+                    extracted_data["medium"] = "Sand"
+                    break
+                elif "hydroponic" in medium_str:
+                    extracted_data["medium"] = "Hydroponic"
+    
+    # Fallback to 'study_metadata' summary for medium if not found in characteristics
+    if extracted_data["medium"] == "Unspecified":
+        summary = get_first_or_none(sample_metadata.get('study_metadata', {}), 'summary')
+        if summary:
+            summary_lower = summary.lower()
+            if "knop" in summary_lower or "liquid culture" in summary_lower:
+                extracted_data["medium"] = "Liquid culture"
+            elif "ms medium" in summary_lower:
+                extracted_data["medium"] = "MS medium"
+            elif "gamborg b5" in summary_lower:
+                extracted_data["medium"] = "Gamborg B5 medium"
+            elif "agar" in summary_lower:
+                extracted_data["medium"] = "Agar plate"
+            elif "soil" in summary_lower:
+                extracted_data["medium"] = "Soil"
+            elif "hydroponic" in summary_lower:
+                extracted_data["medium"] = "Hydroponic"
+
+    # 3. Extract Treatment
+    found_treatments = set()
+    treatment_enum_map = {
+        "drought": "Drought Stress", "dehydration": "Dehydration Stress", "salinity": "Salinity Stress",
+        "salt": "Salinity Stress", "heat": "Heat Stress", "cold": "Cold Stress", "chemical": "Chemical Stress",
+        "nutrient deficiency": "Nutrient Deficiency", "biotic": "Biotic Stress", "low light": "Low Light Stress",
+        "high light": "High Light Stress", "red light": "Red Light Stress", "other light": "Other Light Stress",
+        "stress": "Other stress" # Catch-all for general stress if no specific one is found
+    }
+    
+    for keyword, enum_val in treatment_enum_map.items():
+        if keyword in combined_text:
+            found_treatments.add(enum_val)
+
+    if found_treatments:
+        # If "Other stress" was found but also a more specific stress, remove "Other stress"
+        if "Other stress" in found_treatments and len(found_treatments) > 1:
+            found_treatments.discard("Other stress")
+        extracted_data["treatment"] = sorted(list(found_treatments))
+    else:
+        extracted_data["treatment"] = ["No stress"] # Default if no stress keywords are found
+
+    return extracted_data

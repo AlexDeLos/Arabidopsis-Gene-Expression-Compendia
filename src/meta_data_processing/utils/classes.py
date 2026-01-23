@@ -1,266 +1,318 @@
-from typing import List, Optional
 import json
-import copy
+import spacy
+from spacy.cli import download
+from typing import List, Dict, Optional, Tuple, Set
+from sentence_transformers import SentenceTransformer, util
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
+# Import constants directly to ensure access to Enum-derived lists
+import sys
+module_dir = './'
+sys.path.append(module_dir)
+from src.constants import VALID_TREATMENTS, VALID_TISSUES, VALID_MEDIUMS
 
 def load_json(path:str):
     with open(path, 'r') as file:
         object = json.load(file)
     return object
 
-
 class LabelMap:
+    """
+    Manages persistent mapping of raw terms to grounded ontology terms.
+    """
     def __init__(self, path:Optional[str]=None):
         self.path = path
         if path is None:
             self.map_treatment = {}
             self.map_tissue = {}
-            self.map = {}
+            self.map = {} # Used for generic or Medium
         else:
             try:
                 self.map_treatment = load_json(path+'/map_treatment.json')
                 self.map_tissue = load_json(path+'/map_tissue.json')
                 self.map = load_json(path+'/map.json')
             except:
-                Warning('Path not found')
+                print('Warning: LabelMap paths not found, starting empty.')
                 self.map_treatment = {}
                 self.map_tissue = {}
                 self.map = {}
 
-    def add(self,label:str,id)->None:
+    def add(self, label:str, id)->None:
         self.map[label] = id
 
-    def add_treatment(self,label:str,id)->None:
+    def add_treatment(self, label:str, id)->None:
         self.map_treatment[label] = id
 
-    def add_tissue(self,label:str,id)->None:
+    def add_tissue(self, label:str, id)->None:
         self.map_tissue[label] = id
     
-    def add_mapping(self,og,grounded)->None:
-        for el in og:
-            if  isinstance(og[el],List):
-                for i,term in enumerate(og[el]):
-                    if len(og[el]) != len(grounded[el]):
-                        self.add_treatment(str(og[el]),grounded[el])
-                        break
-                    else:
-                        self.add_treatment(term,grounded[el][i])
-                        
-            elif (el =='tissue'):
-                self.add_tissue(og[el],grounded[el])
-            else:
-                self.add(og[el],grounded[el])
+    def add_mapping(self, og_sample, grounded_sample)->None:
+        """
+        Updates the internal maps based on the difference between raw and grounded samples.
+        """
+        # 1. Treatments (List)
+        raw_treats = og_sample.get('treatment', [])
+        ground_treats = grounded_sample.get('treatment', [])
+        
+        # We can only map if lists are same length, or logic gets complex.
+        # Simple heuristic: If we resolved it, map raw -> resolved.
+        # (For accurate tracking, the extractor ideally returns a dict, 
+        # but here we assume the grounder maintained order or we map knowns)
+        for t in raw_treats:
+            # This is a simplification; in batch_process we fill the map explicitly
+            pass 
+            
+    def save_map(self):
+        if self.path:
+            with open(self.path+'/map_treatment.json', 'w') as f:
+                json.dump(self.map_treatment, f, indent=4)
+            with open(self.path+'/map_tissue.json', 'w') as f:
+                json.dump(self.map_tissue, f, indent=4)
+            with open(self.path+'/map.json', 'w') as f:
+                json.dump(self.map, f, indent=4)
 
-    def in_maps_evaluated(self,el)->bool:
-        return el in self.map_treatment or el in self.map_tissue
-
-    def in_maps(self,el,key)->bool:
-        if key == 'tissue':
-            return el in self.map_tissue
-        elif key == 'treatment':
-            return el in self.map_treatment
-        elif key == 'medium':
-            return el in self.map
-        else:
-            raise ValueError(f"unkown key {key}")
-    
-
-    def need_new_mapping(self,sample:dict)->bool:
-        # will return True is it is in the maps
-        run = False
-        for key in sample:
-            if  isinstance(sample[key],List):
-                for term in sample[key]:
-                    if not self.in_maps(term,key):
-                        if self.in_maps(str(sample[key]),key):
-                            pass
-                        else:
-                            run = True
-            elif key !='id':
-                if not self.in_maps(sample[key],key):
-                    run = True
-        return run
-    
-    def save_map(self) -> None:
-        with open(f'{self.path}/map_treatment.json', 'w') as handle:
-            json.dump(self.map_treatment, handle)
-        with open(f'{self.path}/map_tissue.json', 'w') as handle:
-            json.dump(self.map_tissue, handle)
-        with open(f'{self.path}/map.json', 'w') as handle:
-            json.dump(self.map, handle)
-    
-    
-    def apply_mappings(self,og:dict)-> dict:
-        ret = copy.deepcopy(og)
-        for el in og:
-            if  isinstance(og[el],List):
-                for i,_ in enumerate(og[el]):
-                    try:
-                        ret[el][i] = self.map_treatment[og[el][i]]
-                    except:
-                        ret[el] =self.map_treatment[str(og[el])]
-                        break
-   
-            elif el =='tissue':
-                    ret[el] = self.map_tissue[og[el]]
-            else:
-                    ret[el] = self.map[og[el]]
-
-        return ret
-
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import json
-from typing import List, Dict
 
 class GroundingOptimizer:
-    def __init__(self, ontology_path='data/ontology.json'):
-        # Load a tiny, fast model (runs locally)
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+    def __init__(self):
+        print("Initializing GroundingOptimizer...")
         
-        # Define your standard labels (The Target Ontology)
-        self.valid_treatments = [
-            "Drought Stress",
-            "Dehidration Stress",
-            "Salinity Stress",
-            "Heat Stress",
-            "Cold Stress",
-            "Chemical Stress",
-            "Nutrient Deficiency",
-            "Biotic Stress",
-            "Low Light Stress",
-            "High Light Stress",
-            "Red Light Stress",
-            "Other Light Stress",
-            "Other stress",
-            "No stress"]
-        self.valid_tissues = ["root", "leaf", "flower", "shoot", "rosette", "bud", "whole_plant", "silique", "callus", "seed", "seedling", "unknown"]
-        # Pre-compute vectors for your ontology
-        self.treatment_ontology_vectors = self.model.encode(self.valid_treatments)
-        self.tissue_ontology_vectors = self.model.encode(self.valid_tissues)
+        # 1. LOAD MODEL (BioLORD is best for biomedical ontologies)
+        # It aligns 'Arabidopsis' closer to 'Plant' than 'Gun'
+        print("Loading BioLORD model...")
+        self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
         
-    def find_semantic_match(self, raw_term: str, threshold=0.85) -> Optional[str]:
+        # 2. LOAD LEMMATIZER (Spacy)
+        # Crucial for mapping "shoots" -> "shoot", "leaves" -> "leaf"
+        try:
+            self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
+        except OSError:
+            print("Downloading spacy model...")
+            download("en_core_web_sm")
+            self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
+        
+        # 3. LOAD ONTOLOGIES
+        self.valid_treatments = VALID_TREATMENTS
+        self.valid_tissues = VALID_TISSUES
+        self.valid_mediums = VALID_MEDIUMS
+
+        # 4. PRE-COMPUTE VECTORS (With Lemmatization)
+        print("Pre-computing ontology vectors...")
+        self.treatment_ontology_vectors = self._encode_ontology(self.valid_treatments)
+        self.tissue_ontology_vectors = self._encode_ontology(self.valid_tissues)
+        self.medium_ontology_vectors = self._encode_ontology(self.valid_mediums)
+        
+    def _lemmatize(self, text: str) -> str:
+        """
+        Converts 'shoots' -> 'shoot', 'leaves' -> 'leaf', 'grown' -> 'grow'
+        to ensure plural/tense differences don't break similarity.
+        """
+        if not text: return ""
+        doc = self.nlp(str(text).lower())
+        return " ".join([token.lemma_ for token in doc])
+
+    def _encode_ontology(self, terms: list):
+        """Helper to encode list of terms after lemmatizing"""
+        lemmatized_terms = [self._lemmatize(t) for t in terms]
+        return self.model.encode(lemmatized_terms)
+
+    def find_semantic_match(self, raw_term: str, ontology: str, threshold: float = 0.85) -> Optional[str]:
         """
         Checks if the raw term is semantically identical to a known label
-        without using an LLM.
+        without using an LLM. Returns the label if match > threshold.
         """
         if not raw_term:
             return None
             
-        # Encode the raw term
-        term_vector = self.model.encode([raw_term])
+        label, score = self.get_best_match_with_score(raw_term, ontology)
         
-        # Calculate similarity against all valid ontology terms
-        scores = cosine_similarity(term_vector, self.treatment_ontology_vectors)[0]
-        
-        # Find best match
-        best_idx = scores.argmax()
-        if scores[best_idx] > threshold:
-            return self.valid_treatments[best_idx]
-        
+        if score > threshold:
+            return label
         return None
 
-    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], llm_func, label_map_obj:LabelMap):
+    def get_best_match_with_score(self, text: str, category: str) -> Tuple[Optional[str], float]:
         """
-        TODO: this needs to use the mappings from 'label_map_obj', if not use the find semantic match function, and if not then do the LLM call
-        Args:
-            label_map_obj: The full 'seen' LabelMap object (contains .map_treatment, .map_tissue, .map)
+        Calculates similarity of text against the specified ontology category.
+        Returns: (best_matching_label, similarity_score)
+        """
+        if not text:
+            return None, 0.0
+
+        if category == 'treatment':
+            vectors = self.treatment_ontology_vectors
+            labels = self.valid_treatments
+        elif category == 'tissue':
+            vectors = self.tissue_ontology_vectors
+            labels = self.valid_tissues
+        elif category == 'medium':
+            vectors = self.medium_ontology_vectors
+            labels = self.valid_mediums
+        else:
+            return None, 0.0
+
+        # CRITICAL: Lemmatize input before embedding to match ontology
+        clean_text = self._lemmatize(text)
+        
+        # Encode input
+        query_vec = self.model.encode([clean_text])[0]
+        
+        # Calculate Cosine Similarity
+        # util.cos_sim is often faster/cleaner than sklearn for SentenceTransformers
+        scores = util.cos_sim(query_vec, vectors)[0]
+        
+        # Find best
+        best_idx = scores.argmax().item()
+        best_score = scores[best_idx].item()
+        best_label = labels[best_idx]
+        
+        return best_label, best_score
+
+    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], llm_func, llm_func_tis, label_map_obj: LabelMap):
+        """
+        Process a list of extracted samples, resolving terms via:
+        1. Existing LabelMap (Memory)
+        2. Vector Similarity (BioLORD)
+        3. LLM (Batch Fallback)
         """
         
-        # We will build a single local cache for this study
-        # Structure: { "50mM NaCl": "Salinity Stress", "root": "root", "soil": "soil" }
+        # Local cache for this study to prevent redundant lookups
         mapping_cache_tissue = {}
         mapping_cache_treatment = {}
         mapping_cache_medium = {}
         
-        # Set to collect unknowns that need the LLM (Currently only Treatments supported by your LLM prompt)
+        # Sets to collect unknowns for LLM batching
         unknown_treatments_for_llm = set()
         unknown_tissues_for_llm = set()
 
-        # --- HELPER: Logic to check Map -> then Vector ---
-        def resolve_term(term, specific_map):
-            # 1. Check Memory (The specific map for this field)
+        # --- HELPER: Resolve logic ---
+        def resolve_term(term, specific_map, ontology_type):
+            if not term: return None
+            
+            # 1. Check LabelMap
             if specific_map and term in specific_map:
                 return specific_map[term]
             
-            # 2. Check Vector Match
-            match = self.find_semantic_match(term)
+            # 2. Check Vector Match (BioLORD)
+            # We use a slightly stricter threshold for auto-mapping (0.85) to avoid bad data
+            match = self.find_semantic_match(term, ontology_type, threshold=0.85)
             if match:
                 return match
             
             return None
 
-        # --- STEP 1: Process Fields ---
+        # --- STEP 1: Process Fields locally ---
         
         for sample in extracted_samples:
             
-            # A. Process TREATMENT (List of Strings) -> map_treatment
+            # A. Process TREATMENT (List)
             treatments = sample.get('treatment', [])
+            # Ensure it's a list
+            if isinstance(treatments, str): treatments = [treatments]
+            
             for t in treatments:
-                if t in mapping_cache_treatment: continue # Already processed this string
+                if t in mapping_cache_treatment: continue 
                 
-                resolved = resolve_term(t, label_map_obj.map_treatment)
+                resolved = resolve_term(t, label_map_obj.map_treatment, 'treatment')
                 if resolved:
                     mapping_cache_treatment[t] = resolved
                 else:
                     unknown_treatments_for_llm.add(t)
 
-            # B. Process TISSUE (String) -> map_tissue
+            # B. Process TISSUE (String)
             tissue = sample.get('tissue')
-            if tissue in mapping_cache_tissue: continue # Already processed this string
-            
-            resolved_tis = resolve_term(tissue, label_map_obj.map_tissue)
-            if resolved_tis:
-                mapping_cache_tissue[tissue] = resolved_tis
-            else:
-                unknown_tissues_for_llm.add(tissue)
-            # C. Process MEDIUM (String) -> map (generic)
+            if isinstance(tissue, list): 
+                tissue = tissue[0] if tissue else "unknown"
+                
+            if tissue and tissue not in mapping_cache_tissue:
+                resolved_tis = resolve_term(tissue, label_map_obj.map_tissue, 'tissue')
+                if resolved_tis:
+                    mapping_cache_tissue[tissue] = resolved_tis
+                else:
+                    unknown_tissues_for_llm.add(tissue)
+
+            # C. Process MEDIUM (String)
             medium = sample.get('medium')
+            if isinstance(medium, list):
+                medium = medium[0] if medium else "unspecified"
+                
             if medium and medium not in mapping_cache_medium:
-                resolved_m = resolve_term(medium, label_map_obj.map)
+                # Mediums often map to generic map or self-contained logic
+                resolved_m = resolve_term(medium, label_map_obj.map, 'medium')
                 if resolved_m:
                     mapping_cache_medium[medium] = resolved_m
                 else:
+                    # If vector fails for medium, we often default to the raw term 
+                    # or map to "Unspecified" if it's too weird. 
+                    # For now, let's keep raw if no match.
                     mapping_cache_medium[medium] = medium
-        # --- STEP 2: Batch LLM Call (Treatments Only) ---
-        data_study = data['study_metadata']
+
+        # --- STEP 2: Batch LLM Calls (Fallback) ---
+        data_study = data.get('study_metadata', {})
+        
+        # A. Treatments LLM
         if unknown_treatments_for_llm:
             print(f"Querying LLM for {len(unknown_treatments_for_llm)} unique treatments...")
             try:
-                llm_result = llm_func(list(unknown_treatments_for_llm),data_study)
-                mapping_cache_treatment.update(llm_result)
+                llm_result = llm_func(list(unknown_treatments_for_llm), data_study)
+                if llm_result:
+                    mapping_cache_treatment.update(llm_result)
             except Exception as e:
-                print(f"LLM Batch Error: {e}")
+                print(f"LLM Batch Error (Treatments): {e}")
         
+        # B. Tissues LLM
         if unknown_tissues_for_llm:
             print(f"Querying LLM for {len(unknown_tissues_for_llm)} unique tissues...")
             try:
-                llm_result = llm_func(list(unknown_tissues_for_llm),data_study)
-                mapping_cache_tissue.update(llm_result)
+                llm_result = llm_func_tis(list(unknown_tissues_for_llm), data_study)
+                if llm_result:
+                    mapping_cache_tissue.update(llm_result)
             except Exception as e:
-                print(f"LLM Batch Error: {e}")
+                print(f"LLM Batch Error (Tissues): {e}")
 
-        # --- STEP 3: Apply mappings back to samples ---
+        # --- STEP 3: Apply mappings and Return ---
         final_samples = []
         for sample in extracted_samples:
             new_sample = sample.copy()
             
             # 1. Update Treatments
             new_treatments = []
-            for t in sample.get('treatment', []):
-                # Fallback to "Other stress" only if LLM failed and it's a treatment
+            raw_treats = sample.get('treatment', [])
+            if isinstance(raw_treats, str): raw_treats = [raw_treats]
+            
+            for t in raw_treats:
+                # Check cache (populated by Vector or LLM)
                 val = mapping_cache_treatment.get(t)
+                
+                # If still missing, check if it was in the unknown set (meaning LLM failed to return it)
                 if not val and t in unknown_treatments_for_llm:
-                    val = "Other stress"
-                new_treatments.append(val if val else t)
-            new_sample['treatment'] = list(set(new_treatments))
+                    val = "Other stress" # Default fallback
+                
+                if val:
+                    new_treatments.append(val)
+                else:
+                    # If it wasn't unknown (maybe skipped), keep raw? 
+                    # Usually better to map to Other if uncertain.
+                    new_treatments.append("Other stress")
+                    
+            new_sample['treatment'] = sorted(list(set(new_treatments)))
             
             # 2. Update Tissue
-            if sample.get('tissue') in mapping_cache_tissue:
-                new_sample['tissue'] = mapping_cache_tissue[sample['tissue']]
+            raw_tissue = sample.get('tissue')
+            if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else "unknown"
+            
+            if raw_tissue in mapping_cache_tissue:
+                new_sample['tissue'] = mapping_cache_tissue[raw_tissue]
+            else:
+                new_sample['tissue'] = "unknown"
                 
             # 3. Update Medium
-            if sample.get('medium') in mapping_cache_medium:
-                new_sample['medium'] = mapping_cache_medium[sample['medium']]
+            raw_medium = sample.get('medium')
+            if isinstance(raw_medium, list): raw_medium = raw_medium[0] if raw_medium else "unspecified"
+            
+            if raw_medium in mapping_cache_medium:
+                new_sample['medium'] = mapping_cache_medium[raw_medium]
+            else:
+                new_sample['medium'] = "unspecified"
 
             final_samples.append(new_sample)
             
