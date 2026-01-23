@@ -5,7 +5,7 @@ from tqdm import tqdm
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.meta_data_processing.utils.extractors_full import *
+import src.meta_data_processing.utils.extractors_full as extractors_full
 from src.meta_data_processing.utils.llm_utils import get_condensed_labels,get_metadata_script
 from src.meta_data_processing.utils.classes import LabelMap
 from src.constants import *
@@ -31,12 +31,26 @@ def load_json(path:str):
         object = json.load(file)
     return object
 
+def save_labels(labels,saving_path):
+    # 5. Save Results
+    print("Saving condensed labels...")
+    for study in labels:
+        if labels[study]: # Only save if we actually processed data for this study
+            with open(f'{saving_path}/{study}.json', 'w') as handle:
+                json.dump(labels[study], handle, indent=4)
+
 import os
 import json
 import sys
 from tqdm import tqdm
 
-def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray_data/', saving_path=LABELS_PATH, llm_grounding:bool = True, model=None):
+module_dir = './'
+sys.path.append(module_dir)
+from src.constants import *
+from src.meta_data_processing.utils.classes import *
+
+from src.meta_data_processing.utils.llm_utils import get_batch_labels
+def condense_labels_old(in_folder='new_storage/processed_microarray_data/',extractors_path = 'src/meta_data_processing/utils/extractors_full.py', saving_path=LABELS_PATH, llm_grounding:bool = True, model:str='gemini-2.5-flash'):
     os.makedirs(saving_path, exist_ok=True)
     labels = {}
     seen = LabelMap('./data/maps')
@@ -51,8 +65,8 @@ def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray
     
     for study_id in tqdm(study_dirs, desc="Processing Studies"):
         # Filter by Studies list if provided
-        if Studies and (study_id not in Studies):
-            continue
+        # if Studies and (study_id not in Studies):
+        #     continue
 
         study_path = os.path.join(in_folder, study_id)
         
@@ -78,38 +92,47 @@ def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray
                 
             except Exception as e:
                 print(f"Error loading {sample_file}: {e}")
+                save_labels(labels,saving_path)
                 continue
 
             # 3. Dynamic Extractor Check & Generation
             extractor_name = f'{study_id}_extractor'
+            extractor_func = None
+
+            # 1. Check if function exists in the imported file (The Toolbox)
+            if hasattr(extractors_full, extractor_name):
+                extractor_func = getattr(extractors_full, extractor_name)
             
-            # Check if the extractor function exists in the global scope
-            if extractor_name not in globals():
+            # 2. Check if function exists in globals (Just generated in this run)
+            elif extractor_name in globals():
+                extractor_func = globals()[extractor_name]
+
+            # 3. If neither, GENERATE IT
+            else:
                 tqdm.write(f"Warning: Extractor function '{extractor_name}' not defined.")
                 tqdm.write(f"Generating new extractor for {study_id}...")
                 
                 try:
-                    # Generate the script using the LLM utility
-                    # We pass the sample metadata as a reference for the schema generation
                     new_script = get_metadata_script(sample_meta, study_id=study_id, model=model)
                     
-                    # Append the new function to the extractors file
-                    with open('extractors_full.py', 'a') as f:
+                    # Append to file
+                    with open(extractors_path, 'a') as f:
                         f.write('\n\n')
                         f.write(new_script)
                     
-                    # Execute the new script string to load the function into the current runtime
+                    # Load into current runtime
                     exec(new_script, globals())
+                    extractor_func = globals()[extractor_name] # Now we can grab it
                     tqdm.write(f"  -> Successfully generated and loaded {extractor_name}.")
                     
                 except Exception as e:
                     tqdm.write(f"  -> Failed to generate extractor for {study_id}: {e}")
-                    continue # Skip this sample if we can't extract
+                    continue
 
             # 4. Run the Extractor
             try:
                 # Retrieve the function from globals and execute
-                extractor_func = globals()[extractor_name]
+                # extractor_func = globals()[extractor_name]
                 python_object = extractor_func(sample_meta)
                 
                 # --- Post-Processing Logic (Same as original) ---
@@ -123,7 +146,7 @@ def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray
                     print(f'study: {study_id} sample: {sample_id}')
                 
                 # LLM Grounding / Mapping
-                if llm_grounding and seen.check_past(python_object):
+                if llm_grounding and seen.need_new_mapping(python_object):
                     # Note: Using study_meta extracted from the JSON
                     condensed = dict(get_condensed_labels(study_info=study_meta, sample_info=python_object))
                     seen.add_mapping(python_object, condensed)
@@ -148,17 +171,110 @@ def condense_labels(Studies=Studies, in_folder='new_storage/processed_microarray
 
             except Exception as e:
                 print(f"Error processing sample {sample_id} in {study_id}: {e}")
+                save_labels(labels,saving_path)
                 continue
+    save_labels(labels,saving_path)
 
-    # 5. Save Results
-    print("Saving condensed labels...")
-    for study in labels:
-        if labels[study]: # Only save if we actually processed data for this study
-            with open(f'{saving_path}/{study}.json', 'w') as handle:
-                json.dump(labels[study], handle, indent=4)
+
+def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/meta_data_processing/utils/extractors_full.py'):
+    os.makedirs(saving_path, exist_ok=True)
+    
+    # --- COMPONENT 1: Restore LabelMap ---
+    # This loads your historical mappings (map.json, map_treatment.json, etc.)
+    seen = LabelMap('./data/maps')
+    
+    # Initialize Optimizer
+    optimizer = GroundingOptimizer()
+    
+    study_dirs = [d for d in os.listdir(in_folder) if os.path.isdir(os.path.join(in_folder, d))]
+    
+    for study_id in tqdm(study_dirs, desc="Processing Studies"):
+        # 1. Skip if filtered
+        if Studies and study_id not in Studies:
+            continue
+            
+        # 2. Check if already done
+        output_file = os.path.join(saving_path, f"{study_id}.json")
+        if os.path.exists(output_file):
+            continue
+
+        study_path = os.path.join(in_folder, study_id)
+        raw_samples = []
+
+        # --- PHASE 1: EXTRACTION ---
+        sample_files = [f for f in os.listdir(study_path) if f.endswith('.json')]
+        for sample_file in sample_files:
+            try:
+                with open(os.path.join(study_path, sample_file), 'r') as f:
+                    data = json.load(f)
+                
+                # Verify extractor exists before processing files
+                extractor_name = f'{study_id}_extractor'
+                if hasattr(extractors_full, extractor_name):
+                    extractor = getattr(extractors_full, extractor_name)
+                elif extractor_name in globals():
+                    extractor = globals()[extractor_name]
+                else:
+                    # You might want to generate it here if missing, or skip
+                    new_extractor = get_metadata_script(sample_metadata=data,study_id=study_id)
+                    
+                    # Append to file
+                    with open(extractors_path, 'a') as f:
+                        f.write('\n\n')
+                        f.write(new_extractor)
+                    
+                    # Load into current runtime
+                    exec(new_extractor, globals())
+                    extractor = globals()[extractor_name] # Now we can grab it
+                
+                
+                extracted = extractor(data.get('sample_metadata', {}))
+                
+                # IMPORTANT: Keep 'sample_id' for tracking, but we will remove it before saving
+                extracted['sample_id'] = data.get('sample_id', sample_file.replace('.json',''))
+                raw_samples.append(extracted)
+            except Exception as e:
+                print(f"Extraction error {study_id}: {e}")
+
+        if not raw_samples:
+            continue
+
+        # --- PHASE 2: BATCH GROUNDING ---
+        try:
+            # CHANGE: Pass the whole 'seen' object as 'label_map_obj'
+            grounded_samples = optimizer.batch_process_study(
+                data=data, # type: ignore
+                extracted_samples=raw_samples,
+                llm_func=get_batch_labels,
+                label_map_obj=seen
+            )
+            
+            # --- COMPONENT 2: Sync and Save Progress ---
+            final_output = {}
+            
+            for raw, grounded in zip(raw_samples, grounded_samples):
+                
+                # Update the LabelMap (seen.add_mapping handles the complexity of splitting dicts)
+                seen.add_mapping(raw, grounded)
+                
+                s_id = grounded.pop('sample_id')
+                final_output[s_id] = grounded
+
+            seen.save_map()
+            
+            # 4. Save the Study Data
+            with open(output_file, 'w') as f:
+                json.dump(final_output, f, indent=4)
+                
+        except Exception as e:
+            print(f"Grounding error {study_id}: {e}")
+            # Optional: Save partial progress or handle error gracefully
+
+
 
 if __name__ == '__main__':
-    condense_labels(model='gemini-1.5-pro')
+    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)
+
 
     labels_1 = load_labels_study(LABELS_PATH)
     res = []
