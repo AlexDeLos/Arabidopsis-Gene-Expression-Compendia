@@ -69,9 +69,9 @@ def download_processed_counts(gse_id, output_dir):
     return downloaded
 
 # Usage
-ids = ['GSE77815', 'GSE44053'] # Your list
-for i in ids:
-    download_processed_counts(i, "./count_data_folder")
+# ids = ['GSE77815', 'GSE44053'] # Your list
+# for i in ids:
+#     download_processed_counts(i, "./count_data_folder")
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
 
@@ -114,8 +114,8 @@ if __name__ == "__main__":
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
     RNA_tracker = RNASeq_tracker()
     rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=10, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
-    for id in rnaseq_ids:
-        download_processed_counts(id,root_storage_dir+'test_counts_rna/')
+    # for id in rnaseq_ids:
+    #     download_processed_counts(id,root_storage_dir+'test_counts_rna/')
     RNA_tracker = RNASeq_tracker.load_from_json('new_storage/rnaseq_data/rnaseq_tracker_stats.json')
     download_experiments_RNA_seq(rnaseq_ids,root_storage_dir, f"{root_storage_dir}/rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=True)
     # RNA_tracker.print_summary()
