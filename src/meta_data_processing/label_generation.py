@@ -94,7 +94,8 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
                 else:
                     extracted = uni_extractor.extract(
                         sample_metadata=data.get('sample_metadata', {}),
-                        study_metadata=data.get('study_metadata', {})
+                        study_metadata=data.get('study_metadata', {}),
+                        study_id=study_id
                        )
                 
                 # IMPORTANT: Keep 'sample_id' for tracking, but we will remove it before saving
@@ -112,9 +113,9 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
             grounded_samples = optimizer.batch_process_study(
                 data=data, # type: ignore
                 extracted_samples=raw_samples,
-                llm_func=get_batch_labels_treatment,
+                llm_func_treat=get_batch_labels_treatment,
                 llm_func_tis= get_batch_labels_tissues,
-                label_map_obj=seen
+                label_map=seen
             )
             
             # --- COMPONENT 2: Sync and Save Progress ---
@@ -141,7 +142,7 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
 
 
 if __name__ == '__main__':
-    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)#, Studies=['GSE5622','GSE119383','GSE10670'])
+    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)#'GSE5622',
 
 
     labels_1 = load_labels_study(LABELS_PATH)

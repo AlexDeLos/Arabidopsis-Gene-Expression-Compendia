@@ -306,8 +306,8 @@ def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker,
         soft_path = os.path.join(output_dir, f"{gse_id}_family.soft.gz")
         fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
         results_folder = os.path.join(output_dir, "processed_rnaseq", gse_id)
-        temp_files = os.path.join(output_dir,'temp')
-        if not os.path.exists(temp_files): os.makedirs(temp_files)
+        # temp_files = os.path.join(output_dir,'temp')
+        # if not os.path.exists(temp_files): os.makedirs(temp_files)
         if not os.path.exists(results_folder): os.makedirs(results_folder)
         try:
             # 1. Metadata
@@ -338,7 +338,7 @@ def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker,
                 # A. Download
                 if not tracker.is_downloaded(gse_id):
                     try:
-                        processor.download_fastq(gse, fastq_folder,temp_files)
+                        processor.download_fastq(gse, fastq_folder,'')
                         tracker.mark_downloaded(gse_id)
                         tracker.save_to_json(tracker_save_path)
                     except Exception as e:
@@ -373,3 +373,4 @@ def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker,
             tracker.mark_ignore(gse_id)
 
     return valid_gse_ids
+

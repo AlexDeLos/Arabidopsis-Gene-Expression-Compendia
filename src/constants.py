@@ -1,7 +1,7 @@
 import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
-CLUSTER_RUN = True
+CLUSTER_RUN = False
 EXPERIMENT_NAME = '3.2'
 
 if CLUSTER_RUN:
@@ -25,7 +25,7 @@ FIGURES_DIR = f'./outputs/{EXPERIMENT_NAME}/'
 FILTERING_FIGURES = f'{FIGURES_DIR}filter_figures/{EXPERIMENT_NAME}/'
 CLUSTER_EXPLORATION_FIGURES_DIR=f'{FIGURES_DIR}exploration_figures/{EXPERIMENT_NAME}/'
 MODEL = 'extractors_and_gemini'
-LABELS_PATH = f'./data/labels/{MODEL}/{EXPERIMENT_NAME}'
+LABELS_PATH = f'{STORAGE_DIR}labels/{MODEL}/{EXPERIMENT_NAME}'
 Studies = ['GSE44053', 'GSE77815', 'GSE16474', 'GSE4062', 'GSE9415', 'GSE18624', 'GSE40061', 'GSE112161', 'GSE20494', 'GSE79997', 'GSE27552', 'GSE16222', 'GSE110857', 'GSE4760', 'GSE46205', 'GSE71001', 'GSE58616', 'GSE162310', 'GSE22107', 'GSE62163', 'GSE51897', 'GSE72949', 'GSE90562', 'GSE5628', 'GSE26266', 'GSE34188', 'GSE34595', 'GSE76827', 'GSE119383', 'GSE65046', 'GSE11758', 'GSE65414', 'GSE37408', 'GSE5624', 'GSE10643', 'GSE15577', 'GSE11538', 'GSE70861', 'GSE6583', 'GSE27551', 'GSE12619', 'GSE121225', 'GSE108070', 'GSE78713', 'GSE110079', 'GSE63128', 'GSE60960', 'GSE37118', 'GSE79681', 'GSE63372', 'GSE5622', 'GSE26983', 'GSE27550', 'GSE19603', 'GSE95202', 'GSE53308', 'GSE16765', 'GSE71855', 'GSE58620', 'GSE24177', 'GSE35258', 'GSE10670', 'GSE49418', 'GSE18666', 'GSE83136', 'GSE44655', 'GSE27549', 'GSE19700', 'GSE103398', 'GSE63522', 'GSE201609', 'GSE5620', 'GSE66369', 'GSE2268', 'GSE71237', 'GSE48474', 'GSE41935', 'GSE27548', 'GSE5623', 'GSE72050', 'GSE126373']
 
 # LABELS
@@ -62,11 +62,24 @@ class TreatmentEnum(str, Enum):
     ABIOTIC = "Abiotic Stress"
     LOW_LIGHT = "Low Light Stress"
     HIGH_LIGHT = "High Light Stress"
-    # RED_LIGHT = "Red Light Stress"
     OTHER_LIGHT = "Other Light Stress"
     OTHER = "Other stress"
     NONE = "No stress"
-
+class TreatmentEnum_alt(str, Enum):
+    DROUGHT = "Drought"
+    DEHYDRATION = "Dehydration"
+    SALINITY = "Salinity"
+    HEAT = "Heat"
+    COLD = "Cold"
+    CHEMICAL = "Chemical"
+    NUTRIENT = "Nutrient Deficiency"
+    BIOTIC = "Biotic"
+    ABIOTIC = "Abiotic"
+    LOW_LIGHT = "Low Light"
+    HIGH_LIGHT = "High Light"
+    OTHER_LIGHT = "Other Light"
+    OTHER = "Other"
+    NONE = "Control"
 class MediumEnum(str, Enum):
     MS = "MS medium"
     B5 = "Gamborg B5 medium"
@@ -83,4 +96,5 @@ class MediumEnum(str, Enum):
 # This extracts the values automatically, so you don't need to type them twice.
 VALID_TISSUES = [t.value for t in TissueEnum]
 VALID_TREATMENTS = [t.value for t in TreatmentEnum]
+VALID_TREATMENTS_ALT= [t.value for t in TreatmentEnum_alt]
 VALID_MEDIUMS = [m.value for m in MediumEnum]
