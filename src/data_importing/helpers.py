@@ -778,39 +778,41 @@ def plot_tracker_results_RNA(json_file="rnaseq_tracker_results.json", output_dir
                     'Platform': platform, 
                     'SampleSize': size
                 }] * count)
-
+                
         if plot_records:
             df_hist = pd.DataFrame(plot_records)
             
             plt.figure(figsize=(12, 7))
             
-            # 3. Plot Overlapping Histogram
-            # element="step" creates the outline look which handles overlap better than bars
+            # 3. Plot Stacked Histogram
             sns.histplot(
                 data=df_hist, 
                 x="SampleSize", 
                 hue="Platform", 
-                element="step", 
-                bins=30, 
-                common_norm=False, # Normalize each platform independently? False = raw counts
-                log_scale=(False, False), # Set (True, False) for log X axis if needed
-                palette="bright",
-                alpha=0.3
+                multiple="stack",  # STACKS the bars instead of overlapping them
+                binwidth=1,        # Forces 1 bar per integer (1, 2, 3 samples...)
+                palette="viridis", # High contrast palette
+                edgecolor="white", # Adds a thin white line between stack segments
+                linewidth=0.5
             )
             
             plt.title("Distribution of Samples per Study (Top 6 Platforms)")
             plt.xlabel("Number of Samples in Study")
             plt.ylabel("Count of Studies")
-            plt.xlim(0, 100) # Optional: limit X axis if there are massive outliers
             
-            plt.savefig(f"{output_dir}/tracker_histogram_top6.svg", format='svg')
+            # Limit X to a reasonable range (e.g. 0-60) to see the "1, 2, 3" bars clearly
+            # Most RNA-seq studies are small; long tails will be cut off but the detail is preserved
+            plt.xlim(0, 60) 
+            
+            # Optional: Force integer ticks on X axis for clarity
+            plt.xticks(range(0, 61, 5)) 
+            
+            plt.tight_layout()
+            plt.savefig(f"{output_dir}/tracker_histogram_top6_stacked.svg", format='svg')
             plt.close()
-            print(f"Saved {output_dir}/tracker_histogram_top6.svg")
+            print(f"Saved {output_dir}/tracker_histogram_top6_stacked.svg")
         else:
             print("Top platforms found, but no sample distribution data available.")
-    else:
-        print("No per-platform sample distribution data found (Running with old Tracker?).")
-
     # --- PLOT 4: HISTOGRAM (SAMPLE SIZES) ---
     # Reconstruct the raw list of sample sizes from the frequency dictionary
     # dict: {"6": 10, "12": 5} -> list: [6, 6, ..., 12, 12, ...]
