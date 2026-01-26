@@ -113,7 +113,7 @@ class RNASeq_processor:
         # Was: .../bin/sratools.3.0.10
         # Now: .../bin/fasterq-dump
         fasterq_path = '/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/fasterq-dump'
-        
+        # FASTERQ_PATH = "/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/fasterq-dump"
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
                 # Check existence

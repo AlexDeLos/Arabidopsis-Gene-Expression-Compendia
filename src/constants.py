@@ -1,7 +1,7 @@
 import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
-CLUSTER_RUN = False
+CLUSTER_RUN = True
 EXPERIMENT_NAME = '3.2'
 
 if CLUSTER_RUN:
