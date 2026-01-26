@@ -5,11 +5,11 @@ import dotenv
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-import src.meta_data_processing.utils.extractors_full as extractors_full
 from src.constants import *
-from src.meta_data_processing.utils.classes import *
+from src.meta_data_processing.utils.groundingOptimizer import *
 from src.meta_data_processing.utils.llm_utils import get_batch_labels_treatment,get_batch_labels_tissues,get_metadata_script
 from src.meta_data_processing.utils.universal_extractor import UniversalExtractor
+from src.meta_data_processing.utils.labelMap import LabelMap
 dotenv.load_dotenv()
 
 def load_labels_study(path):
@@ -124,7 +124,7 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
             for raw, grounded in zip(raw_samples, grounded_samples):
                 
                 # Update the LabelMap (seen.add_mapping handles the complexity of splitting dicts)
-                seen.add_mapping(raw, grounded)
+                seen.add_mapping(raw, grounded, study_id=study_id)
                 
                 s_id = grounded.pop('sample_id')
                 final_output[s_id] = grounded

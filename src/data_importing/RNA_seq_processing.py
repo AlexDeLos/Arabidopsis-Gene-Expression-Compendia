@@ -13,7 +13,6 @@ from src.data_importing.download_helper import check_metadata_for_sra
 from src.constants import *
 
 class RNASeq_tracker:
-    # ... (Keep the exact same Tracker class from previous iterations) ...
     def __init__(self) -> None:
         self.platform_counts: dict = {}
         self.totals: dict = {
@@ -21,6 +20,9 @@ class RNASeq_tracker:
             'total_samples_used': 0, 'total_studies_used': 0
         }
         self.states: dict = {'ignore': set(), 'downloaded': set(), 'processed': set()}
+        
+        # NEW STRUCTURE: { "Platform_Name": { "12": 5, "24": 1 } }
+        self.sample_distribution_per_platform: dict = {}
 
     def update_platform(self, platform: str, samples: int, has_raw: bool):
         if platform not in self.platform_counts:
@@ -28,6 +30,19 @@ class RNASeq_tracker:
                 'studies_seen': 0, 'samples_seen': 0,
                 'studies_with_raw': 0, 'samples_with_raw': 0
             }
+        
+        # --- NEW: Update Per-Platform Histogram ---
+        if platform not in self.sample_distribution_per_platform:
+            self.sample_distribution_per_platform[platform] = {}
+            
+        # Use string key for JSON compatibility
+        s_str = str(samples)
+        if s_str in self.sample_distribution_per_platform[platform]:
+            self.sample_distribution_per_platform[platform][s_str] += 1
+        else:
+            self.sample_distribution_per_platform[platform][s_str] = 1
+
+        # Update Totals
         self.totals['total_studies_seen'] += 1
         self.totals['total_sample_seen'] += samples
         self.platform_counts[platform]['studies_seen'] += 1
@@ -38,6 +53,7 @@ class RNASeq_tracker:
             self.platform_counts[platform]['studies_with_raw'] += 1
             self.platform_counts[platform]['samples_with_raw'] += samples
 
+    # ... (Keep existing state marking methods: mark_ignore, mark_downloaded, etc.) ...
     def mark_ignore(self, gse_id):
         self.states['ignore'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['processed'].discard(gse_id)
     def mark_downloaded(self, gse_id):
@@ -47,10 +63,15 @@ class RNASeq_tracker:
     def is_ignored(self, gse_id): return gse_id in self.states['ignore']
     def is_processed(self, gse_id): return gse_id in self.states['processed']
     def is_downloaded(self, gse_id): return gse_id in self.states['downloaded']
-    
+
     def save_to_json(self, filename="rnaseq_tracker_results.json"):
         serializable_states = {k: list(v) for k, v in self.states.items()}
-        data = {"totals": self.totals, "platform_counts": self.platform_counts, "states": serializable_states}
+        data = {
+            "totals": self.totals, 
+            "platform_counts": self.platform_counts, 
+            "states": serializable_states,
+            "sample_distribution_per_platform": self.sample_distribution_per_platform
+        }
         with open(filename, 'w') as f: json.dump(data, f, indent=4)
     
     @classmethod
@@ -60,10 +81,14 @@ class RNASeq_tracker:
         tracker = cls()
         tracker.totals = data.get("totals", tracker.totals)
         tracker.platform_counts = data.get("platform_counts", {})
+        
         loaded_states = data.get("states", {})
         tracker.states = {k: set(loaded_states.get(k, [])) for k in ['ignore', 'downloaded', 'processed']}
+        
+        # Load the new per-platform distribution
+        tracker.sample_distribution_per_platform = data.get("sample_distribution_per_platform", {})
+        
         return tracker
-
 
 class RNASeq_processor:
     def __init__(self, threads=4, genome_index=None, gtf_annotation=None):
@@ -223,19 +248,36 @@ class RNASeq_processor:
             subprocess.run(trim_cmd, check=True, stderr=subprocess.DEVNULL)            
             # --- STEP 2: HISAT2 (Alignment) ---
             # We pipe HISAT2 directly to Samtools Sort to avoid huge SAM files
-            
-            
-            hisat_cmd = ["hisat2", "-p", self.threads, "-x", self.genome_index]
+            hisat_cmd = ["hisat2", "-p", str(self.threads), "-x", self.genome_index]
+
             if is_paired:
                 hisat_cmd.extend(["-1", trimmed_1, "-2", trimmed_2])
             else:
                 hisat_cmd.extend(["-U", trimmed_1])
-                
-            # Pipeline: HISAT2 -> Samtools View (BAM) -> Samtools Sort
-            p1 = subprocess.Popen(hisat_cmd, stdout=subprocess.PIPE)
-            p2 = subprocess.Popen(["samtools", "sort", "-@", self.threads, "-o", bam_out], stdin=p1.stdout)
-            p1.stdout.close()
-            p2.communicate()
+
+            # Pipeline: HISAT2 -> Samtools Sort
+            # Note: Added checks to ensure processes succeed
+            try:
+                with open(bam_out, "wb") as f_out: # Safer than letting samtools write directly if path has issues, but -o is usually fine
+                    # 1. Start HISAT2
+                    p1 = subprocess.Popen(hisat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # 2. Start Samtools Sort (Reading from HISAT2's stdout)
+                    # We pass the file path for -o, subprocess handles the space in 'bam_out'
+                    p2 = subprocess.Popen(["samtools", "sort", "-@", str(self.threads), "-o", bam_out], stdin=p1.stdout, stderr=subprocess.PIPE)
+                    
+                    # Allow p1 to receive a SIGPIPE if p2 exits
+                    p1.stdout.close()
+                    
+                    # Wait for finish
+                    output, errors = p2.communicate()
+                    
+                    if p2.returncode != 0:
+                        print(f"Samtools Error: {errors.decode()}")
+                        raise subprocess.CalledProcessError(p2.returncode, "samtools sort")
+                        
+            except Exception as e:
+                print(f"Alignment pipeline failed: {e}")
             
             bam_files.append(bam_out)
 
@@ -285,7 +327,7 @@ class RNASeq_processor:
         
         return True
     
-def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker, download_raw=True, scan=True,run_and_delete:bool=True):
+def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker:RNASeq_tracker, download_raw=True, scan=True,run_and_delete:bool=True):
     
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"

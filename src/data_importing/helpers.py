@@ -665,12 +665,13 @@ def plot_tracker_results(json_file="tracker_results.json", output_dir="."):
     plt.close()
     print(f"Saved {output_dir}/tracker_platforms.svg")
 
-def plot_tracker_results_RNA(json_file="tracker_results.json", output_dir="."):
+def plot_tracker_results_RNA(json_file="rnaseq_tracker_results.json", output_dir="."):
     """
     Reads tracker JSON and saves SVG plots:
     1. Pie Chart: Total Studies (Used vs Skipped)
     2. Pie Chart: Total Samples (Used vs Skipped)
     3. Bar Charts: Platforms (Filtered by >0 samples used)
+    4. Histogram: Distribution of Samples per Study
     """
     # 1. Load Data
     try:
@@ -680,120 +681,219 @@ def plot_tracker_results_RNA(json_file="tracker_results.json", output_dir="."):
         print(f"Error: {json_file} not found.")
         return
 
-    totals = data['totals']
-    platform_data = data['platform_counts']
+    totals = data.get('totals', {})
+    platform_data = data.get('platform_counts', {})
+    # sample_dist = data.get('sample_distribution', {}) # Format: {"12": 5, "24": 1}
+    dist_per_platform = data.get('sample_distribution_per_platform', {})
+    # Use a style suitable for publication
+    sns.set_theme(style="whitegrid")
 
     # --- PLOT 1: PIE CHART (STUDIES) ---
-    studies_used = totals['total_studies_used']
-    studies_seen = totals['total_studies_seen']
+    studies_used = totals.get('total_studies_used', 0)
+    studies_seen = totals.get('total_studies_seen', 0)
     studies_skipped = studies_seen - studies_used
+    
 
-    plt.figure(figsize=(6, 6))
-    plt.pie(
-        [studies_used, studies_skipped], 
-        labels=[f'Used ({studies_used})', f'Skipped ({studies_skipped})'],
-        autopct='%1.1f%%',
-        colors=sns.color_palette('pastel')[0:2],
-        startangle=140
-    )
-    plt.title(f"Total Studies Seen: {studies_seen}")
-    plt.savefig(f"{output_dir}/tracker_pie_studies.svg", format='svg')
-    plt.close()
-    print(f"Saved {output_dir}/tracker_pie_studies.svg")
+    if studies_seen > 0:
+        plt.figure(figsize=(6, 6))
+        plt.pie(
+            [studies_used, studies_skipped], 
+            labels=[f'Used ({studies_used})', f'Skipped ({studies_skipped})'],
+            autopct='%1.1f%%',
+            colors=sns.color_palette('pastel')[0:2],
+            startangle=140
+        )
+        plt.title(f"Total Studies Seen: {studies_seen}")
+        plt.savefig(f"{output_dir}/tracker_pie_studies.svg", format='svg')
+        plt.close()
+        print(f"Saved {output_dir}/tracker_pie_studies.svg")
 
     # --- PLOT 2: PIE CHART (SAMPLES) ---
-    samples_used = totals['total_samples_used']
-    samples_seen = totals['total_sample_seen']
+    samples_used = totals.get('total_samples_used', 0)
+    samples_seen = totals.get('total_sample_seen', 0)
     samples_skipped = samples_seen - samples_used
 
-    plt.figure(figsize=(6, 6))
-    plt.pie(
-        [samples_used, samples_skipped], 
-        labels=[f'Used ({samples_used})', f'Skipped ({samples_skipped})'],
-        autopct='%1.1f%%',
-        colors=sns.color_palette('pastel')[2:4],
-        startangle=140
-    )
-    plt.title(f"Total Samples Seen: {samples_seen}")
-    plt.savefig(f"{output_dir}/tracker_pie_samples.svg", format='svg')
-    plt.close()
-    print(f"Saved {output_dir}/tracker_pie_samples.svg")
+    if samples_seen > 0:
+        plt.figure(figsize=(6, 6))
+        plt.pie(
+            [samples_used, samples_skipped], 
+            labels=[f'Used ({samples_used})', f'Skipped ({samples_skipped})'],
+            autopct='%1.1f%%',
+            colors=sns.color_palette('pastel')[2:4],
+            startangle=140
+        )
+        plt.title(f"Total Samples Seen: {samples_seen}")
+        plt.savefig(f"{output_dir}/tracker_pie_samples.svg", format='svg')
+        plt.close()
+        print(f"Saved {output_dir}/tracker_pie_samples.svg")
 
     # --- PLOT 3: BAR CHARTS (PLATFORMS) ---
-    # Filter and Reshape Data
     records = []
-    
     for platform, stats in platform_data.items():
-        # CRITICAL FILTER: Only include platforms where we actually used samples
         if stats['samples_with_raw'] > 0:
+            records.append({'Platform': platform, 'Count': stats['studies_seen'], 'Metric': 'Studies', 'Status': 'Seen'})
+            records.append({'Platform': platform, 'Count': stats['samples_seen'], 'Metric': 'Samples', 'Status': 'Seen'})
+            records.append({'Platform': platform, 'Count': stats['studies_with_raw'], 'Metric': 'Studies', 'Status': 'Used'})
+            records.append({'Platform': platform, 'Count': stats['samples_with_raw'], 'Metric': 'Samples', 'Status': 'Used'})
+
+    if records:
+        df = pd.DataFrame(records)
+        sorter = df[(df['Metric'] == 'Samples') & (df['Status'] == 'Used')].sort_values('Count', ascending=False)
+        order = sorter['Platform'].tolist()
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True) # Share Y axis (Platforms)
+        
+        sns.barplot(data=df[df['Metric'] == 'Studies'], x='Count', y='Platform', hue='Status', order=order, ax=axes[0], palette="muted")
+        axes[0].set_title("Studies per Platform")
+        
+        sns.barplot(data=df[df['Metric'] == 'Samples'], x='Count', y='Platform', hue='Status', order=order, ax=axes[1], palette="muted")
+        axes[1].set_title("Samples per Platform")
+        
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/tracker_platforms.svg", format='svg')
+        plt.close()
+        print(f"Saved {output_dir}/tracker_platforms.svg")
+    else:
+        print("No platform data available to plot.")
+    if dist_per_platform:
+        # 1. Identify Top 6 Platforms by Total Studies Seen
+        # Sorting format: (PlatformName, {stats...})
+        sorted_platforms = sorted(
+            platform_data.items(), 
+            key=lambda item: item[1]['studies_seen'], 
+            reverse=True
+        )
+        top_6_platforms = [p[0] for p in sorted_platforms[:6]]
+        
+        # 2. Reconstruct Data for DataFrame
+        plot_records = []
+        for platform in top_6_platforms:
+            # Get the frequency dict for this platform: {"12": 5, "24": 1}
+            freq_dict = dist_per_platform.get(platform, {})
             
-            # Add Seen Data
-            records.append({
-                'Platform': platform,
-                'Count': stats['studies_seen'],
-                'Metric': 'Studies',
-                'Status': 'Seen'
-            })
-            records.append({
-                'Platform': platform,
-                'Count': stats['samples_seen'],
-                'Metric': 'Samples',
-                'Status': 'Seen'
-            })
+            for size_str, count in freq_dict.items():
+                size = int(size_str)
+                # Add 'count' rows for this size
+                plot_records.extend([{
+                    'Platform': platform, 
+                    'SampleSize': size
+                }] * count)
+
+        if plot_records:
+            df_hist = pd.DataFrame(plot_records)
             
-            # Add Used Data
-            records.append({
-                'Platform': platform,
-                'Count': stats['studies_with_raw'],
-                'Metric': 'Studies',
-                'Status': 'Used'
-            })
-            records.append({
-                'Platform': platform,
-                'Count': stats['samples_with_raw'],
-                'Metric': 'Samples',
-                'Status': 'Used'
-            })
+            plt.figure(figsize=(12, 7))
+            
+            # 3. Plot Overlapping Histogram
+            # element="step" creates the outline look which handles overlap better than bars
+            sns.histplot(
+                data=df_hist, 
+                x="SampleSize", 
+                hue="Platform", 
+                element="step", 
+                bins=30, 
+                common_norm=False, # Normalize each platform independently? False = raw counts
+                log_scale=(False, False), # Set (True, False) for log X axis if needed
+                palette="bright",
+                alpha=0.3
+            )
+            
+            plt.title("Distribution of Samples per Study (Top 6 Platforms)")
+            plt.xlabel("Number of Samples in Study")
+            plt.ylabel("Count of Studies")
+            plt.xlim(0, 100) # Optional: limit X axis if there are massive outliers
+            
+            plt.savefig(f"{output_dir}/tracker_histogram_top6.svg", format='svg')
+            plt.close()
+            print(f"Saved {output_dir}/tracker_histogram_top6.svg")
+        else:
+            print("Top platforms found, but no sample distribution data available.")
+    else:
+        print("No per-platform sample distribution data found (Running with old Tracker?).")
 
-    if not records:
-        print("No platforms found with used samples. Skipping bar plots.")
-        return
+    # --- PLOT 4: HISTOGRAM (SAMPLE SIZES) ---
+    # Reconstruct the raw list of sample sizes from the frequency dictionary
+    # dict: {"6": 10, "12": 5} -> list: [6, 6, ..., 12, 12, ...]
+    # sample_sizes = []
+    # if sample_dist:
+    #     for size_str, count in sample_dist.items():
+    #         size = int(size_str)
+    #         sample_sizes.extend([size] * count)
+        
+    #     plt.figure(figsize=(10, 6))
+        
+    #     sns.histplot(sample_sizes, kde=False, bins=30, color='skyblue', log_scale=(False, False)) # Can toggle log_scale=(True, False) for X axis
+        
+    #     plt.title("Distribution of Samples per Study")
+    #     plt.xlabel("Number of Samples in Study")
+    #     plt.ylabel("Count of Studies")
+        
+    #     # Add a vertical line for the mean/median
+    #     median_val = float(np.median(sample_sizes))
+    #     plt.axvline(median_val, color='r', linestyle='--', label=f'Median: {int(median_val)}')
+    #     plt.legend()
+        
+    #     plt.savefig(f"{output_dir}/tracker_histogram.svg", format='svg')
+    #     plt.close()
+    #     print(f"Saved {output_dir}/tracker_histogram.svg")
+    # else:
+    #     print("No sample distribution data available to plot.")
 
-    df = pd.DataFrame(records)
+    if dist_per_platform:
+        # 1. Identify Top 6 Platforms by Total Studies Seen
+        # Sorting format: (PlatformName, {stats...})
+        sorted_platforms = sorted(
+            platform_data.items(), 
+            key=lambda item: item[1]['studies_seen'], 
+            reverse=True
+        )
+        top_6_platforms = [p[0] for p in sorted_platforms[:6]]
+        
+        # 2. Reconstruct Data for DataFrame
+        plot_records = []
+        for platform in top_6_platforms:
+            # Get the frequency dict for this platform: {"12": 5, "24": 1}
+            freq_dict = dist_per_platform.get(platform, {})
+            
+            for size_str, count in freq_dict.items():
+                size = int(size_str)
+                # Add 'count' rows for this size
+                plot_records.extend([{
+                    'Platform': platform, 
+                    'SampleSize': size
+                }] * count)
 
-    # Sort by Used Samples to make the plot readable
-    # We find the order of platforms based on 'Samples' + 'Used' count
-    sorter = df[(df['Metric'] == 'Samples') & (df['Status'] == 'Used')].sort_values('Count', ascending=False)
-    order = sorter['Platform'].tolist()
-
-    # Create Subplots (1 Row, 2 Columns)
-    sns.set_theme(style="whitegrid")
-    fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
-
-    # Subplot A: Studies
-    studies_df = df[df['Metric'] == 'Studies']
-    sns.barplot(
-        data=studies_df, 
-        x='Count', y='Platform', hue='Status', 
-        order=order, ax=axes[0], palette="muted"
-    )
-    axes[0].set_title("Studies per Platform (Filtered)")
-    axes[0].set_xlabel("Number of Studies")
-
-    # Subplot B: Samples
-    samples_df = df[df['Metric'] == 'Samples']
-    sns.barplot(
-        data=samples_df, 
-        x='Count', y='Platform', hue='Status', 
-        order=order, ax=axes[1], palette="muted"
-    )
-    axes[1].set_title("Samples per Platform (Filtered)")
-    axes[1].set_xlabel("Number of Samples")
-
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/tracker_platforms.svg", format='svg')
-    plt.close()
-    print(f"Saved {output_dir}/tracker_platforms.svg")
+        if plot_records:
+            df_hist = pd.DataFrame(plot_records)
+            
+            plt.figure(figsize=(12, 7))
+            
+            # 3. Plot Overlapping Histogram
+            # element="step" creates the outline look which handles overlap better than bars
+            sns.histplot(
+                data=df_hist, 
+                x="SampleSize", 
+                hue="Platform", 
+                element="step", 
+                bins=30, 
+                common_norm=False, # Normalize each platform independently? False = raw counts
+                log_scale=(False, False), # Set (True, False) for log X axis if needed
+                palette="bright",
+                alpha=0.3
+            )
+            
+            plt.title("Distribution of Samples per Study (Top 6 Platforms)")
+            plt.xlabel("Number of Samples in Study")
+            plt.ylabel("Count of Studies")
+            plt.xlim(0, 100) # Optional: limit X axis if there are massive outliers
+            
+            plt.savefig(f"{output_dir}/tracker_histogram_top6.svg", format='svg')
+            plt.close()
+            print(f"Saved {output_dir}/tracker_histogram_top6.svg")
+        else:
+            print("Top platforms found, but no sample distribution data available.")
+    else:
+        print("No per-platform sample distribution data found (Running with old Tracker?).")
 
 
 import os

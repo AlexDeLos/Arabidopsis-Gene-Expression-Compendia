@@ -2,7 +2,7 @@ import re
 from typing import Dict, List, Any, Optional, Set, Tuple
 from sentence_transformers import util
 from src.constants import TissueEnum, TreatmentEnum, MediumEnum
-from src.meta_data_processing.utils.classes import GroundingOptimizer
+from src.meta_data_processing.utils.groundingOptimizer import GroundingOptimizer
 
 # In src/universal_extractor.py
 def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, category: str) -> List[str]:

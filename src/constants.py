@@ -92,6 +92,8 @@ class MediumEnum(str, Enum):
     AGAR = "Agar plate"
     UNSPECIFIED = "Unspecified"
 
+#TODO: add devStage, mutant, and cell type
+
 # 2. Maintain your lists for Grounding/Vectors (Backward Compatibility)
 # This extracts the values automatically, so you don't need to type them twice.
 VALID_TISSUES = [t.value for t in TissueEnum]

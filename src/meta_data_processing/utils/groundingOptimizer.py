@@ -1,4 +1,3 @@
-import json
 import spacy
 from typing import List, Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer, util
@@ -9,113 +8,7 @@ import sys
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import VALID_TREATMENTS, VALID_TISSUES, VALID_MEDIUMS, VALID_TREATMENTS_ALT
-
-def load_json(path:str):
-    with open(path, 'r') as file:
-        object = json.load(file)
-    return object
-
-class LabelMap:
-    """
-    Manages persistent mapping of raw terms to grounded ontology terms.
-    """
-    def __init__(self, path:Optional[str]=None):
-        self.path = path
-        if path is None:
-            self.map_treatment = {}
-            self.map_tissue = {}
-            self.map = {} 
-        else:
-            try:
-                self.map_treatment = load_json(path+'/map_treatment.json')
-                self.map_tissue = load_json(path+'/map_tissue.json')
-                self.map = load_json(path+'/map.json')
-            except:
-                print('Warning: LabelMap paths not found, starting empty.')
-                self.map_treatment = {}
-                self.map_tissue = {}
-                self.map = {}
-
-    def add(self, label:str, id)->None:
-        self.map[label] = id
-
-    def add_treatment(self, label:str, id)->None:
-        self.map_treatment[label] = id
-
-    def add_tissue(self, label:str, id)->None:
-        self.map_tissue[label] = id
-
-    def add_mapping_dict(self, mapping: Dict[str, str], category: str):
-        """Batch update the map from LLM results"""
-        if category == 'treatment':
-            self.map_treatment.update(mapping)
-        elif category == 'tissue':
-            self.map_tissue.update(mapping)
-        elif category == 'medium':
-            self.map.update(mapping)
-
-    def save_map(self):
-        if self.path:
-            with open(self.path+'/map_treatment.json', 'w') as f:
-                json.dump(self.map_treatment, f, indent=4)
-            with open(self.path+'/map_tissue.json', 'w') as f:
-                json.dump(self.map_tissue, f, indent=4)
-            with open(self.path+'/map.json', 'w') as f:
-                json.dump(self.map, f, indent=4)
-
-    def add_mapping(self, og_sample: Dict, grounded_sample: Dict) -> None:
-        """
-        Updates the internal maps based on the difference between raw and grounded samples.
-        """
-        
-        # --- 1. Handle Tissue (One-to-One) ---
-        raw_tissue = og_sample.get('tissue')
-        # Normalize: Extractor might return list or string
-        if isinstance(raw_tissue, list): 
-            raw_tissue = raw_tissue[0] if raw_tissue else None
-            
-        ground_tissue = grounded_sample.get('tissue')
-        
-        # Only map if we have valid strings and they aren't identical
-        if raw_tissue and ground_tissue:
-            raw_str = str(raw_tissue)
-            ground_str = str(ground_tissue)
-            self.map_tissue[raw_str] = ground_str
-
-
-        # --- 2. Handle Medium (One-to-One) ---
-        raw_medium = og_sample.get('medium')
-        if isinstance(raw_medium, list): 
-            raw_medium = raw_medium[0] if raw_medium else None
-            
-        ground_medium = grounded_sample.get('medium')
-        
-        if raw_medium and ground_medium:
-            raw_str = str(raw_medium)
-            ground_str = str(ground_medium)
-            self.map[raw_str] = ground_str
-
-
-        # --- 3. Handle Treatments (Many-to-Many) ---
-        raw_treats = og_sample.get('treatment', [])
-        if isinstance(raw_treats, str): raw_treats = [raw_treats]
-        
-        ground_treats = grounded_sample.get('treatment', [])
-        if isinstance(ground_treats, str): ground_treats = [ground_treats]
-
-        # HEURISTIC: Safety Check
-        # We can only safely infer a direct mapping from the final output lists 
-        # if there is exactly ONE item.
-        # If there are multiple (e.g. Raw=["A", "B"] -> Ground=["Y", "Z"]), 
-        # we cannot know if A->Y or A->Z because lists might be re-sorted.
-        if len(raw_treats) == 1 and len(ground_treats) == 1:
-            r_val = str(raw_treats[0])
-            g_val = str(ground_treats[0])
-            
-            # Don't map specific terms to generic "Other" catch-alls permanently
-            if "Other" not in g_val:
-                self.map_treatment[r_val] = g_val
-        return
+from src.meta_data_processing.utils.labelMap import LabelMap
 
 class GroundingOptimizer:
     def __init__(self):
@@ -125,7 +18,6 @@ class GroundingOptimizer:
         try:
             self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
         except OSError:
-            from spacy.cli import download
             download("en_core_web_sm")
             self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
         
@@ -266,7 +158,7 @@ class GroundingOptimizer:
                 match = self.find_semantic_match(t, 'treatment', threshold=0.88)
                 if match:
                     local_cache['treatment'][t] = match
-                    label_map.add_treatment(t, match)
+                    # label_map.add_treatment(t, match)
                 else:
                     unknowns['treatment'].add(t)
 
@@ -281,7 +173,7 @@ class GroundingOptimizer:
                     match = self.find_semantic_match(raw_tissue, 'tissue', threshold=0.88)
                     if match:
                         local_cache['tissue'][raw_tissue] = match
-                        label_map.add_tissue(raw_tissue, match)
+                        # label_map.add_tissue(raw_tissue, match)
                     else:
                         unknowns['tissue'].add(raw_tissue)
 
@@ -296,7 +188,7 @@ class GroundingOptimizer:
                     match = self.find_semantic_match(raw_medium, 'medium', threshold=0.80)
                     if match:
                         local_cache['medium'][raw_medium] = match
-                        label_map.add(raw_medium, match)
+                        # label_map.add(raw_medium, match)
                     else:
                         # Medium usually doesn't go to LLM
                         local_cache['medium'][raw_medium] = "unspecified" 
@@ -310,7 +202,7 @@ class GroundingOptimizer:
                 results = None#llm_func_treat(list(unknowns['treatment']), study_context)
                 if results:
                     local_cache['treatment'].update(results)
-                    label_map.add_mapping_dict(results, 'treatment')
+                    # label_map.add_mapping_dict(results, 'treatment')
             except Exception as e:
                 print(f"    LLM Error (Treatment): {e}")
 
@@ -320,7 +212,7 @@ class GroundingOptimizer:
                 results = None#llm_func_tis(list(unknowns['tissue']), study_context)
                 if results:
                     local_cache['tissue'].update(results)
-                    label_map.add_mapping_dict(results, 'tissue')
+                    # label_map.add_mapping_dict(results, 'tissue')
             except Exception as e:
                 print(f"    LLM Error (Tissue): {e}")
 

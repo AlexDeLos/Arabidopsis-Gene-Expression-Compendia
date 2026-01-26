@@ -4,7 +4,7 @@ from collections import defaultdict
 
 # Import your ontologies
 from src.constants import TissueEnum, TreatmentEnum, MediumEnum
-from src.meta_data_processing.utils.classes import GroundingOptimizer
+from meta_data_processing.utils.groundingOptimizer import GroundingOptimizer
 class UniversalExtractor:
     def __init__(self):
         """
