@@ -78,7 +78,7 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
     # If the text contains these, we trust the text over the vector model.
     golden_keywords = []
     if target_category == 'treatment':
-        golden_keywords = ['stress', 'treatment', 'condition', 'exposed', 'drought', 'heat', 'salt', 'cold', 'mock', 'aba', 'nacl']
+        golden_keywords = ['stress', 'treatment', 'condition', 'exposed', 'drought', 'heat', 'salt', 'cold', 'mock', 'aba', 'nacl','dark','light']
     elif target_category == 'tissue':
         golden_keywords = ['tissue', 'organ', 'root', 'leaf', 'shoot', 'flower', 'seedling', 'rosette', 'guard cell']
     elif target_category == 'medium':
@@ -105,7 +105,7 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
             # Assign a "Perfect" score to ensure it floats to the top
             # We skip the contrast check entirely because "Root_Stress" matches both, 
             # and we don't want the Tissue vector to kill the Treatment candidate.
-            valid_raw_terms[term] = 0.99
+            valid_raw_terms[term] = 0.99#todo add a punishment term for lentgh of string???
             continue
 
         # --- Standard Vector Logic (For terms without keywords) ---
@@ -293,6 +293,7 @@ class UniversalExtractor:
         text_bits = []
         text_bits.append(str(metadata.get('title', '')))
         text_bits.append(str(metadata.get('source_name_ch1', '')))
+        text_bits.append(str(metadata.get('characteristics_ch1', '')))
         for key, val in metadata.items():
             if self._is_semantic_key_match(key, category):
                 if isinstance(val, list): text_bits.extend([str(v) for v in val])

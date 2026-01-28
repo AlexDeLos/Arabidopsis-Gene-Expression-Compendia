@@ -1,12 +1,11 @@
 import os
 import json
+import pandas as pd
 import subprocess
 import shutil
-import csv  # Added for samplesheet generation
 from Bio import Entrez
 from tqdm import tqdm
 import GEOparse
-from GEOparse.GEOTypes import GSE,GSM, GPL, GDS
 import sys
 module_dir = './'
 sys.path.append(module_dir)
@@ -54,6 +53,7 @@ class RNASeq_tracker:
             self.platform_counts[platform]['studies_with_raw'] += 1
             self.platform_counts[platform]['samples_with_raw'] += samples
 
+
     def mark_ignore(self, gse_id):
         self.states['ignore'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['processed'].discard(gse_id)
     def mark_downloaded(self, gse_id):
@@ -91,11 +91,10 @@ class RNASeq_tracker:
         return tracker
 
 class RNASeq_processor:
-    def __init__(self, threads=4, genome_index=None, gtf_annotation=None, profile='docker'):
+    def __init__(self, threads=4, genome_index=None, gtf_annotation=None):
         self.threads = str(threads)
-        # self.genome_index = genome_index # Path to HISAT2 index prefix
-        # self.gtf_annotation = gtf_annotation # Path to .gtf file
-        self.profile = profile
+        self.genome_index = genome_index # Path to HISAT2 index prefix
+        self.gtf_annotation = gtf_annotation # Path to .gtf file
         
         # Verify Tools
         required = ['fasterq-dump', 'trimmomatic', 'hisat2', 'samtools', 'featureCounts']
@@ -160,120 +159,176 @@ class RNASeq_processor:
                     # This will print the actual error from the tool (e.g. 'disk full' or 'not found')
                     raise e
 
-
-    def generate_samplesheet(self, gse_id, fastq_folder, output_csv):
+    def _find_adapter_file(self, filename="TruSeq3-PE.fa"):
         """
-        Scans the FASTQ folder and creates a valid nf-core samplesheet.csv.
-        Columns: sample,fastq_1,fastq_2,strandedness
+        Dynamically finds the absolute path of the adapter file 
+        within the current Conda environment.
         """
-        samples = {}
-        # Identify samples and pair files
-        files = [f for f in os.listdir(fastq_folder) if f.endswith('.fastq') or f.endswith('.fq') or f.endswith('.gz')]
+        conda_prefix = os.environ.get("CONDA_PREFIX")
         
-        for f in files:
-            path = os.path.join(fastq_folder, f)
-            # Basic parsing logic for SRR/ERR files
-            if '_1' in f:
-                srr = f.split('_1')[0]
-                samples.setdefault(srr, {'1': None, '2': None})['1'] = path
-            elif '_2' in f:
-                srr = f.split('_2')[0]
-                samples.setdefault(srr, {'1': None, '2': None})['2'] = path
-            else:
-                # Single end assumption if no _1/_2
-                srr = f.split('.')[0]
-                samples.setdefault(srr, {'1': None, '2': None})['1'] = path
+        if not conda_prefix:
+            raise EnvironmentError("CONDA_PREFIX not found. Are you running this inside a Conda environment?")
 
-        rows = []
-        for srr, paths in samples.items():
-            fq1 = paths['1']
-            fq2 = paths['2']
-            if not fq1: continue # Skip if no R1
-            
-            # Strandedness 'auto' lets Salmon/Nextflow decide
-            if fq2:
-                rows.append([srr, fq1, fq2, 'auto'])
-            else:
-                rows.append([srr, fq1, '', 'auto'])
-        
-        if not rows:
-            return False
-
-        with open(output_csv, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['sample', 'fastq_1', 'fastq_2', 'strandedness'])
-            writer.writerows(rows)
-            
-        return True
-
-    def run_pipeline_on_study(self, gse_id, fastq_folder, output_base_dir):
-        """
-        Runs nf-core/rnaseq using Kallisto-style pseudo-alignment (via Salmon).
-        """
-        study_out_dir = os.path.join(output_base_dir, gse_id)
-        os.makedirs(study_out_dir, exist_ok=True)
-        
-        # 1. Generate Samplesheet
-        samplesheet_path = os.path.join(study_out_dir, "samplesheet.csv")
-        has_samples = self.generate_samplesheet(gse_id, fastq_folder, samplesheet_path)
-        
-        if not has_samples:
-            print(f"No samples found for {gse_id}")
-            return False
-
-        print(f"Running nf-core/rnaseq (Salmon mode) on {gse_id}...")
-
-        # 2. Construct Nextflow Command
-        # Note: --pseudo_aligner salmon activates the fast "Kallisto-like" mode
-        # We skip alignment (STAR/HISAT2) and other QC to focus on counts.
-        cmd = [
-            "nextflow", "run", "nf-core/rnaseq",
-            "-profile", self.profile,
-            "--input", samplesheet_path,
-            "--outdir", study_out_dir,
-            "--pseudo_aligner", "kallisto",
-            "--skip_biotype_qc",
-            "--skip_stringtie",
-            "--skip_bigwig",
-            "--skip_fastqc",
-            "--skip_multiqc",
-            "--skip_dupradar",
-            "--skip_qualimap",
-            "--skip_rseqc",
-            "-resume"
-        ]
-        
+        # Construct the find command: find $CONDA_PREFIX -name filename
         try:
-            # Run Nextflow
-            subprocess.run(cmd, check=True)
+            # check_output runs the command and returns the stdout result as bytes
+            # text=True converts bytes to string
+            output = subprocess.check_output(
+                ["find", conda_prefix, "-name", filename], 
+                text=True
+            ).strip()
             
-            # Check if expected output exists
-            # Standard Salmon output in nf-core/rnaseq
-            expected_counts = os.path.join(study_out_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
-            if not os.path.exists(expected_counts):
-                # Fallback location depending on version
-                expected_counts = os.path.join(study_out_dir, "salmon", "salmon.merged.gene_counts.tsv")
-            
-            if os.path.exists(expected_counts):
-                print(f"Success: Count matrix found at {expected_counts}")
-                return True
-            else:
-                print(f"Pipeline finished but count matrix not found in standard paths.")
-                return False
+            # If multiple are found, 'output' might contain newlines. Take the first one.
+            if "\n" in output:
+                output = output.split("\n")[0]
                 
+            if not output or not os.path.exists(output):
+                raise FileNotFoundError(f"Could not find {filename} in {conda_prefix}")
+                
+            return output
+            
         except subprocess.CalledProcessError as e:
-            print(f"Nextflow Pipeline Error for {gse_id}: {e}")
-            return False
+            raise FileNotFoundError(f"Error searching for adapters: {e}")
+        
+    def run_pipeline_on_study(self, gse_id, fastq_folder, output_folder):
+        """
+        Executes the Bio-protocol PDF workflow:
+        Trim (Trimmomatic) -> Align (HISAT2) -> Sort (Samtools) -> Count (featureCounts)
+        """
+        print(f"Running pipeline on study {gse_id}")
+        if not os.path.exists(output_folder): os.makedirs(output_folder)
+        
+        # 1. Identify Samples
+        files = [f for f in os.listdir(fastq_folder) if f.endswith('.fastq')]
+        samples = {} # SRR -> [file1, file2]
+        for f in files:
+            srr = f.split('_')[0].split('.')[0]
+            if srr not in samples: samples[srr] = []
+            samples[srr].append(os.path.join(fastq_folder, f))
+            samples[srr].sort()
+
+        bam_files = []
+
+        # PROCESS PER SAMPLE (Trim & Align)
+        for srr, fqs in tqdm(samples.items(), desc=f"Aligning {gse_id}", leave=False):
+            
+            # Define Filenames
+            trimmed_1 = os.path.join(output_folder, f"{srr}_1_paired.fq")
+            trimmed_2 = os.path.join(output_folder, f"{srr}_2_paired.fq")
+            # Unpaired output (usually discarded in standard pipelines)
+            unpaired_1 = os.path.join(output_folder, f"{srr}_1_unpaired.fq") 
+            unpaired_2 = os.path.join(output_folder, f"{srr}_2_unpaired.fq")
+            
+            bam_out = os.path.join(output_folder, f"{srr}.sorted.bam")
+            
+            # --- STEP 1: TRIMMOMATIC (Cleaning) ---
+            # Command structure based on Bio-protocol PDF recommendations
+            adapter_path = self._find_adapter_file("TruSeq3-PE.fa")
+
+            # 2. Build the command
+            is_paired = len(fqs) == 2
+            
+            trim_cmd = ["trimmomatic", "PE" if is_paired else "SE", "-threads", self.threads]
+            
+            if is_paired:
+                trim_cmd.extend([fqs[0], fqs[1], trimmed_1, unpaired_1, trimmed_2, unpaired_2])
+            else:
+                trim_cmd.extend([fqs[0], trimmed_1]) 
+
+            # 3. Add the Clipping parameter using the dynamic path
+            # Note the f"..." string formatting
+            trim_cmd.extend([
+                f"ILLUMINACLIP:{adapter_path}:2:30:10", 
+                "LEADING:3", 
+                "TRAILING:3", 
+                "SLIDINGWINDOW:4:15", 
+                "MINLEN:36"
+            ])
+            
+            subprocess.run(trim_cmd, check=True, stderr=subprocess.DEVNULL)            
+            # --- STEP 2: HISAT2 (Alignment) ---
+            # We pipe HISAT2 directly to Samtools Sort to avoid huge SAM files
+            hisat_cmd = ["hisat2", "-p", str(self.threads), "-x", self.genome_index]
+
+            if is_paired:
+                hisat_cmd.extend(["-1", trimmed_1, "-2", trimmed_2])
+            else:
+                hisat_cmd.extend(["-U", trimmed_1])
+
+            # Pipeline: HISAT2 -> Samtools Sort
+            # Note: Added checks to ensure processes succeed
+            try:
+                with open(bam_out, "wb") as f_out: # Safer than letting samtools write directly if path has issues, but -o is usually fine
+                    # 1. Start HISAT2
+                    p1 = subprocess.Popen(hisat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # 2. Start Samtools Sort (Reading from HISAT2's stdout)
+                    # We pass the file path for -o, subprocess handles the space in 'bam_out'
+                    p2 = subprocess.Popen(["samtools", "sort", "-@", str(self.threads), "-o", bam_out], stdin=p1.stdout, stderr=subprocess.PIPE)
+                    
+                    # Allow p1 to receive a SIGPIPE if p2 exits
+                    p1.stdout.close()
+                    
+                    # Wait for finish
+                    output, errors = p2.communicate()
+                    
+                    if p2.returncode != 0:
+                        print(f"Samtools Error: {errors.decode()}")
+                        raise subprocess.CalledProcessError(p2.returncode, "samtools sort")
+                        
+            except Exception as e:
+                print(f"Alignment pipeline failed: {e}")
+            
+            bam_files.append(bam_out)
+
+            # CLEANUP INTERMEDIATE FASTQS (Crucial for space)
+            for f in [trimmed_1, trimmed_2, unpaired_1, unpaired_2]:
+                if os.path.exists(f): os.remove(f)
+
+        # --- STEP 3: FEATURECOUNTS (Quantification) ---
+        
+        
+        count_file = os.path.join(output_folder, f"{gse_id}_counts.txt")
+        
+        fc_cmd = [
+            "featureCounts", 
+            "-T", self.threads, 
+            "-a", self.gtf_annotation, 
+            "-o", count_file,
+            "-p", # Count fragments instead of reads (for paired-end)
+            "-t", "exon", # Feature type
+            "-g", "gene_id" # Attribute type
+        ]
+        fc_cmd.extend(bam_files)
+        
+        print(f"  - Counting features for {len(bam_files)} BAMs...")
+        subprocess.run(fc_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # CLEANUP BAMS (We only need the count matrix)
+        for b in bam_files:
+            if os.path.exists(b): os.remove(b)
+
+        # Clean up the featureCounts format to match Microarray style (GeneID index)
+        # featureCounts output has a header and metadata columns we don't need
+        df = pd.read_csv(count_file, sep="\t", comment="#")
+        # Keep Geneid and sample columns (samples start from col 7)
+        df = df.set_index("Geneid")
+        df = df.iloc[:, 5:] # Drop Chr, Start, End, Strand, Length
+        
+        # Rename columns (currently paths like 'folder/SRR123.sorted.bam') to just SRR
+        df.columns = [c.split('/')[-1].split('.')[0] for c in df.columns]
+        
+        final_csv = os.path.join(output_folder, f"{gse_id}_counts.csv")
+        df.to_csv(final_csv)
+        
+        # Remove original raw output
+        os.remove(count_file)
+        os.remove(count_file + ".summary")
+        
+        return True
     
-
-
-#outside functions
-
-def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str,output_dir:str, tracker:RNASeq_tracker, download_raw:bool=True, scan:bool=True,run_and_delete:bool=True):
-    """
-    Orchestrates the download and processing of RNA-Seq studies using nf-core/rnaseq.
-    """
-    #TODO: WE MIGHT NOT NEED THS ANYMORE
+def download_experiments_RNA_seq(gse_list,root_storage_dir ,output_dir, tracker:RNASeq_tracker, download_raw=True, scan=True,run_and_delete:bool=True):
+    
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     
@@ -300,11 +355,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
         try:
             # 1. Metadata
             try:
-                gse:GSM | GSE | GPL | GDS = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
-                if isinstance(gse,GSE):
-                    pass
-                else:
-                    raise ValueError('Not the correct type of ID')
+                gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
             except:
                 tracker.mark_ignore(gse_id); continue
 
@@ -338,34 +389,31 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                         tracker.mark_ignore(gse_id)
                         if os.path.exists(fastq_folder): shutil.rmtree(fastq_folder)
                         continue
-                if not os.path.exists(fastq_folder) or not os.listdir(fastq_folder):
-                    print(f"FASTQs not found for {gse_id}, skipping...")
-                    continue
 
-                # 3. Process with Nextflow
+                # B. Process (Trim -> Align -> Count)
                 if not tracker.is_processed(gse_id):
                     try:
                         success = processor.run_pipeline_on_study(gse_id, fastq_folder, results_folder)
                         
                         if success:
-                            # 4. Cleanup
+                            # C. DELETE FASTQS (Critical Step)
                             if run_and_delete:
-                                print(f"Cleaning raw FASTQs for {gse_id}...")
                                 if os.path.exists(fastq_folder): shutil.rmtree(fastq_folder)
-                                
+                                if os.path.exists(soft_path): os.remove(soft_path)
+                            
                             tracker.mark_processed(gse_id)
                             tracker.save_to_json(tracker_save_path)
                             valid_gse_ids.append(gse_id)
-                        else:
-                            tracker.mark_ignore(gse_id)
                             
                     except Exception as e:
                         tqdm.write(f"Pipeline Error {gse_id}: {e}")
+                        # Keep FASTQ in case of error for debugging, or uncomment next line to force clean
+                        # if os.path.exists(fastq_folder): shutil.rmtree(fastq_folder)
                         tracker.mark_ignore(gse_id)
                         continue
 
         except Exception as e:
-            print(f"General Error {gse_id}: {e}")
             tracker.mark_ignore(gse_id)
 
     return valid_gse_ids
+

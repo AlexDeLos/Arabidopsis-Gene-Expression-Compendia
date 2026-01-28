@@ -108,7 +108,7 @@ def check_metadata_for_counts(gse):
                 return True
     return False
 
-def check_metadata_for_sra(gse):
+def check_metadata_for_sra_boolean(gse):
     """
     Checks if the study has SRA (Sequence Read Archive) links.
     This indicates 'Raw Data' (FASTQ) is available in SRA, even if not in GEO.
@@ -128,3 +128,58 @@ def check_metadata_for_sra(gse):
             if "supplementary_file" in key and (".fastq" in val_str or ".fq" in val_str):
                 return True
     return False
+def check_metadata_for_sra(gse, output_dir):
+    """
+    Checks if a given GSE ID contains SRA (RNA-Seq) data.
+    Returns metadata dict if valid, False otherwise.
+    """
+    try:
+        # 1. Download/Parse Metadata
+        # We silence the output to keep the console clean
+        
+        valid_sra_samples = 0
+        detected_platform = "Unknown"
+        
+        # 2. Iterate through Samples (GSMs)
+        for gsm_name, gsm in gse.gsms.items():
+            is_sra = False
+            
+            # Check A: Relation field (Standard for SRA)
+            # Looks for "SRA: SRX..." or "BioProject: PRJNA..."
+            for relation in gsm.metadata.get('relation', []):
+                if "SRA:" in relation or "BioProject:" in relation:
+                    is_sra = True
+                    break
+            
+            # Check B: Explicit SRA field
+            if not is_sra and 'sra_id' in gsm.metadata:
+                is_sra = True
+
+            # Check C: Supplementary Check (Fallback)
+            if not is_sra:
+                for key, value in gsm.metadata.items():
+                    val_str = str(value).lower()
+                    if "supplementary_file" in key and (".fastq" in val_str or ".fq" in val_str):
+                        is_sra = True
+                        break
+            
+            if is_sra:
+                valid_sra_samples += 1
+                # Grab the platform (GPL) from the first valid sample
+                if detected_platform == "Unknown":
+                    # 'platform_id' is usually a list ["GPL1234"]
+                    detected_platform = gsm.metadata.get('platform_id', ['Unknown'])[0]
+
+        # 3. Return Logic
+        if valid_sra_samples > 0:
+            return {
+                'platform': detected_platform,
+                'n_samples': valid_sra_samples
+            }
+        else:
+            return False
+
+    except Exception as e:
+        # If GEOparse fails (network issue, deleted record), return False to skip
+        print(f"Metadata check failed for {gse}: {e}")
+        return False

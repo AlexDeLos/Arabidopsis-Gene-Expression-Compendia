@@ -7,7 +7,7 @@ sys.path.append(module_dir)
 
 # Import the processing function from your other file
 from src.data_importing.microarray_data_processing import Microarray_tracker,download_experiments_microarray
-from src.data_importing.RNA_seq_processing import RNASeq_tracker, download_experiments_RNA_seq
+from src.data_importing.RNA_seq_processing import RNASeq_tracker, download_experiments_RNA_seq_nf_core
 from src.data_importing.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
 from src.data_importing.download_helper import search_geo_accessions
 from src.constants import *
@@ -113,11 +113,11 @@ if __name__ == "__main__":
 
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
     RNA_tracker = RNASeq_tracker()
-    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=10, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=1, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     # for id in rnaseq_ids:
     #     download_processed_counts(id,root_storage_dir+'test_counts_rna/')
     RNA_tracker = RNASeq_tracker.load_from_json('./new_storage/RNA_seq_scan/RNA_tracker_stats.json')
-    download_experiments_RNA_seq(rnaseq_ids,root_storage_dir, f"{root_storage_dir}/rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=True)
+    download_experiments_RNA_seq_nf_core(rnaseq_ids,root_storage_dir, f"{root_storage_dir}/rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
     # RNA_tracker.print_summary()
     RNA_tracker.save_to_json(f"{root_storage_dir}/RNA_seq_scan/RNA_tracker_stats.json")
     plot_tracker_results_RNA(f"{root_storage_dir}/RNA_seq_scan/RNA_tracker_stats.json",output_dir=f'{root_storage_dir}/RNA_seq_scan')

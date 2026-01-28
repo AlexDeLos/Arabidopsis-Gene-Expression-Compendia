@@ -56,8 +56,8 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
             
         # 2. Check if already done
         output_file = os.path.join(saving_path, f"{study_id}.json")
-        if os.path.exists(output_file):
-            continue
+        # if os.path.exists(output_file):
+        #     continue
 
         study_path = os.path.join(in_folder, study_id)
         raw_samples = []
@@ -142,7 +142,7 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
 
 
 if __name__ == '__main__':
-    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH)#'GSE5622',
+    condense_labels(in_folder='new_storage/processed_microarray_data/',saving_path=LABELS_PATH,Studies=['GSE9728'])#'GSE5622',
 
 
     labels_1 = load_labels_study(LABELS_PATH)
