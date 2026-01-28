@@ -186,15 +186,16 @@ class RNASeq_processor:
 
         rows = []
         for srr, paths in samples.items():
-            fq1 = paths['1']
+            unique_sample_name = f"{gse_id}_{srr}"
+            fq1 = paths['1']    
             fq2 = paths['2']
             if not fq1: continue # Skip if no R1
             
             # Strandedness 'auto' lets Salmon/Nextflow decide
             if fq2:
-                rows.append([srr, fq1, fq2, 'auto'])
+                rows.append([unique_sample_name, fq1, fq2, 'auto'])
             else:
-                rows.append([srr, fq1, '', 'auto'])
+                rows.append([unique_sample_name, fq1, '', 'auto'])
         
         if not rows:
             return False
