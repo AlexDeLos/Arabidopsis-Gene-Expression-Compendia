@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
     RNA_tracker = RNASeq_tracker()
-    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=1, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=10, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     tracker_loc = f"{root_storage_dir}/rnaseq_data/RNA_tracker_stats.json"
     # for id in rnaseq_ids:
     
