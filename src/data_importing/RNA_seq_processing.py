@@ -138,26 +138,26 @@ class RNASeq_processor:
         # --- FIX 1: Point to the correct binary name ---
         # Was: .../bin/sratools.3.0.10
         # Now: .../bin/fasterq-dump
-        fasterq_path = '/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/fasterq-dump'
-        # FASTERQ_PATH = "/tudelft.net/staff-umbrella/AT GE Datasets/sratoolkit.3.0.10-ubuntu64/bin/fasterq-dump"
+        # 1. Point to the symlink and expand the '~' to your full home directory path
+        fasterq_path = os.path.expanduser("~/fasterq-dump")
+
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
                 # Check existence
                 if any(f.startswith(srr) for f in os.listdir(output_folder)): continue
                 
+                # 2. Use the new path variable
                 if CLUSTER_RUN:
                     cmd = [fasterq_path, "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
                 else:
+                    # If running locally (not on cluster), you likely have it installed globally
                     cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
                 
-                # --- FIX 2: Remove DEVNULL so you can see errors in the log ---
-                # stdout=subprocess.DEVNULL is fine, but keep stderr visible
                 try:
                     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
                 except subprocess.CalledProcessError as e:
                     print(f"\nCRITICAL ERROR downloading {srr}:")
                     print(f"Command tried: {' '.join(cmd)}")
-                    # This will print the actual error from the tool (e.g. 'disk full' or 'not found')
                     raise e
 
 
