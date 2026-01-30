@@ -6,13 +6,13 @@
 
 #SBATCH --mail-type=END
 
-#SBATCH --time=32:00:00
+#SBATCH --time=8:00:00
 
 #SBATCH --ntasks=1
 
 #SBATCH --cpus-per-task=8
 
-#SBATCH --mem=100G
+#SBATCH --mem=90G
 
 #SBATCH --gres=gpu
 
