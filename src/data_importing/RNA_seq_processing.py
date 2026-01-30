@@ -124,42 +124,65 @@ class RNASeq_processor:
             return []
 
     def download_fastq(self, gse, output_folder, temp_files):
-        """Downloads FASTQ files."""
+        """
+        Downloads using fasterq-dump (fast) and immediately compresses using pigz (fast).
+        """
         if not os.path.exists(output_folder): os.makedirs(output_folder)
-        
-        # Ensure temp directory exists (Critical for fasterq-dump)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
 
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
-        
-        # Filter empty
         sra_map = {k:v for k,v in sra_map.items() if v}
         
-        # --- FIX 1: Point to the correct binary name ---
-        # Was: .../bin/sratools.3.0.10
-        # Now: .../bin/fasterq-dump
-        # 1. Point to the symlink and expand the '~' to your full home directory path
         fasterq_path = os.path.expanduser("~/fasterq-dump")
+
+        # Check if 'pigz' is installed (It is standard on most clusters)
+        # If not, fallback to 'gzip'
+        zip_cmd = "pigz" if shutil.which("pigz") else "gzip"
+        print(f"Using {zip_cmd} for compression.")
 
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
-                # Check existence
-                if any(f.startswith(srr) for f in os.listdir(output_folder)): continue
-                
-                # 2. Use the new path variable
+                # 1. Check if the ZIPPED file already exists
+                # We look for files starting with SRR... and ending with .gz
+                existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+                if existing_gz: 
+                    continue
+
+                # 2. Run fasterq-dump (Produces raw .fastq)
                 if CLUSTER_RUN:
                     cmd = [fasterq_path, "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
                 else:
-                    # If running locally (not on cluster), you likely have it installed globally
                     cmd = ["fasterq-dump", "--split-files", "--outdir", output_folder, "--temp", temp_files , "--threads", self.threads, srr]
                 
                 try:
                     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                    
+                    # 3. Compression Step
+                    # Find the raw FASTQ files for this SRR
+                    raw_fastqs = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.fastq')]
+                    
+                    if not raw_fastqs:
+                        print(f"Warning: Download ran but no .fastq files found for {srr}")
+                        continue
+
+                    for fq in raw_fastqs:
+                        full_path = os.path.join(output_folder, fq)
+                        try:
+                            # -f forces overwrite, -p 8 uses 8 cores (if using pigz)
+                            # We adjust args based on which tool we found
+                            if zip_cmd == "pigz":
+                                subprocess.run(["pigz", "-f", "-p", self.threads, full_path], check=True)
+                            else:
+                                subprocess.run(["gzip", "-f", full_path], check=True)
+                                
+                        except subprocess.CalledProcessError:
+                            print(f"Error compressing {fq}")
+                            # Optional: cleanup failed zip?
+                            
                 except subprocess.CalledProcessError as e:
                     print(f"\nCRITICAL ERROR downloading {srr}:")
                     print(f"Command tried: {' '.join(cmd)}")
                     raise e
-
 
     def generate_samplesheet(self, gse_id, fastq_folder, output_csv):
         """
@@ -213,6 +236,22 @@ class RNASeq_processor:
         """
         study_out_dir = os.path.join(output_base_dir, gse_id)
         os.makedirs(study_out_dir, exist_ok=True)
+
+        print(f"Checking for uncompressed FASTQs in {fastq_folder}...")
+        files_to_compress = [f for f in os.listdir(fastq_folder) if f.endswith('.fastq') or f.endswith('.fq')]
+        
+        if files_to_compress:
+            print(f"Compressing {len(files_to_compress)} files (Required for nf-core)...")
+            # Use parallel gzip (pigz) if available, else gzip
+            # We use standard gzip here for compatibility
+            for f in tqdm(files_to_compress, desc="Gzipping"):
+                full_path = os.path.join(fastq_folder, f)
+                try:
+                    subprocess.run(["gzip", "-f", full_path], check=True)
+                except subprocess.CalledProcessError:
+                    print(f"Failed to compress {f}")
+                    return False
+                
         
         # 1. Generate Samplesheet
         samplesheet_path = os.path.join(study_out_dir, "samplesheet.csv")
@@ -233,9 +272,11 @@ class RNASeq_processor:
             "--input", samplesheet_path,
             "--outdir", study_out_dir,
             "--pseudo_aligner", "kallisto",
+            "--skip_alignment",
             "--skip_biotype_qc",
             "--skip_stringtie",
             "--skip_bigwig",
+            "--genome", "TAIR10",
             "--skip_fastqc",
             "--skip_multiqc",
             "--skip_dupradar",
@@ -278,7 +319,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     
-    processor = RNASeq_processor(threads=8, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF)
+    processor = RNASeq_processor(threads=1, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF)
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
     
     if not os.path.exists(output_dir): os.makedirs(output_dir)

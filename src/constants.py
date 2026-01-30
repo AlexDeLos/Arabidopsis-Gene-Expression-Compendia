@@ -5,7 +5,7 @@ CLUSTER_RUN = True
 EXPERIMENT_NAME = '3.2'
 
 if CLUSTER_RUN:
-    STORAGE_DIR ='/tudelft.net/staff-umbrella/AT GE Datasets/'
+    STORAGE_DIR ='/tudelft.net/staff-umbrella/GeneExpressionStorage/'
 else:
     STORAGE_DIR = f'./new_storage/'
 
@@ -16,7 +16,7 @@ METADATA_OUTPUT_DIR = f'{DATA_IMPORT_DIR}metadata_new/'
 PROCESSED_DATA_FOLDER = f'new_storage/final_data/'
 
 if CLUSTER_RUN:
-    PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/AT GE Datasets/final_data/'
+    PROCESSED_DATA_FOLDER = '/tudelft.net/staff-umbrella/GeneExpressionStorage/final_data/'
 
 COMBINED_DATA_OUTPUT_FILE = f'{PROCESSED_DATA_FOLDER}RMA_Microarray_Combined.csv'
 CORE_DATA_DIR = './data/core_data/'
