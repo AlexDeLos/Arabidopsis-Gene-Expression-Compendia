@@ -269,6 +269,7 @@ class RNASeq_processor:
         cmd = [
             "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
+            "-revision", "3.14.0",
             "--input", samplesheet_path,
             "--outdir", study_out_dir,
             "--pseudo_aligner", "kallisto",
