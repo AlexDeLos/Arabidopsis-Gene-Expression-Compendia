@@ -18,16 +18,15 @@ unset NXF_JAVA_HOME
 conda activate download_env
 
 # --- STORAGE CONFIGURATION ---
-export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache"
-mkdir -p "$BIG_STORAGE"
 
-# 1. Store FINAL images on the Big Storage (To save space)
-export SINGULARITY_CACHEDIR="$BIG_STORAGE"
-export APPTAINER_CACHEDIR="$BIG_STORAGE"
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE"
+# 1. Define where the FINAL .sif images will live (Network Storage - Persistent)
+export NXF_SINGULARITY_CACHEDIR="/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# 2. Do the BUILD/EXTRACT work on the Local Node (To fix permission errors)
-# --- CRITICAL CHANGE HERE: Use $TMPDIR, not $BIG_STORAGE ---
+# 2. Define where the TEMPORARY layers/blobs are downloaded (Local Node - Disposable)
+# We force this to $TMPDIR so that 'chmod' operations happen on the local disk, avoiding the error.
+export SINGULARITY_CACHEDIR="$TMPDIR"
+export APPTAINER_CACHEDIR="$TMPDIR"
 export SINGULARITY_TMPDIR="$TMPDIR"
 export APPTAINER_TMPDIR="$TMPDIR"
 
