@@ -17,14 +17,19 @@ unset NXF_JAVA_HOME
 
 conda activate download_env
 
-# --- STORAGE CONFIGURATION ---
+# --- 1. CLEANUP (Critical) ---
+# Delete the locked/corrupt cache from your previous failed runs
+rm -rf /tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache/cache
 
-# 1. Define where the FINAL .sif images will live (Network Storage - Persistent)
+# --- 2. STORAGE CONFIGURATION (The Fix) ---
+
+# A. Where the FINAL .sif images will be saved (Network Storage - Persistent)
 export NXF_SINGULARITY_CACHEDIR="/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# 2. Define where the TEMPORARY layers/blobs are downloaded (Local Node - Disposable)
-# We force this to $TMPDIR so that 'chmod' operations happen on the local disk, avoiding the error.
+# B. Where the raw layers are downloaded and built (Local Node - Disposable)
+# We point ALL "temp" and "cache" variables to the local node's scratch space.
+# This ensures 'chmod' happens locally where it is allowed.
 export SINGULARITY_CACHEDIR="$TMPDIR"
 export APPTAINER_CACHEDIR="$TMPDIR"
 export SINGULARITY_TMPDIR="$TMPDIR"
