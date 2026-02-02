@@ -4,8 +4,8 @@
 #SBATCH --qos=medium
 #SBATCH --time=8:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=90G
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=32G
 # source ~/.bashrc
 
 module use /opt/insy/modulefiles

@@ -234,7 +234,7 @@ class RNASeq_processor:
         """
         Runs nf-core/rnaseq using Kallisto-style pseudo-alignment (via Salmon).
         """
-        study_out_dir = os.path.join(output_base_dir, gse_id)
+        study_out_dir = output_base_dir #os.path.join(output_base_dir, gse_id)
         os.makedirs(study_out_dir, exist_ok=True)
 
         print(f"Checking for uncompressed FASTQs in {fastq_folder}...")
