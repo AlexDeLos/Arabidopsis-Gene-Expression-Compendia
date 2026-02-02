@@ -14,8 +14,9 @@ from src.data_importing.download_helper import check_metadata_for_sra_boolean
 from src.constants import *
 
 class RNASeq_tracker:
-    def __init__(self) -> None:
+    def __init__(self,location) -> None:
         self.platform_counts: dict = {}
+        self.loc = location
         self.totals: dict = {
             'total_studies_seen': 0, 'total_sample_seen': 0,
             'total_samples_used': 0, 'total_studies_used': 0
@@ -56,15 +57,18 @@ class RNASeq_tracker:
 
     def mark_ignore(self, gse_id):
         self.states['ignore'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['processed'].discard(gse_id)
+        self.save_to_json(self.loc)
     def mark_downloaded(self, gse_id):
         self.states['downloaded'].add(gse_id); self.states['ignore'].discard(gse_id); self.states['processed'].discard(gse_id)
+        self.save_to_json(self.loc)
     def mark_processed(self, gse_id):
         self.states['processed'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['ignore'].discard(gse_id)
+        self.save_to_json(self.loc)
     def is_ignored(self, gse_id): return gse_id in self.states['ignore']
     def is_processed(self, gse_id): return gse_id in self.states['processed']
     def is_downloaded(self, gse_id): return gse_id in self.states['downloaded']
 
-    def save_to_json(self, filename="rnaseq_tracker_results.json"):
+    def save_to_json(self, filename):
         serializable_states = {k: list(v) for k, v in self.states.items()}
         data = {
             "totals": self.totals, 
