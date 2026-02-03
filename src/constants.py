@@ -1,7 +1,7 @@
 import os
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
-CLUSTER_RUN = GLOBAL_DIR_PATH =='/home/alex/Documents/GitHub/Dataset_fusion_Microarray/'
+CLUSTER_RUN = GLOBAL_DIR_PATH !='/home/alex/Documents/GitHub/Dataset_fusion_Microarray/'
 EXPERIMENT_NAME = '4.0'
 
 if CLUSTER_RUN:
