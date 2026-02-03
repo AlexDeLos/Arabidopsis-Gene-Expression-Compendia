@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
 
     file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
-    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=50, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids: list[str] = search_geo_accessions(RNASEQ_QUERY, max_results=50, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     RNA_tracker = FileTracker(file_tracker_loc)
     if args.array_index is not None:
         # --- PARALLEL MODE ---
@@ -130,7 +130,7 @@ if __name__ == "__main__":
             target_id = rnaseq_ids[args.array_index]
             print(f"--- ARRAY JOB: Processing ID #{args.array_index}: {target_id} ---")
             # Process ONLY this one ID
-            download_experiments_RNA_seq_nf_core(target_id,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
+            download_experiments_RNA_seq_nf_core([target_id],root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
         else:
             print(f"Index {args.array_index} is out of bounds for {len(rnaseq_ids)} studies.")
     else:
