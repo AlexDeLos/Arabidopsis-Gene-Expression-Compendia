@@ -8,9 +8,9 @@ import sys
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
-from src.data_importing.helpers import get_first_indexs, apply_KNN_impute,box_plot
+from data_importing.helpers.helpers import get_first_indexs, apply_KNN_impute,box_plot
 from src.data_analisys.utils.cluster_exploration_utils import *
-from src.data_importing.helpers import find_and_plot_missing_genes
+from data_importing.helpers.helpers import find_and_plot_missing_genes
 
 def get_study(sample: str):
     return sample.split('_')[0]

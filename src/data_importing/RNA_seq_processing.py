@@ -1,5 +1,4 @@
 import os
-import json
 import subprocess
 import shutil
 import csv  # Added for samplesheet generation
@@ -10,89 +9,12 @@ from GEOparse.GEOTypes import GSE,GSM, GPL, GDS
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.data_importing.download_helper import check_metadata_for_sra_boolean
+from src.data_importing.helpers.download_helper import check_metadata_for_sra_boolean
 from src.constants import *
+from src.data_importing.helpers.file_tracker import FileTracker
 
-class RNASeq_tracker:
-    def __init__(self,location) -> None:
-        self.platform_counts: dict = {}
-        self.loc = location
-        self.totals: dict = {
-            'total_studies_seen': 0, 'total_sample_seen': 0,
-            'total_samples_used': 0, 'total_studies_used': 0
-        }
-        self.states: dict = {'ignore': set(), 'downloaded': set(), 'processed': set()}
-        
-        # NEW STRUCTURE: { "Platform_Name": { "12": 5, "24": 1 } }
-        self.sample_distribution_per_platform: dict = {}
 
-    def update_platform(self, platform: str, samples: int, has_raw: bool):
-        if platform not in self.platform_counts:
-            self.platform_counts[platform] = {
-                'studies_seen': 0, 'samples_seen': 0,
-                'studies_with_raw': 0, 'samples_with_raw': 0
-            }
-        
-        # --- NEW: Update Per-Platform Histogram ---
-        if platform not in self.sample_distribution_per_platform:
-            self.sample_distribution_per_platform[platform] = {}
-            
-        # Use string key for JSON compatibility
-        s_str = str(samples)
-        if s_str in self.sample_distribution_per_platform[platform]:
-            self.sample_distribution_per_platform[platform][s_str] += 1
-        else:
-            self.sample_distribution_per_platform[platform][s_str] = 1
 
-        # Update Totals
-        self.totals['total_studies_seen'] += 1
-        self.totals['total_sample_seen'] += samples
-        self.platform_counts[platform]['studies_seen'] += 1
-        self.platform_counts[platform]['samples_seen'] += samples
-        if has_raw:
-            self.totals['total_studies_used'] += 1
-            self.totals['total_samples_used'] += samples
-            self.platform_counts[platform]['studies_with_raw'] += 1
-            self.platform_counts[platform]['samples_with_raw'] += samples
-
-    def mark_ignore(self, gse_id):
-        self.states['ignore'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['processed'].discard(gse_id)
-        self.save_to_json(self.loc)
-    def mark_downloaded(self, gse_id):
-        self.states['downloaded'].add(gse_id); self.states['ignore'].discard(gse_id); self.states['processed'].discard(gse_id)
-        self.save_to_json(self.loc)
-    def mark_processed(self, gse_id):
-        self.states['processed'].add(gse_id); self.states['downloaded'].discard(gse_id); self.states['ignore'].discard(gse_id)
-        self.save_to_json(self.loc)
-    def is_ignored(self, gse_id): return gse_id in self.states['ignore']
-    def is_processed(self, gse_id): return gse_id in self.states['processed']
-    def is_downloaded(self, gse_id): return gse_id in self.states['downloaded']
-
-    def save_to_json(self, filename):
-        serializable_states = {k: list(v) for k, v in self.states.items()}
-        data = {
-            "totals": self.totals, 
-            "platform_counts": self.platform_counts, 
-            "states": serializable_states,
-            "sample_distribution_per_platform": self.sample_distribution_per_platform
-        }
-        with open(filename, 'w') as f: json.dump(data, f, indent=4)
-    
-    @classmethod
-    def load_from_json(cls, filename="rnaseq_tracker_results.json"):
-        if not os.path.exists(filename): return cls()
-        with open(filename, 'r') as f: data = json.load(f)
-        tracker = cls()
-        tracker.totals = data.get("totals", tracker.totals)
-        tracker.platform_counts = data.get("platform_counts", {})
-        
-        loaded_states = data.get("states", {})
-        tracker.states = {k: set(loaded_states.get(k, [])) for k in ['ignore', 'downloaded', 'processed']}
-        
-        # Load the new per-platform distribution
-        tracker.sample_distribution_per_platform = data.get("sample_distribution_per_platform", {})
-        
-        return tracker
 
 class RNASeq_processor:
     def __init__(self, threads=4, genome_index=None, gtf_annotation=None, profile='docker'):
@@ -316,7 +238,7 @@ class RNASeq_processor:
 
 #outside functions
 
-def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str,output_dir:str, tracker:RNASeq_tracker, download_raw:bool=True, scan:bool=True,run_and_delete:bool=True):
+def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str,output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True,run_and_delete:bool=True):
     """
     Orchestrates the download and processing of RNA-Seq studies using nf-core/rnaseq.
     """
@@ -356,12 +278,12 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                 tracker.mark_ignore(gse_id); continue
 
             # Tracker Update
-            platform = gse.metadata.get('platform_id', ['Unknown'])[0]
-            num_samples = len(gse.gsms)
+            # platform = gse.metadata.get('platform_id', ['Unknown'])[0]
+            # num_samples = len(gse.gsms)
             has_sra = check_metadata_for_sra_boolean(gse) # Ensure this helper is imported
             
             if scan:
-                tracker.update_platform(platform, num_samples, has_raw=has_sra)
+                # tracker.update_platform(platform, num_samples, has_raw=has_sra)
                 if has_sra: valid_gse_ids.append(gse_id)
                 if os.path.exists(soft_path): os.remove(soft_path)
                 continue
@@ -372,12 +294,12 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
 
             # 2. Pipeline Execution
             if download_raw:
-                tracker.update_platform(platform, num_samples, has_raw=True)
+                # tracker.update_platform(platform, num_samples, has_raw=True)
                 
                 # A. Download
                 if not tracker.is_downloaded(gse_id):
                     try:
-                        processor.download_fastq(gse, fastq_folder,cluster_temp)
+                        # processor.download_fastq(gse, fastq_folder,cluster_temp)
                         tracker.mark_downloaded(gse_id)
                         tracker.save_to_json(tracker_save_path)
                     except Exception as e:
@@ -387,13 +309,14 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                         continue
                 if not os.path.exists(fastq_folder) or not os.listdir(fastq_folder):
                     print(f"FASTQs not found for {gse_id}, skipping...")
-                    continue
+                    tracker.mark_ignore(gse_id)
+                    # continue
 
                 # 3. Process with Nextflow
                 if not tracker.is_processed(gse_id):
                     try:
-                        success = processor.run_pipeline_on_study(gse_id, fastq_folder, results_folder)
-                        
+                        # success = processor.run_pipeline_on_study(gse_id, fastq_folder, results_folder)
+                        success = True
                         if success:
                             # 4. Cleanup
                             if run_and_delete:

@@ -12,8 +12,8 @@ module_dir = './'
 sys.path.append(module_dir)
 
 # Import the processing function from your other file
-from src.data_importing.helpers import process_metadata
-from src.data_importing.download_helper import clean_files,check_metadata_for_cel, count_cel_files
+from src.data_importing.helpers.helpers import process_metadata
+from src.data_importing.helpers.download_helper import clean_files,check_metadata_for_cel, count_cel_files
 
 class Microarray_tracker:
     def __init__(self) -> None:

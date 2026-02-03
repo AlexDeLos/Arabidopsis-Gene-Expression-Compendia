@@ -9,7 +9,7 @@ import GEOparse
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.data_importing.download_helper import check_metadata_for_sra_boolean
+from data_importing.helpers.download_helper import check_metadata_for_sra_boolean
 from src.constants import *
 
 class RNASeq_tracker:

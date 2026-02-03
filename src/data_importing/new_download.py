@@ -7,10 +7,13 @@ sys.path.append(module_dir)
 
 # Import the processing function from your other file
 from src.data_importing.microarray_data_processing import Microarray_tracker,download_experiments_microarray
-from src.data_importing.RNA_seq_processing import RNASeq_tracker, download_experiments_RNA_seq_nf_core
-from src.data_importing.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
-from src.data_importing.download_helper import search_geo_accessions
+from src.data_importing.RNA_seq_processing import download_experiments_RNA_seq_nf_core
+from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
+from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.constants import *
+
+from src.data_importing.helpers.file_tracker import FileTracker
+from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
 # --- CONFIGURATION ---
 Entrez.email = "your.email@example.com" 
@@ -77,6 +80,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
+    parser.add_argument("--array_index", type=int, default=None, help="SLURM Array Task ID")
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -112,16 +116,25 @@ if __name__ == "__main__":
 
 
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
-    tracker_loc = f"{root_storage_dir}rnaseq_data/RNA_tracker_stats_temp.json"
-    RNA_tracker = RNASeq_tracker(tracker_loc)
+    # tracker_loc = f"{root_storage_dir}rnaseq_data/RNA_tracker_stats_temp.json"
+    # RNA_tracker = RNASeq_tracker.load_from_json(tracker_loc)
+
+
+    file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
     rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=10, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
-    # rnaseq_ids = ['GSE317084']
-    # for id in rnaseq_ids:
+    RNA_tracker = FileTracker(file_tracker_loc)
+    if args.array_index is not None:
+        # --- PARALLEL MODE ---
+        # Python checks if the index is valid
+        if 0 <= args.array_index < len(rnaseq_ids):
+            target_id = rnaseq_ids[args.array_index]
+            print(f"--- ARRAY JOB: Processing ID #{args.array_index}: {target_id} ---")
+            # Process ONLY this one ID
+            download_experiments_RNA_seq_nf_core(target_id,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
+        else:
+            print(f"Index {args.array_index} is out of bounds for {len(rnaseq_ids)} studies.")
+    else:
+        # --- SERIAL MODE (Original behavior) ---
+        download_experiments_RNA_seq_nf_core(rnaseq_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
     
-    #     download_processed_counts(id,root_storage_dir+'test_counts_rna/')
-    RNA_tracker = RNASeq_tracker.load_from_json(tracker_loc)
-    download_experiments_RNA_seq_nf_core(rnaseq_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
-    # RNA_tracker.print_summary()
-    RNA_tracker.save_to_json(tracker_loc)
-    # plot_tracker_results_RNA(tracker_loc,output_dir=f'{root_storage_dir}/RNA_seq_scan')
     print("\nDone!")

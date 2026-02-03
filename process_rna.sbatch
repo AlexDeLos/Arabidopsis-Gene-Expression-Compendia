@@ -2,10 +2,11 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
-#SBATCH --mem=32G
+#SBATCH --mem=75G
+#SBATCH --array=0-49%5
 # source ~/.bashrc
 
 module use /opt/insy/modulefiles
@@ -31,6 +32,6 @@ export APPTAINER_CACHEDIR="$TMPDIR"
 rm -rf ./work
 
 echo "Work Directory is set to: $NXF_WORK"
-python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/'
+python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' --array_index $SLURM_ARRAY_TASK_ID
 
 echo "done with main.py"
