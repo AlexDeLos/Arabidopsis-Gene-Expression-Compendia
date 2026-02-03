@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
 
     file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
-    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=10, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids = search_geo_accessions(RNASEQ_QUERY, max_results=50, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     RNA_tracker = FileTracker(file_tracker_loc)
     if args.array_index is not None:
         # --- PARALLEL MODE ---
