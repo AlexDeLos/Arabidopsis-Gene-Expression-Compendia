@@ -299,7 +299,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                 # A. Download
                 if not tracker.is_downloaded(gse_id):
                     try:
-                        # processor.download_fastq(gse, fastq_folder,cluster_temp)
+                        processor.download_fastq(gse, fastq_folder,cluster_temp)
                         tracker.mark_downloaded(gse_id)
                         tracker.save_to_json(tracker_save_path)
                     except Exception as e:
@@ -310,12 +310,12 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                 if not os.path.exists(fastq_folder) or not os.listdir(fastq_folder):
                     print(f"FASTQs not found for {gse_id}, skipping...")
                     tracker.mark_ignore(gse_id)
-                    # continue
+                    continue
 
                 # 3. Process with Nextflow
                 if not tracker.is_processed(gse_id):
                     try:
-                        # success = processor.run_pipeline_on_study(gse_id, fastq_folder, results_folder)
+                        success = processor.run_pipeline_on_study(gse_id, fastq_folder, results_folder)
                         success = True
                         if success:
                             # 4. Cleanup
