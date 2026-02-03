@@ -118,10 +118,12 @@ if __name__ == "__main__":
     # print("\n--- STARTING RNA-SEQ SEARCH ---")
     # tracker_loc = f"{root_storage_dir}rnaseq_data/RNA_tracker_stats_temp.json"
     # RNA_tracker = RNASeq_tracker.load_from_json(tracker_loc)
-
+    def read_id(path):
+        with open(path, 'r') as f:
+                return (f.read().strip())
 
     file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
-    rnaseq_ids: list[str] = search_geo_accessions(RNASEQ_QUERY, max_results=50, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt')) # search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     RNA_tracker = FileTracker(file_tracker_loc)
     if args.array_index is not None:
         # --- PARALLEL MODE ---
