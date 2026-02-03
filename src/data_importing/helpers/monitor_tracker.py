@@ -145,7 +145,7 @@ def monitor_tracker(tracker_dir):
 if __name__ == "__main__":
     # CONFIGURATION
     # Update this path to match your actual tracker storage location
-    ROOT_STORAGE = "./new_storage/"
-    TRACKER_DIR = os.path.join(ROOT_STORAGE, "rnaseq_data/file_tracker")
+
+    TRACKER_DIR = os.path.join(STORAGE_DIR, "rnaseq_data/file_tracker")
     
     monitor_tracker(TRACKER_DIR)
