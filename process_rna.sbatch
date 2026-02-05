@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=75G
-#SBATCH --array=0-49%5
+#SBATCH --array=50-100%5
 # source ~/.bashrc
 
 module use /opt/insy/modulefiles

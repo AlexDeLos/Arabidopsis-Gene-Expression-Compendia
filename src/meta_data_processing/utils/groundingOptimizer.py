@@ -228,7 +228,7 @@ class GroundingOptimizer:
             for t in raw_treats:
                 val = local_cache['treatment'].get(t, "Other stress")
                 final_treats.append(val)
-            new_sample['treatment'] = sorted(list(set(final_treats)))
+            new_sample['treatment'] = sorted(final_treats)
             
             # Tissue
             raw_tissue = sample.get('tissue')

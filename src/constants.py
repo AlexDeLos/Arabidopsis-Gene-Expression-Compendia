@@ -1,4 +1,5 @@
 import os
+from typing import Dict
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
 CLUSTER_RUN = GLOBAL_DIR_PATH !='/home/alex/Documents/GitHub/Dataset_fusion_Microarray/'
@@ -109,3 +110,10 @@ VALID_TISSUES = [t.value for t in TissueEnum]
 VALID_TREATMENTS = [t.value for t in TreatmentEnum]
 VALID_TREATMENTS_ALT= [t.value for t in TreatmentEnum_alt]
 VALID_MEDIUMS = [m.value for m in MediumEnum]
+
+
+GOLDEN_KEYWORDS: Dict = {
+    'treatment': ['stress', 'treatment', 'condition', 'exposed','mock','temperature'] + VALID_TREATMENTS+VALID_TREATMENTS_ALT,
+    'tissue':['tissue', 'organ', 'cell'] + VALID_TISSUES,
+    'medium':['medium'] + VALID_MEDIUMS
+}
