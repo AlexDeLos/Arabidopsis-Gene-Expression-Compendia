@@ -2,12 +2,14 @@ import spacy
 from typing import List, Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer, util
 from spacy.cli import download
+import torch
+import re
 
 # Import constants directly
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.constants import VALID_TREATMENTS, VALID_TISSUES, VALID_MEDIUMS, VALID_TREATMENTS_ALT
+from src.constants import VALID_TREATMENTS, VALID_TISSUES, VALID_MEDIUMS, VALID_TREATMENTS_ALT,EXPLICIT_KEYWORDS
 from src.meta_data_processing.utils.labelMap import LabelMap
 
 class GroundingOptimizer:
@@ -21,14 +23,12 @@ class GroundingOptimizer:
             download("en_core_web_sm")
             self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
         
-        self.valid_treatments = VALID_TREATMENTS
-        self.valid_treatments_alt = VALID_TREATMENTS_ALT 
-        self.valid_tissues = VALID_TISSUES
-        self.valid_mediums = VALID_MEDIUMS
+        self.valid_treatments = EXPLICIT_KEYWORDS['treatment']
+        self.valid_tissues = EXPLICIT_KEYWORDS['tissue']
+        self.valid_mediums = EXPLICIT_KEYWORDS['medium']
 
         print("Pre-computing ontology vectors...")
         self.treatment_vecs = self._encode_ontology(self.valid_treatments)
-        self.treatment_vecs_alt = self._encode_ontology(self.valid_treatments_alt)
         self.tissue_vecs = self._encode_ontology(self.valid_tissues)
         self.medium_vecs = self._encode_ontology(self.valid_mediums)
         
@@ -39,7 +39,7 @@ class GroundingOptimizer:
 
     def _encode_ontology(self, terms: list):
         lemmatized_terms = [self._lemmatize(t) for t in terms]
-        return self.model.encode(lemmatized_terms)
+        return self.model.encode(lemmatized_terms,device='cuda')
 
     # --- NEW: Heuristic Logic ---
     def _check_heuristics(self, text: str, category: str) -> Optional[str]:
@@ -73,11 +73,6 @@ class GroundingOptimizer:
                     return tissue
                     
         elif category == 'treatment':
-            # Check Alternative names (e.g. "Drought")
-            # If "Drought" is in text, return "Drought Stress"
-            for i, alt_name in enumerate(self.valid_treatments_alt):
-                if alt_name.lower() in text_lower:
-                    return self.valid_treatments[i] # Return the canonical name
             
             # Special manual overrides
             if 'mock' in text_lower or 'control' in text_lower:
@@ -90,20 +85,93 @@ class GroundingOptimizer:
                 
         return None
 
-    def find_semantic_match(self, raw_term: str, category: str, threshold: float = 0.88) -> Optional[str]:
-        if not raw_term: return None
+    def find_semantic_match(self, string: str, words: List[str], threshold: float) -> Tuple[bool, float, Optional[str], Optional[str]]:
+        """
+        Checks if any n-gram in the input string is semantically similar to any word in the golden list.
         
-        # 1. Try Heuristics First (Fast & fixes "phloem tissue")
-        heuristic_match = self._check_heuristics(raw_term, category)
-        if heuristic_match:
-            return heuristic_match
+        Args:
+            string (str): The raw metadata string to check.
+            words (List[str]): The list of golden keywords.
+            threshold (float): Cosine similarity threshold (0.0 to 1.0).
+
+        Returns:
+            Tuple[bool, float, str, str]: (is_match, score, found_candidate, matched_keyword)
+        """
+        if not string or not words:
+            return False, 0.0, None, None
+
+        # 1. OPTIMIZATION: Exact string match (O(1))
+        # Checks if the word exists literally in the string before doing math.
+        string_lower = string.lower()
+        for w in words:
+            w_lower = w.lower()
+            if w_lower in string_lower:
+                return True, 1.0, w_lower, w 
+
+        # 2. OPTIMIZATION: Use Cached Vectors
+        # We check if the 'words' list passed in is EXACTLY one of our pre-computed lists
+        # using the 'is' operator (pointer comparison).
+        target_embeddings = None
         
-        # 2. Try Vector Search (Smart but needs similarity)
-        label, score = self.get_best_match_with_score(raw_term, category)
-        if score > threshold:
-            return label
+        if words is self.valid_treatments:
+            target_embeddings = self.treatment_vecs
+        elif words is self.valid_tissues:
+            target_embeddings = self.tissue_vecs
+        elif words is self.valid_mediums:
+            target_embeddings = self.medium_vecs
+        else:
+            # Fallback: Encode the list on the fly if it's a custom list
+            # We use the model's current device (CPU or CUDA) automatically
+            target_embeddings = self.model.encode(words, convert_to_tensor=True)
+
+        # 3. Generate Candidates (N-grams)
+        # We look for 1-grams, 2-grams, and 3-grams
+        tokens = re.findall(r'\b\w+\b', string_lower)
+        if not tokens:
+            return False, 0.0, None, None
+
+        candidates = set(tokens)
+        
+        # Add 2-grams (e.g., "osmotic stress")
+        if len(tokens) > 1:
+            candidates.update([" ".join(tokens[i:i+2]) for i in range(len(tokens)-1)])
+        
+        # Add 3-grams (e.g., "root apical meristem")
+        if len(tokens) > 2:
+            candidates.update([" ".join(tokens[i:i+3]) for i in range(len(tokens)-2)])
+        
+        candidates_list = list(candidates)
+        
+        # 4. Encode Candidates
+        candidate_embeddings = self.model.encode(candidates_list, convert_to_tensor=True)
+
+        # 5. Compute Cosine Similarity Matrix
+        # Shape: [num_candidates x num_golden_words]
+        # We ensure both tensors are on the same device for the calculation
+        if target_embeddings.device != candidate_embeddings.device:
+            target_embeddings = target_embeddings.to(candidate_embeddings.device)
+
+        cosine_scores = util.cos_sim(candidate_embeddings, target_embeddings)
+
+        # 6. Find Best Match Indices
+        # Get the single highest value in the entire matrix
+        max_score = torch.max(cosine_scores).item()
+        
+        if max_score > threshold:
+            # Find the coordinates (row, col) of the max value
+            max_idx = torch.argmax(cosine_scores)
             
-        return None
+            # Deconstruct the flat index into row (candidate) and col (golden word)
+            num_cols = cosine_scores.shape[1]
+            row_idx = (max_idx // num_cols).item()
+            col_idx = (max_idx % num_cols).item()
+            
+            best_candidate = candidates_list[row_idx]
+            best_keyword = words[col_idx]
+            
+            return True, max_score, best_candidate, best_keyword
+
+        return False, max_score, None, None
 
     def get_best_match_with_score(self, text: str, category: str) -> Tuple[Optional[str], float]:
         # (Same implementation as previous step)
@@ -117,12 +185,6 @@ class GroundingOptimizer:
             best_idx = scores.argmax().item()
             best_score = scores[best_idx].item()
             best_label = self.valid_treatments[best_idx]
-
-            scores_alt = util.cos_sim(query_vec, self.treatment_vecs_alt)[0]
-            idx_alt = scores_alt.argmax().item()
-            if scores_alt[idx_alt].item() > best_score:
-                best_score = scores_alt[idx_alt].item()
-                best_label = self.valid_treatments[idx_alt]
             return best_label, best_score
 
         elif category == 'tissue':
@@ -242,212 +304,4 @@ class GroundingOptimizer:
 
             final_samples.append(new_sample)
 
-        return final_samples
-
-## OLD
-class GroundingOptimizer_old:
-    def __init__(self):
-        print("Initializing GroundingOptimizer...")
-        
-        # 1. LOAD MODEL
-        print("Loading BioLORD model...")
-        self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
-        
-        # 2. LOAD LEMMATIZER
-        try:
-            self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
-        except OSError:
-            print("Downloading spacy model...")
-            download("en_core_web_sm")
-            self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
-        
-        # 3. LOAD ONTOLOGIES
-        self.valid_treatments = VALID_TREATMENTS
-        # New: Alternative treatments list (e.g. "Drought" vs "Drought Stress")
-        self.valid_treatments_alt = VALID_TREATMENTS_ALT 
-        
-        self.valid_tissues = VALID_TISSUES
-        self.valid_mediums = VALID_MEDIUMS
-
-        # 4. PRE-COMPUTE VECTORS
-        print("Pre-computing ontology vectors...")
-        self.treatment_ontology_vectors = self._encode_ontology(self.valid_treatments)
-        # New: Encode the alternative list
-        self.treatment_ontology_vectors_alt = self._encode_ontology(self.valid_treatments_alt)
-        
-        self.tissue_ontology_vectors = self._encode_ontology(self.valid_tissues)
-        self.medium_ontology_vectors = self._encode_ontology(self.valid_mediums)
-        
-    def _lemmatize(self, text: str) -> str:
-        if not text: return ""
-        doc = self.nlp(str(text).lower())
-        return " ".join([token.lemma_ for token in doc])
-
-    def _encode_ontology(self, terms: list):
-        lemmatized_terms = [self._lemmatize(t) for t in terms]
-        return self.model.encode(lemmatized_terms)
-
-    def find_semantic_match(self, raw_term: str, ontology: str, threshold: float = 0.85) -> Optional[str]:
-        if not raw_term:
-            return None
-        label, score = self.get_best_match_with_score(raw_term, ontology)
-        if score > threshold:
-            return label
-        return None
-
-    def get_best_match_with_score(self, text: str, category: str) -> Tuple[Optional[str], float]:
-        """
-        Calculates similarity of text against the specified ontology category.
-        For Treatments, checks both Canonical and Alt lists and returns the best score.
-        """
-        if not text:
-            return None, 0.0
-
-        # CRITICAL: Lemmatize input before embedding
-        clean_text = self._lemmatize(text)
-        query_vec = self.model.encode([clean_text])[0]
-
-        best_label = None
-        best_score = 0.0
-
-        if category == 'treatment':
-            # Check 1: Canonical List ("Drought Stress")
-            scores_main = util.cos_sim(query_vec, self.treatment_ontology_vectors)[0]
-            idx_main = scores_main.argmax().item()
-            score_main = scores_main[idx_main].item()
-
-            # Check 2: Alternative List ("Drought")
-            scores_alt = util.cos_sim(query_vec, self.treatment_ontology_vectors_alt)[0]
-            idx_alt = scores_alt.argmax().item()
-            score_alt = scores_alt[idx_alt].item()
-
-            # Logic: Compare scores, but map index back to Canonical list
-            # We assume indices are perfectly aligned (i.e., VALID_TREATMENTS[0] corresponds to VALID_TREATMENTS_ALT[0])
-            if score_alt > score_main:
-                best_score = score_alt
-                # Return the canonical name even if the match was found in the alt list
-                best_label = self.valid_treatments[idx_alt]
-            else:
-                best_score = score_main
-                best_label = self.valid_treatments[idx_main]
-
-            return best_label, best_score
-
-        elif category == 'tissue':
-            vectors = self.tissue_ontology_vectors
-            labels = self.valid_tissues
-        elif category == 'medium':
-            vectors = self.medium_ontology_vectors
-            labels = self.valid_mediums
-        else:
-            return None, 0.0
-
-        # Standard processing for Tissue/Medium
-        scores = util.cos_sim(query_vec, vectors)[0]
-        best_idx = scores.argmax().item()
-        best_score = scores[best_idx].item()
-        best_label = labels[best_idx]
-        
-        return best_label, best_score
-
-    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], llm_func, llm_func_tis, label_map_obj: LabelMap):
-        # (Same implementation as provided previously)
-        mapping_cache_tissue = {}
-        mapping_cache_treatment = {}
-        mapping_cache_medium = {}
-        
-        unknown_treatments_for_llm = set()
-        unknown_tissues_for_llm = set()
-
-        def resolve_term(term, specific_map, ontology_type):
-            if not term: return None
-            if specific_map and term in specific_map:
-                return specific_map[term]
-            match = self.find_semantic_match(term, ontology_type, threshold=0.85)
-            if match:
-                return match
-            return None
-
-        # --- STEP 1: Process Fields locally ---
-        for sample in extracted_samples:
-            # A. Process TREATMENT
-            treatments = sample.get('treatment', [])
-            if isinstance(treatments, str): treatments = [treatments]
-            
-            for t in treatments:
-                if t in mapping_cache_treatment: continue 
-                resolved = resolve_term(t, label_map_obj.map_treatment, 'treatment')
-                if resolved:
-                    mapping_cache_treatment[t] = resolved
-                else:
-                    unknown_treatments_for_llm.add(t)
-
-            # B. Process TISSUE
-            tissue = sample.get('tissue')
-            if isinstance(tissue, list): tissue = tissue[0] if tissue else "unknown"
-            if tissue and tissue not in mapping_cache_tissue:
-                resolved_tis = resolve_term(tissue, label_map_obj.map_tissue, 'tissue')
-                if resolved_tis:
-                    mapping_cache_tissue[tissue] = resolved_tis
-                else:
-                    unknown_tissues_for_llm.add(tissue)
-
-            # C. Process MEDIUM
-            medium = sample.get('medium')
-            if isinstance(medium, list): medium = medium[0] if medium else "unspecified"
-            if medium and medium not in mapping_cache_medium:
-                resolved_m = resolve_term(medium, label_map_obj.map, 'medium')
-                if resolved_m:
-                    mapping_cache_medium[medium] = resolved_m
-                else:
-                    mapping_cache_medium[medium] = medium
-
-        # --- STEP 2: Batch LLM Calls (Fallback) ---
-        data_study = data.get('study_metadata', {})
-        
-        if unknown_treatments_for_llm:
-            print(f"Querying LLM for {len(unknown_treatments_for_llm)} unique treatments...")
-            try:
-                llm_result = llm_func(list(unknown_treatments_for_llm), data_study)
-                if llm_result: mapping_cache_treatment.update(llm_result)
-            except Exception as e:
-                print(f"LLM Batch Error (Treatments): {e}")
-        
-        if unknown_tissues_for_llm:
-            print(f"Querying LLM for {len(unknown_tissues_for_llm)} unique tissues...")
-            try:
-                llm_result = llm_func_tis(list(unknown_tissues_for_llm), data_study)
-                if llm_result: mapping_cache_tissue.update(llm_result)
-            except Exception as e:
-                print(f"LLM Batch Error (Tissues): {e}")
-
-        # --- STEP 3: Apply mappings and Return ---
-        final_samples = []
-        for sample in extracted_samples:
-            new_sample = sample.copy()
-            
-            # Treatments
-            new_treatments = []
-            raw_treats = sample.get('treatment', [])
-            if isinstance(raw_treats, str): raw_treats = [raw_treats]
-            
-            for t in raw_treats:
-                val = mapping_cache_treatment.get(t)
-                if not val and t in unknown_treatments_for_llm:
-                    val = "Other stress"
-                new_treatments.append(val if val else "Other stress")
-            new_sample['treatment'] = sorted(list(set(new_treatments)))
-            
-            # Tissue
-            raw_tissue = sample.get('tissue')
-            if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else "unknown"
-            new_sample['tissue'] = mapping_cache_tissue.get(raw_tissue, "unknown")
-                
-            # Medium
-            raw_medium = sample.get('medium')
-            if isinstance(raw_medium, list): raw_medium = raw_medium[0] if raw_medium else "unspecified"
-            new_sample['medium'] = mapping_cache_medium.get(raw_medium, "unspecified")
-
-            final_samples.append(new_sample)
-            
         return final_samples

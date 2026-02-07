@@ -6,14 +6,31 @@ from src.meta_data_processing.utils.groundingOptimizer import GroundingOptimizer
 import sys
 from typing import Tuple, List, Optional
 import torch
+import numpy
 from sentence_transformers import util
 
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
 
+def complex_split(text: str) -> list[str]:
+    """
+    Splits text by [, ], :, ,, and ' characters.
+    Removes empty strings and trims whitespace.
+    """
+    if not text:
+        return []
+    
+    # Regex explanation:
+    # [ ... ]  -> Character set (match any one of these)
+    # \[ \]    -> Matches literal brackets
+    # : , '    -> Matches colon, comma, single quote
+    # +        -> Matches one or more of them together (e.g., "'], " becomes one split)
+    pattern = r"[\[\]:;.,']+"
+    
+    # Split, strip whitespace, and filter out empty strings
+    return [token.strip() for token in re.split(pattern, text) if token.strip()]
 
-# In src/universal_extractor.py
 def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, category: str) -> List[str]:
     """
     Selects the single best term from a list of overlapping candidates 
@@ -96,12 +113,14 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
         # Length check (relaxed for short codes like "ABA")
         if len(term) < 2: 
             continue
+        if len(term_lower.split(' '))>10:
+            continue
 
         # B. VIP Pass (Golden Keywords)
         # If the term literally contains "stress" or "root", we KEEP it immediately.
         # We assume explicit text > vector semantics for composite strings like "Root_Stress_12h"
         # has_golden_keyword = any(kw in term_lower for kw in golden_keywords)
-        has_golden_keyword, socre,_,_= has_golden_key_word(term_lower,GOLDEN_KEYWORDS[target_category],optimizer,0.8)
+        has_golden_keyword, socre,_,_= has_golden_key_word(term_lower,EXPLICIT_KEYWORDS[target_category],optimizer,0.8)
         if has_golden_keyword:
             # Assign a "Perfect" score to ensure it floats to the top
             # We skip the contrast check entirely because "Root_Stress" matches both, 
@@ -162,7 +181,7 @@ def has_golden_key_word(string: str, words: list[str], optimized: GroundingOptim
     elif words is optimized.valid_mediums:
         target_embeddings = optimized.medium_vecs
     else:
-        target_embeddings = optimized.model.encode(words, convert_to_tensor=True)
+        target_embeddings = optimized.model.encode(words, convert_to_tensor=True,device='cuda')
 
     # 3. Generate Candidates (N-grams)
     tokens = re.findall(r'\b\w+\b', string_lower)
@@ -179,10 +198,10 @@ def has_golden_key_word(string: str, words: list[str], optimized: GroundingOptim
 
     # 4. Encode Candidates
     candidate_embeddings = optimized.model.encode(candidates, convert_to_tensor=True)
-
+    
     # 5. Compute Cosine Similarity Matrix
     # Shape: [num_candidates x num_golden_words]
-    cosine_scores = util.cos_sim(candidate_embeddings, target_embeddings)
+    cosine_scores = util.cos_sim(candidate_embeddings.cpu(), target_embeddings)
 
     # 6. Find Best Match Indices
     # Get the single highest value in the entire matrix
@@ -214,19 +233,18 @@ class UniversalExtractor:
 
         # Words that are used to mark the diferent labels
         self.trigger_keywords = {
-            'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition'],
-            'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part'],
-            'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']
+            'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition']+ EXPLICIT_KEYWORDS['treatment'],
+            'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part']+ EXPLICIT_KEYWORDS['tissue'],
+            'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']+ EXPLICIT_KEYWORDS['medium']
         }
-        anchors = self.trigger_keywords
+        
         self.explicit_vectors = {
             cat: self.optimizer.model.encode(terms) 
-            for cat, terms in anchors.items()
+            for cat, terms in AREA_KEYWORDS.items()
         }
         self.last_study:str = ''
         self.extracted_data_study = {"tissue": [], "treatment": [], "medium": []}
 
-    # ... (extract, _is_semantic_key_match, _check_for_explicit_columns, _get_priority_text, _get_broad_text methods remain the same) ...
     def extract(self, sample_metadata: Dict, study_metadata: Dict,study_id:str) -> Dict:
         # (This remains unchanged from previous version)
         if study_id != self.last_study:
@@ -259,8 +277,9 @@ class UniversalExtractor:
             scanned_broad = self._scan_semantic_match(broad_text, category=category)
             final_hits = condense_candidates(scanned_broad,self.optimizer,category)
             extracted_data[category] = list(set(final_hits))
+
             #here we learned from the study, hence it sahould be constant across samples
-            self.extracted_data_study[category] = list(set(final_hits))
+            # self.extracted_data_study[category] = list(set(final_hits))#TODO: re add this?
         self.last_study = study_id
         return extracted_data
 
@@ -273,12 +292,12 @@ class UniversalExtractor:
         text_bits.append(str(metadata.get('growth_protocol_ch1', '')))
         text_bits.append(str(metadata.get('characteristics', '')))
         for key, val in metadata.items():
-            if self._is_semantic_key_match(key, category):
+            if self._is_key_semantic_match(key, category):
                 if isinstance(val, list): text_bits.extend([str(v) for v in val])
                 else: text_bits.append(str(val))
         return " ".join(text_bits)
     
-    def _is_semantic_key_match(self, key_text: str, category: str, threshold: float = 0.85) -> bool:
+    def _is_key_semantic_match(self, key_text: str, category: str, threshold: float = 0.85) -> bool:
         # (Keep existing)
         clean_key = key_text.replace('_', ' ').replace('-', ' ')
         clean_key = re.sub(r'(?<!^)(?=[A-Z])', ' ', clean_key).lower().strip()
@@ -295,9 +314,6 @@ class UniversalExtractor:
         3. Golden Keyword Scan: Value is 'seedlings grown in MS media' -> detect 'MS media' using has_golden_key_word.
         """
         found_values = set()
-
-        golden_words = GOLDEN_KEYWORDS[category]
-
         # 2. Define Generic Keys that might contain hidden info
         # These keys don't match the category name, but often contain the data.
         generic_container_keys = {
@@ -311,7 +327,7 @@ class UniversalExtractor:
             
             # --- STRATEGY A: Explicit Column Name Match ---
             # If the column is literally named "treatment" or "stress", trust the value.
-            if self._is_semantic_key_match(key, category, threshold=0.85):
+            if self._is_key_semantic_match(key, category, threshold=0.85):
                 found_values.update([str(v) for v in raw_values])
                 continue # We found the explicit column, no need to parse it as generic
 
@@ -328,57 +344,12 @@ class UniversalExtractor:
                         sub_val = parts[1].strip().strip('"').strip("'")
                         
                         # Check if the sub-key (left of colon) matches our category
-                        if self._is_semantic_key_match(sub_key, category, threshold=0.90):
+                        if self._is_key_semantic_match(sub_key, category, threshold=0.90):
                             if len(sub_val) > 1:
                                 found_values.add(sub_val)
                                 continue # Found it via key match
 
-                    # Case B2: "Golden Keyword" Search (The TODO fix)
-                    # The line isn't "Key: Value", or the Key didn't match.
-                    # e.g. item_str = "seedlings treated with osmotic stress"
-                    # We scan the *content* to see if it contains a known keyword.
-                    elif golden_words and False:
-                        # TODO: instead of checking this I should check if some columns have the name tissue, treatment, medium...
-                        # We use a high threshold (0.90) because we are scanning raw text
-                        # and don't want false positives from generic sentences.
-                        if has_golden_key_word(item_str, golden_words, self.optimizer, th=0.90)[0]:
-                            # If the sentence contains a golden word, we treat the whole 
-                            # sentence (or the relevant part) as a candidate.
-                            # Note: The extraction logic later will clean this up.
-                            found_values.add(item_str)
-
         return list(found_values)
-
-    def _check_for_explicit_columns_old(self, metadata: Dict, category: str) -> List[str]:
-        # (Keep existing)
-        found_values = []
-        for key, val in metadata.items():
-            if self._is_semantic_key_match(key, category, threshold=0.85):
-                if isinstance(val, list): found_values.extend([str(v) for v in val])
-                else: found_values.append(str(val))
-        # in order of priority
-        target_list_keys = ['source_name_ch1','characteristics_ch1', 'characteristics','growth_protocol_ch1']
-        for list_key in target_list_keys:
-            #TODO: check if there is a better way of checking of the columns has terms relating to the wanted catagory
-            # using has_golden_key_word
-            if list_key in metadata:
-                val_list = metadata[list_key]
-                if not isinstance(val_list, list): val_list = [str(val_list)]
-                for item in val_list:
-                    #TODO: we need a better way of splitting and detecting here
-                    item_str = str(item)
-                    if ':' in item_str:#TODO: why is this here????
-                        parts = item_str.split(':', 1)
-                        key_part = parts[0].strip()
-                        val_part = parts[1].strip()
-                        if self._is_semantic_key_match(key_part, category):
-                            val_part = val_part.strip('"').strip("'")
-                            if len(val_part) > 1:
-                                found_values.append(val_part)
-                    else:
-                        if self._is_semantic_key_match(item_str, category):
-                            found_values.append(item_str)
-        return list(set(found_values))
 
     def _get_broad_text(self, sample_meta: Dict, study_meta: Dict) -> str:
         # (Keep existing)
@@ -430,16 +401,16 @@ class UniversalExtractor:
         return candidates
 
     
+    
     def _scan_semantic_match(self, text: str, category: str) -> List[str]:
-        
         # --- PHASE A: Keyword-Anchored Context Scan ---
         # 1. Extract candidates based on regex triggers (e.g., "treatment: [X]")
-        raw_context_candidates = self._scan_for_keyword_contexts(text, category)
-        
+        # raw_context_candidates = self._scan_for_keyword_contexts(text, category)
+        raw_context_candidates_alt:set = set(complex_split(text))
         # 2. Process/Filter Context candidates immediately
         # We assume these are higher fidelity, so we check them in isolation.
         valid_context_tuples = extract_valid_candidates(
-            candidate_set=raw_context_candidates,
+            candidate_set=raw_context_candidates_alt,
             optimizer=self.optimizer,
             target_category=category,
             top_k=5 # Keep top 5 specific context hits
