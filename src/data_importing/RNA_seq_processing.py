@@ -278,12 +278,12 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str],root_storage_dir:str
                 tracker.mark_ignore(gse_id); continue
 
             # Tracker Update
-            # platform = gse.metadata.get('platform_id', ['Unknown'])[0]
-            # num_samples = len(gse.gsms)
+            platform = gse.metadata.get('platform_id', ['Unknown'])[0]
+            num_samples = len(gse.gsms)
             has_sra = check_metadata_for_sra_boolean(gse) # Ensure this helper is imported
             
             if scan:
-                # tracker.update_platform(platform, num_samples, has_raw=has_sra)
+                tracker.save_study_metadata(gse_id,platform, num_samples, has_raw=has_sra)
                 if has_sra: valid_gse_ids.append(gse_id)
                 if os.path.exists(soft_path): os.remove(soft_path)
                 continue

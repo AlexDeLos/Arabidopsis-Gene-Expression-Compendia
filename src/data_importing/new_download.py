@@ -13,13 +13,15 @@ from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.constants import *
 
 from src.data_importing.helpers.file_tracker import FileTracker
-from src.data_importing.helpers.scan_tracker import RNASeq_tracker
+# from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
 # --- CONFIGURATION ---
 Entrez.email = "your.email@example.com" 
 
-MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'
+MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'#cel"[Supplementary Files]'
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
+STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
+FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
 import GEOparse
 import os
 import requests
@@ -123,7 +125,8 @@ if __name__ == "__main__":
                 return (f.read().strip())
 
     file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
-    rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt')) # search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
+    query_ids = search_geo_accessions(FULL_QUERY_RNA, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     RNA_tracker = FileTracker(file_tracker_loc)
     if args.array_index is not None:
         # --- PARALLEL MODE ---
@@ -137,6 +140,12 @@ if __name__ == "__main__":
             print(f"Index {args.array_index} is out of bounds for {len(rnaseq_ids)} studies.")
     else:
         # --- SERIAL MODE (Original behavior) ---
-        download_experiments_RNA_seq_nf_core(rnaseq_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
-    
+        pass
+        # download_experiments_RNA_seq_nf_core(query_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=False, scan=True,run_and_delete=True)
+    # 1. Get the data
+
+    # 2. Make the plots
+    RNA_tracker.get_pie_charts()
+    RNA_tracker.produce_study_dis()
+    RNA_tracker.produce_platform_dis()
     print("\nDone!")

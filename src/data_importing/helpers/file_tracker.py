@@ -1,6 +1,9 @@
 import os
 import json
 import sys
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 module_dir = './'
 sys.path.append(module_dir)
 
@@ -16,16 +19,6 @@ class FileTracker:
         self.tracker_dir = root_dir
         os.makedirs(self.tracker_dir, exist_ok=True)
         
-        # Compatibility: These are technically useless in parallel jobs, 
-        # but we keep them so your code doesn't crash if it tries to access them.
-        self.totals = {
-            'total_studies_seen': 0, 'total_sample_seen': 0,
-            'total_samples_used': 0, 'total_studies_used': 0
-        }
-        # In parallel mode, we cannot maintain 'states' sets in memory.
-        # We will generate them dynamically if requested.
-        self.states = {'ignore': set(), 'downloaded': set(), 'processed': set()}
-
     def _get_file_path(self, gse_id, ext=".txt"):
         return os.path.join(self.tracker_dir, f"{gse_id}{ext}")
 
@@ -70,16 +63,6 @@ class FileTracker:
     def mark_error(self, gse_id):
         self.set_status(gse_id, STATUS_ERROR)
 
-    # --- ADAPTED PLATFORM LOGIC (The Distributed Fix) ---
-    def update_platform(self, platform, num_samples, has_raw):
-        """
-        COMPATIBILITY METHOD:
-        In the old tracker, this updated a global dictionary.
-        In the new tracker, this does nothing because memory is not shared.
-        
-        To actually save this data, use 'save_study_metadata' below.
-        """
-        pass 
 
     def save_study_metadata(self, gse_id, platform, num_samples, has_raw):
         """
@@ -112,46 +95,128 @@ class FileTracker:
             # Fallback: use the parent directory of the json file
             return cls(os.path.dirname(path) + "/tracker_status")
 
-    # --- REPORTING (Replaces the old 'totals' dict) ---
     def generate_detailed_report(self):
         """
-        Scans all files to rebuild the 'platform_counts' and 'totals'
-        dictionaries that used to exist in memory.
+        Scans all metadata files and returns a Pandas DataFrame containing
+        the status and metadata for every study.
         """
-        stats = {
-            "statuses": {0:0, 1:0, 2:0, 3:0, 4:0},
-            "platforms": {},
-            "total_samples": 0
-        }
-        
-        print("Generating report from distributed files...")
+        data = []
         files = os.listdir(self.tracker_dir)
         
-        for f in files:
-            full_path = os.path.join(self.tracker_dir, f)
-            
-            # Count Statuses (.txt files)
-            if f.endswith(".txt"):
+        for filename in files:
+            if filename.endswith("_meta.json"):
                 try:
-                    with open(full_path, 'r') as file:
-                        code = int(file.read().strip())
-                        stats["statuses"][code] += 1
-                except: pass
-            
-            # Aggregate Metadata (.json files)
-            elif f.endswith("_meta.json"):
-                try:
-                    with open(full_path, 'r') as file:
-                        data = json.load(file)
-                        plat = data.get("platform", "Unknown")
-                        samps = data.get("num_samples", 0)
-                        
-                        if plat not in stats["platforms"]:
-                            stats["platforms"][plat] = {"studies": 0, "samples": 0}
-                        
-                        stats["platforms"][plat]["studies"] += 1
-                        stats["platforms"][plat]["samples"] += samps
-                        stats["total_samples"] += samps
-                except: pass
-                
-        return stats
+                    filepath = os.path.join(self.tracker_dir, filename)
+                    with open(filepath, 'r') as f:
+                        entry = json.load(f)
+                        # Ensure keys exist
+                        data.append({
+                            'gse_id': entry.get('gse_id', 'Unknown'),
+                            'platform': entry.get('platform', 'Unknown'),
+                            'num_samples': entry.get('num_samples', 0),
+                            'has_raw': entry.get('has_raw', False)
+                        })
+                except Exception as e:
+                    pass # Skip corrupted files
+
+        return pd.DataFrame(data)
+
+# ---------------- PLOTTING METHODS ----------------
+
+    def get_pie_charts(self, save_path="tracker_pie_charts.svg"):
+        """
+        Function 1: Produces pie charts showing SRA (Raw Data) availability
+        for both Studies and Samples.
+        """
+        df = self.generate_detailed_report()
+        if df.empty: return
+
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+        
+        # --- Chart 1: Studies with SRA ---
+        study_counts = df['has_raw'].value_counts()
+        labels = [f"Raw Data ({study_counts.get(True, 0)})", f"No Raw ({study_counts.get(False, 0)})"]
+        axes[0].pie(study_counts, labels=labels, autopct='%1.1f%%', colors=['#66b3ff', '#ff9999'], startangle=90)
+        axes[0].set_title("Studies with SRA Available")
+
+        # --- Chart 2: Samples with SRA ---
+        # Group by availability and sum the number of samples
+        sample_counts = df.groupby('has_raw')['num_samples'].sum()
+        labels_samp = [f"Raw Data ({sample_counts.get(True, 0)})", f"No Raw ({sample_counts.get(False, 0)})"]
+        axes[1].pie(sample_counts, labels=labels_samp, autopct='%1.1f%%', colors=['#99ff99', '#ffcc99'], startangle=90)
+        axes[1].set_title("Samples with SRA Available")
+
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Pie charts saved to {save_path}")
+
+    def produce_study_dis(self, save_path="tracker_histogram_top6_stacked.svg"):
+        """
+        Function 2: Stacked Histogram of Study Sizes (Samples per Study),
+        split by the Top 6 Platforms.
+        """
+        df = self.generate_detailed_report()
+        if df.empty: return
+
+        # 1. Identify Top 6 Platforms
+        top_platforms = df['platform'].value_counts().nlargest(6).index.tolist()
+        
+        # 2. Filter Data (Keep only top 6, label others as 'Other' if you wanted, 
+        # but usually we just show the top 6 for cleanliness)
+        df_filtered = df[df['platform'].isin(top_platforms)]
+
+        # 3. Create Plot
+        plt.figure(figsize=(12, 6))
+        sns.histplot(
+            data=df_filtered,
+            x="num_samples",
+            hue="platform",
+            multiple="stack",
+            palette="viridis",
+            edgecolor=".3",
+            linewidth=.5,
+            binwidth=1, # Adjust based on your data spread (e.g., 1 for small studies, 5 for larger)
+            log_scale=(False, False) # Set (True, False) if x-axis is too wide
+        )
+        
+        plt.title("Distribution of Samples per Study (Top 6 Platforms)")
+        plt.xlabel("Number of Samples in Study")
+        plt.ylabel("Number of Studies")
+        plt.xlim(0, 50) # Limit x-axis to focus on common study sizes (optional)
+        
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Study distribution saved to {save_path}")
+
+    def produce_platform_dis(self, save_path="tracker_platforms.svg"):
+        """
+        Function 3: Bar plot showing Total Samples per Platform.
+        """
+        df = self.generate_detailed_report()
+        if df.empty: return
+
+        # 1. Aggregate Data
+        platform_stats = df.groupby('platform')['num_samples'].sum().reset_index()
+        
+        # 2. Sort and take Top 20 for readability
+        platform_stats = platform_stats.sort_values('num_samples', ascending=False).head(20)
+
+        # 3. Create Plot
+        plt.figure(figsize=(10, 8))
+        sns.barplot(
+            data=platform_stats,
+            y="platform",
+            x="num_samples",
+            palette="magma"
+        )
+        
+        plt.title("Total Samples per Platform (Top 20)")
+        plt.xlabel("Total Samples")
+        plt.ylabel("Platform (GPL)")
+        plt.grid(axis='x', linestyle='--', alpha=0.6)
+        
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Platform distribution saved to {save_path}")

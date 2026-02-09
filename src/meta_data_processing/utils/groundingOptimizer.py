@@ -39,7 +39,7 @@ class GroundingOptimizer:
 
     def _encode_ontology(self, terms: list):
         lemmatized_terms = [self._lemmatize(t) for t in terms]
-        return self.model.encode(lemmatized_terms,device='cuda')
+        return torch.tensor(self.model.encode(lemmatized_terms,device='cuda'))
 
     # --- NEW: Heuristic Logic ---
     def _check_heuristics(self, text: str, category: str) -> Optional[str]:
@@ -157,21 +157,19 @@ class GroundingOptimizer:
         # Get the single highest value in the entire matrix
         max_score = torch.max(cosine_scores).item()
         
-        if max_score > threshold:
-            # Find the coordinates (row, col) of the max value
-            max_idx = torch.argmax(cosine_scores)
-            
-            # Deconstruct the flat index into row (candidate) and col (golden word)
-            num_cols = cosine_scores.shape[1]
-            row_idx = (max_idx // num_cols).item()
-            col_idx = (max_idx % num_cols).item()
-            
-            best_candidate = candidates_list[row_idx]
-            best_keyword = words[col_idx]
-            
-            return True, max_score, best_candidate, best_keyword
+        # Find the coordinates (row, col) of the max value
+        max_idx = torch.argmax(cosine_scores)
+        
+        # Deconstruct the flat index into row (candidate) and col (golden word)
+        num_cols = cosine_scores.shape[1]
+        row_idx = (max_idx // num_cols).item()
+        col_idx = (max_idx % num_cols).item()
+        
+        best_candidate = candidates_list[row_idx]
+        best_keyword = words[col_idx]
+        
+        return max_score> threshold, max_score, best_candidate, best_keyword
 
-        return False, max_score, None, None
 
     def get_best_match_with_score(self, text: str, category: str) -> Tuple[Optional[str], float]:
         # (Same implementation as previous step)
@@ -207,7 +205,9 @@ class GroundingOptimizer:
 
         # --- PASS 1: Try Maps, Heuristics, and Vectors ---
         for sample in extracted_samples:
-            
+            #TODO: seperate the elements if there is a , in it.
+            # for key,val in sample.items():
+            #     if val.contains(',')
             # Treatments
             raw_treats = sample.get('treatment', [])
             if isinstance(raw_treats, str): raw_treats = [raw_treats]
@@ -217,7 +217,7 @@ class GroundingOptimizer:
                     local_cache['treatment'][t] = label_map.map_treatment[t]
                     continue
                 
-                match = self.find_semantic_match(t, 'treatment', threshold=0.88)
+                match = self.find_semantic_match(t, self.valid_treatments, threshold=0.88)
                 if match:
                     local_cache['treatment'][t] = match
                     # label_map.add_treatment(t, match)
@@ -227,12 +227,11 @@ class GroundingOptimizer:
             # Tissue
             raw_tissue = sample.get('tissue', 'unknown')
             if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else "unknown"
-            
             if raw_tissue not in local_cache['tissue']:
                 if raw_tissue in label_map.map_tissue:
                     local_cache['tissue'][raw_tissue] = label_map.map_tissue[raw_tissue]
                 else:
-                    match = self.find_semantic_match(raw_tissue, 'tissue', threshold=0.88)
+                    match = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
                     if match:
                         local_cache['tissue'][raw_tissue] = match
                         # label_map.add_tissue(raw_tissue, match)
@@ -247,7 +246,7 @@ class GroundingOptimizer:
                 if raw_medium in label_map.map:
                     local_cache['medium'][raw_medium] = label_map.map[raw_medium]
                 else:
-                    match = self.find_semantic_match(raw_medium, 'medium', threshold=0.80)
+                    match = self.find_semantic_match(raw_medium, self.valid_mediums, threshold=0.80)
                     if match:
                         local_cache['medium'][raw_medium] = match
                         # label_map.add(raw_medium, match)
