@@ -199,15 +199,18 @@ class GroundingOptimizer:
         return labels[best_idx], scores[best_idx].item()
 
     def batch_process_study(self, data: Dict, extracted_samples: List[Dict], llm_func_treat, llm_func_tis, label_map: LabelMap):
-        # (Same implementation as previous step, ensuring find_semantic_match is called)
+        
         local_cache = { 'treatment': {}, 'tissue': {}, 'medium': {} }
         unknowns = { 'treatment': set(), 'tissue': set(), 'medium': set() }
 
         # --- PASS 1: Try Maps, Heuristics, and Vectors ---
         for sample in extracted_samples:
             #TODO: seperate the elements if there is a , in it.
-            # for key,val in sample.items():
-            #     if val.contains(',')
+            x= 0
+            for key,val in sample.items():
+                if len(val) ==1:
+                    val = re.sub(r'[^a-zA-Z0-9,]','',val[0])
+                    sample[key] = val.split(',')
             # Treatments
             raw_treats = sample.get('treatment', [])
             if isinstance(raw_treats, str): raw_treats = [raw_treats]
@@ -217,26 +220,32 @@ class GroundingOptimizer:
                     local_cache['treatment'][t] = label_map.map_treatment[t]
                     continue
                 
-                match = self.find_semantic_match(t, self.valid_treatments, threshold=0.88)
+                use, max_score, best_candidate, best_keyword = self.find_semantic_match(t, self.valid_treatments, threshold=0.88)
+                if use:
+                    match =best_candidate
+                else:
+                    match = 'unknown'
                 if match:
                     local_cache['treatment'][t] = match
-                    # label_map.add_treatment(t, match)
                 else:
                     unknowns['treatment'].add(t)
 
             # Tissue
-            raw_tissue = sample.get('tissue', 'unknown')
-            if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else "unknown"
-            if raw_tissue not in local_cache['tissue']:
-                if raw_tissue in label_map.map_tissue:
-                    local_cache['tissue'][raw_tissue] = label_map.map_tissue[raw_tissue]
-                else:
-                    match = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
-                    if match:
-                        local_cache['tissue'][raw_tissue] = match
-                        # label_map.add_tissue(raw_tissue, match)
+            raw_tissues = sample.get('tissue', 'unknown')
+            for raw_tissue in raw_tissues:
+                if raw_tissue not in local_cache['tissue']:
+                    if raw_tissue in label_map.map_tissue:
+                        local_cache['tissue'][raw_tissue] = label_map.map_tissue[raw_tissue]
                     else:
-                        unknowns['tissue'].add(raw_tissue)
+                        use, max_score, best_candidate, best_keyword = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
+                        if use:
+                            match =best_candidate
+                        else:
+                            match = 'unknown'
+                        if match:
+                            local_cache['tissue'][raw_tissue] = match
+                        else:
+                            unknowns['tissue'].add(raw_tissue)
 
             # Medium
             raw_medium = sample.get('medium', 'unspecified')
@@ -246,10 +255,13 @@ class GroundingOptimizer:
                 if raw_medium in label_map.map:
                     local_cache['medium'][raw_medium] = label_map.map[raw_medium]
                 else:
-                    match = self.find_semantic_match(raw_medium, self.valid_mediums, threshold=0.80)
+                    use, max_score, best_candidate, best_keyword  = self.find_semantic_match(raw_medium, self.valid_mediums, threshold=0.80)
+                    if use:
+                        match =best_candidate
+                    else:
+                        match = 'unknown'
                     if match:
                         local_cache['medium'][raw_medium] = match
-                        # label_map.add(raw_medium, match)
                     else:
                         # Medium usually doesn't go to LLM
                         local_cache['medium'][raw_medium] = "unspecified" 
