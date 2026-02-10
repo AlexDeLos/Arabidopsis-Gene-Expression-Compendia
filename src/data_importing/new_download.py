@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
     rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
-    query_ids = search_geo_accessions(FULL_QUERY_RNA, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
+    query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
     RNA_tracker = FileTracker(file_tracker_loc)
     if args.array_index is not None:
         # --- PARALLEL MODE ---
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     else:
         # --- SERIAL MODE (Original behavior) ---
         pass
-        # download_experiments_RNA_seq_nf_core(query_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=False, scan=True,run_and_delete=True)
+        download_experiments_RNA_seq_nf_core(query_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=False, scan=True,run_and_delete=True)
     # 1. Get the data
 
     # 2. Make the plots

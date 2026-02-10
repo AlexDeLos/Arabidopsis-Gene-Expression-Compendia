@@ -7,7 +7,6 @@ module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
 from src.meta_data_processing.utils.groundingOptimizer import *
-from src.meta_data_processing.utils.llm_utils import get_batch_labels_treatment,get_batch_labels_tissues,get_metadata_script
 from src.meta_data_processing.utils.universal_extractor import UniversalExtractor
 from src.meta_data_processing.utils.labelMap import LabelMap
 dotenv.load_dotenv()
@@ -37,7 +36,7 @@ def save_labels(labels,saving_path):
                 json.dump(labels[study], handle, indent=4)
 
 
-def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/meta_data_processing/utils/extractors_full.py'):
+def condense_labels(in_folder, saving_path, Studies=None):
     os.makedirs(saving_path, exist_ok=True)
     uni_extractor = UniversalExtractor()
     # --- COMPONENT 1: Restore LabelMap ---
@@ -70,34 +69,12 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
                     data = json.load(f)
                 
                 # Verify extractor exists before processing files
-                if False:
-                    extractor_name = f'{study_id}_extractor'
-                    if hasattr(extractors_full, extractor_name):
-                        extractor = getattr(extractors_full, extractor_name)
-                    elif extractor_name in globals():
-                        extractor = globals()[extractor_name]
-                    else:
-                        # You might want to generate it here if missing, or skip
-                        new_extractor = get_metadata_script(sample_metadata=data,study_id=study_id)
-                        
-                        # Append to file
-                        with open(extractors_path, 'a') as f:
-                            f.write('\n\n')
-                            f.write(new_extractor)
-                        
-                        # Load into current runtime
-                        exec(new_extractor, globals())
-                        extractor = globals()[extractor_name] # Now we can grab it
-                    
-                    
-                    extracted = extractor(data.get('sample_metadata', {}))
-                else:
-                    extracted = uni_extractor.extract(
-                        sample_metadata=data.get('sample_metadata', {}),
-                        study_metadata=data.get('study_metadata', {}),
-                        study_id=study_id
-                       )
-                
+                extracted = uni_extractor.extract(
+                    sample_metadata=data.get('sample_metadata', {}),
+                    study_metadata=data.get('study_metadata', {}),
+                    study_id=study_id
+                    )
+            
                 # IMPORTANT: Keep 'sample_id' for tracking, but we will remove it before saving
                 extracted['sample_id'] = data.get('sample_id', sample_file.replace('.json',''))
                 raw_samples.append(extracted)
@@ -113,11 +90,8 @@ def condense_labels(in_folder, saving_path, Studies=None,extractors_path = 'src/
             grounded_samples = optimizer.batch_process_study(
                 data=data, # type: ignore
                 extracted_samples=raw_samples,
-                llm_func_treat=get_batch_labels_treatment,
-                llm_func_tis= get_batch_labels_tissues,
                 label_map=seen
             )
-            
             # --- COMPONENT 2: Sync and Save Progress ---
             final_output = {}
             

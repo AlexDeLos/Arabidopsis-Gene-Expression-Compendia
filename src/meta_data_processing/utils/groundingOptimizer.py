@@ -9,7 +9,7 @@ import re
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.constants import VALID_TREATMENTS, VALID_TISSUES, VALID_MEDIUMS, VALID_TREATMENTS_ALT,EXPLICIT_KEYWORDS
+from src.constants import LABELS,EXPLICIT_KEYWORDS
 from src.meta_data_processing.utils.labelMap import LabelMap
 
 class GroundingOptimizer:
@@ -198,7 +198,7 @@ class GroundingOptimizer:
         best_idx = scores.argmax().item()
         return labels[best_idx], scores[best_idx].item()
 
-    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], llm_func_treat, llm_func_tis, label_map: LabelMap):
+    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap):
         
         local_cache = { 'treatment': {}, 'tissue': {}, 'medium': {} }
         unknowns = { 'treatment': set(), 'tissue': set(), 'medium': set() }
@@ -211,83 +211,24 @@ class GroundingOptimizer:
                 if len(val) ==1:
                     val = re.sub(r'[^a-zA-Z0-9,]','',val[0])
                     sample[key] = val.split(',')
-            # Treatments
-            raw_treats = sample.get('treatment', [])
-            if isinstance(raw_treats, str): raw_treats = [raw_treats]
-            for t in raw_treats:
-                if t in local_cache['treatment']: continue
-                if t in label_map.map_treatment:
-                    local_cache['treatment'][t] = label_map.map_treatment[t]
-                    continue
-                
-                use, max_score, best_candidate, best_keyword = self.find_semantic_match(t, self.valid_treatments, threshold=0.88)
-                if use:
-                    match =best_candidate
-                else:
-                    match = 'unknown'
-                if match:
-                    local_cache['treatment'][t] = match
-                else:
-                    unknowns['treatment'].add(t)
-
-            # Tissue
-            raw_tissues = sample.get('tissue', 'unknown')
-            for raw_tissue in raw_tissues:
-                if raw_tissue not in local_cache['tissue']:
-                    if raw_tissue in label_map.map_tissue:
-                        local_cache['tissue'][raw_tissue] = label_map.map_tissue[raw_tissue]
-                    else:
-                        use, max_score, best_candidate, best_keyword = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
-                        if use:
-                            match =best_candidate
+            for label in LABELS:
+                raw_tissues = sample.get(label, 'unknown')
+                best_fit:str = 'unknown'
+                max_score = 0.88
+                for raw_tissue in raw_tissues:
+                    if raw_tissue not in local_cache[label]:
+                        if raw_tissue in label_map.map_tissue:
+                            local_cache[label][raw_tissue] = label_map.map_tissue[raw_tissue]
                         else:
-                            match = 'unknown'
-                        if match:
-                            local_cache['tissue'][raw_tissue] = match
-                        else:
-                            unknowns['tissue'].add(raw_tissue)
-
-            # Medium
-            raw_medium = sample.get('medium', 'unspecified')
-            if isinstance(raw_medium, list): raw_medium = raw_medium[0] if raw_medium else "unspecified"
-            
-            if raw_medium not in local_cache['medium']:
-                if raw_medium in label_map.map:
-                    local_cache['medium'][raw_medium] = label_map.map[raw_medium]
+                            use, score, best_candidate, best_keyword = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
+                            if score>max_score:
+                                best_fit = str(best_candidate)
+                if best_fit:
+                    local_cache[label][raw_tissues] = best_fit
                 else:
-                    use, max_score, best_candidate, best_keyword  = self.find_semantic_match(raw_medium, self.valid_mediums, threshold=0.80)
-                    if use:
-                        match =best_candidate
-                    else:
-                        match = 'unknown'
-                    if match:
-                        local_cache['medium'][raw_medium] = match
-                    else:
-                        # Medium usually doesn't go to LLM
-                        local_cache['medium'][raw_medium] = "unspecified" 
-
-        # --- PASS 2: Batch LLM Calls ---
-        study_context = data.get('study_metadata', {})
-        
-        if unknowns['treatment']:
-            print(f"  > Sending {len(unknowns['treatment'])} treatments to LLM...")
-            try:
-                results = None#llm_func_treat(list(unknowns['treatment']), study_context)
-                if results:
-                    local_cache['treatment'].update(results)
-                    # label_map.add_mapping_dict(results, 'treatment')
-            except Exception as e:
-                print(f"    LLM Error (Treatment): {e}")
-
-        if unknowns['tissue']:
-            print(f"  > Sending {len(unknowns['tissue'])} tissues to LLM...")
-            try:
-                results = None#llm_func_tis(list(unknowns['tissue']), study_context)
-                if results:
-                    local_cache['tissue'].update(results)
-                    # label_map.add_mapping_dict(results, 'tissue')
-            except Exception as e:
-                print(f"    LLM Error (Tissue): {e}")
+                    #TODO: this is never reached as we are not planning to use LLM and best_fit is a str
+                    raise ValueError('this was not planned to be reached')
+                    unknowns[label].add(raw_tissues)
 
         # --- PASS 3: Apply ---
         final_samples = []

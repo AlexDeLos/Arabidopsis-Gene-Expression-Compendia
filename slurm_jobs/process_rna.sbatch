@@ -6,17 +6,21 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=75G
-#SBATCH --array=50-100%5
+#SBATCH --array=0-100%5
+#SBATCH --job-name=processing_RNA_seq
+#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/stdout-%x-%j.txt
+#SBATCH --error=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/stderr-%x-%j.txt
 # source ~/.bashrc
 
 module use /opt/insy/modulefiles
 module load miniconda/3.9
 
+conda activate download_env
+
 # Ensure clean environment
 unset JAVA_HOME
 unset NXF_JAVA_HOME
 
-conda activate download_env
 
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 

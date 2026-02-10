@@ -41,6 +41,8 @@ STATUS_ERROR = 4
 # LABELS
 from enum import Enum
 
+LABELS = ['tissue','treatment','medium']
+
 # 1. Define the Enums (The Source of Truth)
 class TissueEnum(str, Enum):
     ROOT = "root"
