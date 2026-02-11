@@ -5,7 +5,7 @@
 #SBATCH --time=4:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
-#SBATCH --mem=75G
+#SBATCH --mem=72G
 #SBATCH --array=0-1%5
 #SBATCH --job-name=processing_RNA_seq
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/stdout-%x-%j.txt

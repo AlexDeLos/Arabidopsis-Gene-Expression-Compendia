@@ -80,6 +80,7 @@ class LabelMap:
         """
         Updates the internal maps based on the difference between raw and grounded samples.
         """
+        #TODO: broke it by making everything a set
         # 1. Tissue
         raw_tissue = og_sample.get('tissue')
         if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else None
