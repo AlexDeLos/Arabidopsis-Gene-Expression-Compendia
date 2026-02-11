@@ -49,7 +49,7 @@ class RNASeq_processor:
         except:
             return []
 
-    def download_fastq(self, gse, output_folder, temp_files):
+    def download_fastq_faster(self, gse, output_folder, temp_files):
         """
         Downloads using fasterq-dump (fast) and immediately compresses using pigz (fast).
         """
@@ -109,6 +109,63 @@ class RNASeq_processor:
                     print(f"\nCRITICAL ERROR downloading {srr}:")
                     print(f"Command tried: {' '.join(cmd)}")
                     raise e
+                
+    def download_fastq(self, gse, output_folder, temp_files):
+        """
+        Downloads using fastq-dump with built-in compression.
+        Slower than fasterq-dump, but uses significantly less disk space.
+        """
+        if not os.path.exists(output_folder): os.makedirs(output_folder)
+        # Note: temp_files is less critical for fastq-dump but good to keep for consistency
+        if not os.path.exists(temp_files): os.makedirs(temp_files)
+
+        sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
+        sra_map = {k:v for k,v in sra_map.items() if v}
+        
+        # Adjust path if needed, or assume it's in PATH like typical cluster modules
+        fastq_dump_cmd = "fastq-dump" 
+        if CLUSTER_RUN:
+            # If you have a specific binary path, set it here, e.g.:
+            # fastq_dump_cmd = os.path.expanduser("~/bin/fastq-dump")
+            pass
+
+        for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
+            for srr in srrs:
+                # 1. Check if the ZIPPED file already exists
+                # fastq-dump --gzip automatically adds .gz extension
+                existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+                if existing_gz: 
+                    continue
+
+                # 2. Construct command
+                # --gzip: Compress output
+                # --split-files: Split paired-end reads into _1.fastq.gz and _2.fastq.gz
+                # --outdir: Where to save
+                cmd = [
+                    fastq_dump_cmd, 
+                    "--gzip", 
+                    "--split-files", 
+                    "--outdir", output_folder, 
+                    srr
+                ]
+                
+                try:
+                    # Run the command
+                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                    
+                    # Verification (Optional but recommended)
+                    # Check if files actually appeared
+                    created_files = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+                    if not created_files:
+                        print(f"Warning: fastq-dump ran but no .gz files found for {srr}")
+
+                except subprocess.CalledProcessError as e:
+                    print(f"\nCRITICAL ERROR downloading {srr}:")
+                    print(f"Command tried: {' '.join(cmd)}")
+                    # Don't crash the whole loop, just skip this SRR? 
+                    # Or raise e if you want to stop everything.
+                    print(e)
+
 
     def generate_samplesheet(self, gse_id, fastq_folder, output_csv):
         """

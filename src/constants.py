@@ -56,11 +56,13 @@ class TissueEnum(str, Enum):
     CALLUS = "callus"
     SEED = "seed"
     SEEDLING = "seedling"
+    STEM = "stem"
     # PROTOPLASTS = "protoplasts"
     # GUARD_CELLS = "guard_cells"
     POLLEN = "pollen"
     CELL_CULTURE = "cell_culture"
     UNKNOWN = "unknown"
+    UNSPECIFIED = "unspecified"
 
 class TreatmentEnum(str, Enum):
     DROUGHT = "Drought Stress"
@@ -75,9 +77,11 @@ class TreatmentEnum(str, Enum):
     LOW_LIGHT = "Low Light Stress"
     HIGH_LIGHT = "High Light Stress"
     OTHER_LIGHT = "Other Light Stress"
-    CUT = "cut"
+    CUT = "Cut"
     OTHER = "Other stress"
     NONE = "No stress"
+    UNKNOWN = "unknown"
+    UNSPECIFIED = "unspecified"
 class TreatmentEnum_alt(str, Enum):
     DROUGHT = "Drought"
     DEHYDRATION = "Dehydration"
@@ -104,7 +108,8 @@ class MediumEnum(str, Enum):
     HYDROPONIC = "Hydroponic"
     LIQUID = "Liquid"
     AGAR = "Agar"
-    UNSPECIFIED = "Unspecified"
+    UNKNOWN = "unknown"
+    UNSPECIFIED = "unspecified"
 
 #TODO: add devStage, mutant, and cell type
 

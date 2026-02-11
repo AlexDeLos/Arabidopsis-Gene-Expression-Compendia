@@ -3,6 +3,7 @@ from typing import List, Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer, util
 from spacy.cli import download
 import torch
+import copy
 import re
 
 # Import constants directly
@@ -202,58 +203,52 @@ class GroundingOptimizer:
         
         local_cache = { 'treatment': {}, 'tissue': {}, 'medium': {} }
         unknowns = { 'treatment': set(), 'tissue': set(), 'medium': set() }
+        final_samples = []
 
         # --- PASS 1: Try Maps, Heuristics, and Vectors ---
         for sample in extracted_samples:
-            #TODO: seperate the elements if there is a , in it.
-            x= 0
+            
             for key,val in sample.items():
-                if len(val) ==1:
-                    val = re.sub(r'[^a-zA-Z0-9,]','',val[0])
-                    sample[key] = val.split(',')
+                if key == 'sample_id':
+                    continue
+                if val !=set():
+                    val_ = re.sub(r'[^a-zA-Z0-9,]','',val.pop())
+                    sample[key]= set(val_.split(','))
             for label in LABELS:
                 raw_tissues = sample.get(label, 'unknown')
-                best_fit:str = 'unknown'
-                max_score = 0.88
                 for raw_tissue in raw_tissues:
+                    best_fit:str = 'unknown'
+                    max_score = 0.75
                     if raw_tissue not in local_cache[label]:
+                    
                         if raw_tissue in label_map.map_tissue:
                             local_cache[label][raw_tissue] = label_map.map_tissue[raw_tissue]
                         else:
                             use, score, best_candidate, best_keyword = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
-                            if score>max_score:
-                                best_fit = str(best_candidate)
-                if best_fit:
-                    local_cache[label][raw_tissues] = best_fit
-                else:
-                    #TODO: this is never reached as we are not planning to use LLM and best_fit is a str
-                    raise ValueError('this was not planned to be reached')
-                    unknowns[label].add(raw_tissues)
+                            if score>=max_score:
+                                best_fit = str(best_keyword)
+                                max_score = score
+                        if best_fit:
+                            local_cache[label][raw_tissue] = best_fit
+                        else:
+                            #TODO: this is never reached as we are not planning to use LLM and best_fit is a str
+                            raise ValueError('this was not planned to be reached')
+                            # unknowns[label].add(raw_tissues)
 
         # --- PASS 3: Apply ---
         final_samples = []
         for sample in extracted_samples:
             new_sample = sample.copy()
-            
-            # Treatment
-            raw_treats = sample.get('treatment', [])
-            if isinstance(raw_treats, str): raw_treats = [raw_treats]
-            final_treats = []
-            for t in raw_treats:
-                val = local_cache['treatment'].get(t, "Other stress")
-                final_treats.append(val)
-            new_sample['treatment'] = sorted(final_treats)
-            
-            # Tissue
-            raw_tissue = sample.get('tissue')
-            if isinstance(raw_tissue, list): raw_tissue = raw_tissue[0] if raw_tissue else "unknown"
-            new_sample['tissue'] = local_cache['tissue'].get(raw_tissue, "unknown")
-            
-            # Medium
-            raw_medium = sample.get('medium')
-            if isinstance(raw_medium, list): raw_medium = raw_medium[0] if raw_medium else "unspecified"
-            new_sample['medium'] = local_cache['medium'].get(raw_medium, "unspecified")
-
+            for label in LABELS:
+                # Treatment
+                raw = sample.get(label, set())
+                if raw == set():
+                    raw = "unspecified"
+                final_treats = []
+                for t in raw:
+                    val = local_cache[label].get(t, "unknown")
+                    final_treats.append(val)
+                new_sample[label] = set(sorted(final_treats))
             final_samples.append(new_sample)
 
         return final_samples

@@ -123,7 +123,7 @@ class FileTracker:
 
 # ---------------- PLOTTING METHODS ----------------
 
-    def get_pie_charts(self, save_path="tracker_pie_charts.svg"):
+    def get_pie_charts(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_pie_charts.svg"):
         """
         Function 1: Produces pie charts showing SRA (Raw Data) availability
         for both Studies and Samples.
@@ -151,7 +151,7 @@ class FileTracker:
         plt.close()
         print(f"Pie charts saved to {save_path}")
 
-    def produce_study_dis(self, save_path="tracker_histogram_top6_stacked.svg"):
+    def produce_study_dis(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_histogram_top6_stacked.svg"):
         """
         Function 2: Stacked Histogram of Study Sizes (Samples per Study),
         split by the Top 6 Platforms.
@@ -189,7 +189,7 @@ class FileTracker:
         plt.close()
         print(f"Study distribution saved to {save_path}")
 
-    def produce_platform_dis(self, save_path="tracker_platforms.svg"):
+    def produce_platform_dis(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_platforms.svg"):
         """
         Function 3: Bar plot showing Total Samples per Platform.
         """

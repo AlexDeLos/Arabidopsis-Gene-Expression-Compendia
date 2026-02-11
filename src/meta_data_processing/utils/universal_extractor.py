@@ -29,13 +29,13 @@ def complex_split(text: str) -> list[str]:
     # Use pre-compiled pattern
     return [token.strip() for token in SPLIT_PATTERN.split(text) if token.strip()]
 
-def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, category: str) -> List[str]:
+def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, category: str) -> Set[str]:
     """
     Selects the single best term from a list of overlapping candidates 
     based on Semantic Purity.
     """
     if not candidates:
-        return []
+        return set()
 
     # 1. Cleaning Step
     cleaned_candidates = set()
@@ -46,7 +46,7 @@ def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, ca
             cleaned_candidates.add(clean)
 
     if not cleaned_candidates:
-        return []
+        return set()
 
     # 2. Semantic Scoring Competition
     best_term = None
@@ -64,7 +64,7 @@ def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, ca
             if len(term) < len(best_term):
                 best_term = term
 
-    return [best_term] if best_term else []
+    return set([best_term] if best_term else [])
 
 def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimizer, target_category: str, top_k: int = 5) -> List[Tuple[str, float]]:
     """
@@ -231,13 +231,13 @@ class UniversalExtractor:
 
     def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id:str) -> Dict:
         if study_id != self.last_study:
-            extracted_data = {"tissue": [], "treatment": [], "medium": []}
+            extracted_data = {"tissue": set(), "treatment": set(), "medium": set()}
             self.extracted_data_study = extracted_data.copy()
         else:
             extracted_data = self.extracted_data_study.copy()
 
         for category in ['tissue', 'treatment', 'medium']:
-            if extracted_data[category] != []:
+            if extracted_data[category] != set():
                 continue
             
             explicit_hits = self._check_for_explicit_columns(sample_metadata, category)
@@ -249,20 +249,20 @@ class UniversalExtractor:
             scanned_hits = self._scan_semantic_match(priority_text, category=category)
             if scanned_hits:
                 final_hits = condense_candidates(scanned_hits, self.optimizer, category)
-                extracted_data[category] = list(set(final_hits))
+                extracted_data[category] = set(final_hits)
                 continue
 
             broad_text_sample = self._get_broad_text(sample_metadata, {})
             scanned_broad_sample = self._scan_semantic_match(broad_text_sample, category=category)
             if scanned_broad_sample:
                 final_hits = condense_candidates(scanned_broad_sample, self.optimizer, category)
-                extracted_data[category] = list(set(final_hits))
+                extracted_data[category] = set(final_hits)
                 continue
 
             broad_text = self._get_broad_text({}, study_metadata)
             scanned_broad = self._scan_semantic_match(broad_text, category=category)
             final_hits = condense_candidates(scanned_broad, self.optimizer, category)
-            extracted_data[category] = list(set(final_hits))
+            extracted_data[category] = set(final_hits)
 
         self.last_study = study_id
         return extracted_data
@@ -298,7 +298,7 @@ class UniversalExtractor:
         scores = util.cos_sim(key_vector, category_vectors)[0]
         return bool(scores.max() > threshold)
     
-    def _check_for_explicit_columns(self, metadata: Dict, category: str) -> List[str]:
+    def _check_for_explicit_columns(self, metadata: Dict, category: str) -> Set[str]:
         """
         Scans metadata columns to find values that are likely the category we want.
         """
@@ -331,7 +331,7 @@ class UniversalExtractor:
                                 found_values.add(sub_val)
                                 continue 
 
-        return list(found_values)
+        return found_values
 
     def _get_broad_text(self, sample_meta: Dict, study_meta: Dict) -> str:
         text_bits = []
@@ -360,7 +360,7 @@ class UniversalExtractor:
                     
         return candidates
 
-    def _scan_semantic_match(self, text: str, category: str) -> List[str]:
+    def _scan_semantic_match(self, text: str, category: str) -> Set[str]:
         # --- PHASE A: Keyword-Anchored Context Scan ---
         raw_context_candidates_alt:set = set(complex_split(text))
         
@@ -402,7 +402,7 @@ class UniversalExtractor:
                 raw_ngram_candidates.add(chunk_str)
 
         if not raw_ngram_candidates and not valid_context_strings:
-            return []
+            return set()
 
         valid_ngram_tuples = extract_valid_candidates(
             candidate_set=raw_ngram_candidates,
@@ -422,7 +422,7 @@ class UniversalExtractor:
                 if cand not in seen:
                     merged_candidates.append(cand)
                     seen.add(cand)
-            return valid_context_strings # Early return prioritizes context
+            return set(valid_context_strings) # Early return prioritizes context
         
         if valid_ngram_strings:
             for cand in valid_ngram_strings:
