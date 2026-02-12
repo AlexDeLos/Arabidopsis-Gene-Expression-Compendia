@@ -255,7 +255,7 @@ class RNASeq_processor:
             "-revision", "3.14.0",
             "--input", samplesheet_path,
             "--outdir", study_out_dir,
-            "--pseudo_aligner", "kallisto",
+            "--pseudo_aligner", "salmon",
             "--skip_alignment",
             "--skip_biotype_qc",
             "--skip_stringtie",
