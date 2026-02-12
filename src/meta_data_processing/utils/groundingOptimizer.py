@@ -199,7 +199,7 @@ class GroundingOptimizer:
         best_idx = scores.argmax().item()
         return labels[best_idx], scores[best_idx].item()
 
-    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap):
+    def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap)->List:
         
         local_cache = { 'treatment': {}, 'tissue': {}, 'medium': {} }
         unknowns = { 'treatment': set(), 'tissue': set(), 'medium': set() }
@@ -215,7 +215,7 @@ class GroundingOptimizer:
                     val_ = re.sub(r'[^a-zA-Z0-9,]','',val.pop())
                     sample[key]= set(val_.split(','))
             for label in LABELS:
-                raw_tissues = sample.get(label, 'unknown')
+                raw_tissues = sample.get(label, 'unspecified')
                 for raw_tissue in raw_tissues:
                     best_fit:str = 'unknown'
                     max_score = 0.75
@@ -243,12 +243,13 @@ class GroundingOptimizer:
                 # Treatment
                 raw = sample.get(label, set())
                 if raw == set():
-                    raw = "unspecified"
-                final_treats = []
-                for t in raw:
-                    val = local_cache[label].get(t, "unknown")
-                    final_treats.append(val)
-                new_sample[label] = set(sorted(final_treats))
+                    new_sample[label]=["unspecified"]
+                else:
+                    final_treats = []
+                    for t in raw:
+                        val = local_cache[label].get(t, "unknown")
+                        final_treats.append(val)
+                    new_sample[label] = list(sorted(final_treats))
             final_samples.append(new_sample)
 
         return final_samples

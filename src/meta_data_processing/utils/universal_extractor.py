@@ -29,7 +29,7 @@ def complex_split(text: str) -> list[str]:
     # Use pre-compiled pattern
     return [token.strip() for token in SPLIT_PATTERN.split(text) if token.strip()]
 
-def condense_candidates(candidates: List[str], optimizer: GroundingOptimizer, category: str) -> Set[str]:
+def condense_candidates(candidates: Set[str], optimizer: GroundingOptimizer, category: str) -> Set[str]:
     """
     Selects the single best term from a list of overlapping candidates 
     based on Semantic Purity.
@@ -86,7 +86,7 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
         "transgenic", "plants", "analysis", "data", "replicate", "study", 
         "experiment", "grown", "growth", "independent", "agb1", "gpa1",
         "control", "mock", "buffer", "treated", "samples", "using", "total", "rna",
-        "rep1", "rep2", "rep3", "atgen"
+        "rep1", "rep2", "rep3", "atgen", "unknown"
     }
 
     valid_raw_terms = {} 
