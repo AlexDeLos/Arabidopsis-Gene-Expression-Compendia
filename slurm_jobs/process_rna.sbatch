@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
 #SBATCH --mem=72G
-#SBATCH --array=0-1%5
+#SBATCH --array=0-0%5
 #SBATCH --job-name=processing_RNA_seq
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 #SBATCH --error=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stderr-%x-%j.txt
