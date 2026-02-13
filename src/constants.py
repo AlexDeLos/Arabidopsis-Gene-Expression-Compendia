@@ -40,10 +40,12 @@ STATUS_ERROR = 4
 
 # LABELS
 from enum import Enum
+from typing import Dict, List, Any
 
-LABELS = ['tissue','treatment','medium']
+# 1. Define the Labels (The keys for everything)
+LABELS = ['tissue', 'treatment', 'medium']
 
-# 1. Define the Enums (The Source of Truth)
+# 2. Define the Enums (The Canonical "Truth")
 class TissueEnum(str, Enum):
     ROOT = "root"
     LEAF = "leaf"
@@ -57,8 +59,6 @@ class TissueEnum(str, Enum):
     SEEDLING = "seedling"
     SEED = "seed"
     STEM = "stem"
-    # PROTOPLASTS = "protoplasts"
-    # GUARD_CELLS = "guard_cells"
     POLLEN = "pollen"
     CELL_CULTURE = "cell_culture"
     UNKNOWN = "unknown"
@@ -82,22 +82,6 @@ class TreatmentEnum(str, Enum):
     NONE = "Control"
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
-class TreatmentEnum_alt(str, Enum):
-    DROUGHT = "Drought"
-    DEHYDRATION = "Dehydration"
-    SALINITY = "Salinity"
-    HEAT = "Heat"
-    COLD = "Cold"
-    CHEMICAL = "Chemical"
-    NUTRIENT = "Nutrient Deficiency"
-    BIOTIC = "Biotic"
-    ABIOTIC = "Abiotic"
-    LOW_LIGHT = "Dark"
-    HIGH_LIGHT = "High Light"
-    OTHER_LIGHT = "Light"
-    CUT = "cut"
-    OTHER = "Other"
-    NONE = "No stress"
 
 class MediumEnum(str, Enum):
     MS = "MS"
@@ -112,28 +96,92 @@ class MediumEnum(str, Enum):
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
 
-#TODO: add devStage, mutant, and cell type
-
-# 2. Maintain your lists for Grounding/Vectors (Backward Compatibility)
-# This extracts the values automatically, so you don't need to type them twice.
-VALID_TISSUES = [t.value for t in TissueEnum]
-VALID_TREATMENTS = [t.value for t in TreatmentEnum]
-VALID_TREATMENTS_ALT= [t.value for t in TreatmentEnum_alt]
-VALID_MEDIUMS = [m.value for m in MediumEnum]
-
-BUCKET_KEYWORDS: dict = {
-    'treatment': VALID_TREATMENTS,
-    'tissue':VALID_TISSUES,
-    'medium':VALID_MEDIUMS
+# 3. Define Synonyms (Map Canonical Enum -> List of Synonyms)
+# This replaces TreatmentEnum_alt. You can add as many variations as you want here.
+TREATMENT_SYNONYMS = {
+    TreatmentEnum.DROUGHT: ["Drought", "Water Deficit", "Water withholding"],
+    TreatmentEnum.DEHYDRATION: ["Dehydration"],
+    TreatmentEnum.SALINITY: ["Salinity", "Salt", "NaCl"],
+    TreatmentEnum.HEAT: ["Heat", "High Temperature"],
+    TreatmentEnum.COLD: ["Cold", "Low Temperature", "Freezing", "Chilling"],
+    TreatmentEnum.LOW_LIGHT: ["Dark", "Shade", "Low intensity light"],
+    TreatmentEnum.HIGH_LIGHT: ["High Light", "High intensity light"],
+    TreatmentEnum.OTHER_LIGHT: ["Light", "Light quality"],
+    TreatmentEnum.NONE: ["No stress", "Control", "Mock"],
+    # Add others as needed...
 }
 
-EXPLICIT_KEYWORDS: Dict = {
-    'treatment': VALID_TREATMENTS+VALID_TREATMENTS_ALT+['light','dark'],
-    'tissue':VALID_TISSUES,
-    'medium':VALID_MEDIUMS
+TISSUE_SYNONYMS = {
+    TissueEnum.ROOT: ["Roots", "Root system", "Radicle"],
+    TissueEnum.LEAF: ["Leaves", "Foliage", "Cotyledon"], # Cotyledon often grouped with leaf
+    # Add others as needed...
 }
 
-AREA_KEYWORDS:Dict = {
+MEDIUM_SYNONYMS = {
+    MediumEnum.MS: ["Murashige and Skoog", "MS salts", "1/2 MS"],
+    MediumEnum.SOIL: ["Potting mix", "Earth", "Compost"],
+    # Add others as needed...
+}
+
+# 4. Master Configuration (The "Registry")
+# To add a new label type (e.g. 'genotype'), add it here with its Enum and Synonyms.
+LABEL_CONFIG = {
+    'treatment': {
+        'enum': TreatmentEnum,
+        'synonyms': TREATMENT_SYNONYMS
+    },
+    'tissue': {
+        'enum': TissueEnum,
+        'synonyms': TISSUE_SYNONYMS
+    },
+    'medium': {
+        'enum': MediumEnum,
+        'synonyms': MEDIUM_SYNONYMS
+    }
+}
+
+# 5. Auto-Generate Dictionaries
+# BUCKET_KEYWORDS: Only the Canonical values (for Vector embedding base)
+# EXPLICIT_KEYWORDS: Canonical + All Synonyms (for Search/Extraction)
+# CANONICAL_MAP: Synonym String -> Canonical String (for Grounding/Collapsing)
+
+BUCKET_KEYWORDS: Dict[str, List[str]] = {}
+EXPLICIT_KEYWORDS: Dict[str, List[str]] = {}
+CANONICAL_MAP: Dict[str, Dict[str, str]] = {}
+AREA_KEYWORDS: Dict[str, List[str]] = {} 
+
+for label in LABELS:
+    config = LABEL_CONFIG.get(label)
+    if not config:
+        continue
+
+    enum_cls = config['enum']
+    synonym_dict = config['synonyms']
+
+    # Initialize lists
+    BUCKET_KEYWORDS[label] = []
+    EXPLICIT_KEYWORDS[label] = []
+    CANONICAL_MAP[label] = {}
+
+    for item in enum_cls:
+        canonical_val = item.value
+        
+        # 1. Add to Bucket (Target)
+        BUCKET_KEYWORDS[label].append(canonical_val)
+        
+        # 2. Add Canonical to Explicit & Map
+        EXPLICIT_KEYWORDS[label].append(canonical_val)
+        CANONICAL_MAP[label][canonical_val] = canonical_val # Identity map
+        
+        # 3. Add Synonyms to Explicit & Map
+        if item in synonym_dict:
+            for syn in synonym_dict[item]:
+                if syn not in EXPLICIT_KEYWORDS[label]: # Avoid dupes
+                    EXPLICIT_KEYWORDS[label].append(syn)
+                CANONICAL_MAP[label][syn] = canonical_val
+
+# 6. Legacy / Area Keywords (Kept from your original)
+AREA_KEYWORDS = {
     'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition','temperature', 'oC'],
     'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part'],
     'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']
