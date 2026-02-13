@@ -10,7 +10,7 @@ import re
 import sys
 module_dir = './'
 sys.path.append(module_dir)
-from src.constants import LABELS,EXPLICIT_KEYWORDS
+from src.constants import LABELS,EXPLICIT_KEYWORDS,BUCKET_KEYWORDS
 from src.meta_data_processing.utils.labelMap import LabelMap
 
 class GroundingOptimizer:
@@ -24,15 +24,12 @@ class GroundingOptimizer:
             download("en_core_web_sm")
             self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
         
-        self.valid_treatments = EXPLICIT_KEYWORDS['treatment']
-        self.valid_tissues = EXPLICIT_KEYWORDS['tissue']
-        self.valid_mediums = EXPLICIT_KEYWORDS['medium']
-
         print("Pre-computing ontology vectors...")
-        self.treatment_vecs = self._encode_ontology(self.valid_treatments)
-        self.tissue_vecs = self._encode_ontology(self.valid_tissues)
-        self.medium_vecs = self._encode_ontology(self.valid_mediums)
-        
+        self.vectors = {'bucket':{},'explicit':{}}
+        for label in LABELS:
+            self.vectors['bucket'][label] = self._encode_ontology(EXPLICIT_KEYWORDS[label])
+
+            self.vectors['explicit'][label] = self._encode_ontology(EXPLICIT_KEYWORDS[label])
     def _lemmatize(self, text: str) -> str:
         if not text: return ""
         doc = self.nlp(str(text).lower())
@@ -66,7 +63,7 @@ class GroundingOptimizer:
         
         if category == 'tissue':
             # Iterate through known tissues (sorted by length to match "guard cell" before "cell")
-            for tissue in sorted(self.valid_tissues, key=len, reverse=True):
+            for tissue in sorted(EXPLICIT_KEYWORDS['tissue'], key=len, reverse=True):
                 # We use word boundary check or simple inclusion?
                 # Simple inclusion is risky for short words (e.g. 'bud' in 'budget'), 
                 # but safe for biological terms if we are careful.
@@ -80,13 +77,13 @@ class GroundingOptimizer:
                 return "No stress"
 
         elif category == 'medium':
-            for medium in sorted(self.valid_mediums, key=len, reverse=True):
+            for medium in sorted(EXPLICIT_KEYWORDS['medium'], key=len, reverse=True):
                 if medium.lower() in text_lower:
                     return medium
                 
         return None
 
-    def find_semantic_match(self, string: str, words: List[str], threshold: float) -> Tuple[bool, float, Optional[str], Optional[str]]:
+    def find_semantic_match(self, string: str, words: List[str],target_embeddings, threshold: float) -> Tuple[bool, float, Optional[str], Optional[str]]:
         """
         Checks if any n-gram in the input string is semantically similar to any word in the golden list.
         
@@ -112,15 +109,12 @@ class GroundingOptimizer:
         # 2. OPTIMIZATION: Use Cached Vectors
         # We check if the 'words' list passed in is EXACTLY one of our pre-computed lists
         # using the 'is' operator (pointer comparison).
-        target_embeddings = None
-        
-        if words is self.valid_treatments:
-            target_embeddings = self.treatment_vecs
-        elif words is self.valid_tissues:
-            target_embeddings = self.tissue_vecs
-        elif words is self.valid_mediums:
-            target_embeddings = self.medium_vecs
-        else:
+        vectored = False
+        for label in LABELS:
+            if words is BUCKET_KEYWORDS[label]:
+                target_embeddings = self.vectors['bucket'][label]
+                vectored= True
+        if not vectored:
             # Fallback: Encode the list on the fly if it's a custom list
             # We use the model's current device (CPU or CUDA) automatically
             target_embeddings = self.model.encode(words, convert_to_tensor=True)
@@ -179,25 +173,42 @@ class GroundingOptimizer:
         clean_text = self._lemmatize(text)
         query_vec = self.model.encode([clean_text])[0]
 
-        if category == 'treatment':
-            scores = util.cos_sim(query_vec, self.treatment_vecs)[0]
-            best_idx = scores.argmax().item()
-            best_score = scores[best_idx].item()
-            best_label = self.valid_treatments[best_idx]
-            return best_label, best_score
-
-        elif category == 'tissue':
-            vectors = self.tissue_vecs
-            labels = self.valid_tissues
-        elif category == 'medium':
-            vectors = self.medium_vecs
-            labels = self.valid_mediums
-        else:
-            return None, 0.0
-
-        scores = util.cos_sim(query_vec, vectors)[0]
+        scores = util.cos_sim(query_vec, self.vectors['explicit'][category])[0]
         best_idx = scores.argmax().item()
-        return labels[best_idx], scores[best_idx].item()
+        best_score = scores[best_idx].item()
+        best_label = EXPLICIT_KEYWORDS[category][best_idx]
+        return best_label, best_score
+    def _get_canonical_term(self, category: str, term: str) -> str:
+        """
+        Maps a specific term (e.g., 'Dehydration', 'Dark') to its canonical bucket 
+        term (e.g., 'Dehydration Stress', 'Low Light Stress').
+        """
+        # 1. Trivial Check: If it's not treatment, we currently assume 1-to-1 mapping
+        if category != 'treatment':
+            return term
+
+        # 2. Import Enums locally to avoid top-level dependency issues
+        from src.constants import TreatmentEnum, TreatmentEnum_alt
+
+        # 3. Check if term is already Canonical (optimization)
+        if term in [t.value for t in TreatmentEnum]:
+            return term
+
+        # 4. Map Synonyms (Alt) -> Canonical
+        # We match them by their Enum Variable Name (e.g., both have .DROUGHT)
+        for alt in TreatmentEnum_alt:
+            if alt.value == term:
+                # Found the synonym (e.g., "Drought"), get the canonical name
+                if hasattr(TreatmentEnum, alt.name):
+                    return getattr(TreatmentEnum, alt.name).value
+
+        # 5. Handle manual edge cases (from the ['light', 'dark'] list in constants)
+        term_lower = term.lower()
+        if term_lower == 'dark': return TreatmentEnum.LOW_LIGHT.value
+        if term_lower == 'light': return TreatmentEnum.OTHER_LIGHT.value
+
+        # Default: If no mapping found, return original (or "Other")
+        return term
 
     def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap)->List:
         
@@ -212,26 +223,30 @@ class GroundingOptimizer:
                 if key == 'sample_id':
                     continue
                 if val !=set():
-                    val_ = re.sub(r'[^a-zA-Z0-9,]','',val.pop())
+                    val_ = re.sub(r'[^a-zA-Z0-9 ,]','',val.pop())
                     sample[key]= set(val_.split(','))
             for label in LABELS:
                 raw_tissues = sample.get(label, 'unspecified')
                 for raw_tissue in raw_tissues:
                     best_fit:str = 'unknown'
-                    max_score = 0.75
+                    max_score = 0.55
                     if raw_tissue not in local_cache[label]:
                     
                         if raw_tissue in label_map.map_tissue:
                             local_cache[label][raw_tissue] = label_map.map_tissue[raw_tissue]
                         else:
-                            use, score, best_candidate, best_keyword = self.find_semantic_match(raw_tissue, self.valid_tissues, threshold=0.88)
+                            _, score, _, best_keyword = self.find_semantic_match(raw_tissue, BUCKET_KEYWORDS[label],self.vectors['bucket'][label], threshold=0.88)
+                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_tissue, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label],threshold=0.88)
+                            if score_ > score:
+                                score = score_
+                                best_keyword = best_keyword_
                             if score>=max_score:
                                 best_fit = str(best_keyword)
                                 max_score = score
                         if best_fit:
-                            local_cache[label][raw_tissue] = best_fit
+                            canonical_fit = self._get_canonical_term(label, best_fit)
+                            local_cache[label][raw_tissue] = canonical_fit
                         else:
-                            #TODO: this is never reached as we are not planning to use LLM and best_fit is a str
                             raise ValueError('this was not planned to be reached')
                             # unknowns[label].add(raw_tissues)
 

@@ -10,11 +10,11 @@ from functools import lru_cache
 
 module_dir = './'
 sys.path.append(module_dir)
-
+from src.constants import LABELS
 # --- PRE-COMPILED REGEX PATTERNS (Performance Optimization) ---
 # Compiling these once at module level is much faster than re-compiling per function call
 SPLIT_PATTERN = re.compile(r"[\[\]:;.,']+")
-CLEAN_CANDIDATE_PATTERN = re.compile(r'^\d+\s+|\s+\d+$|\b(rep\d+|col-0|atgen)\b')
+CLEAN_CANDIDATE_PATTERN = re.compile(r'\b(rep\d+|col-0|atgen)\b')
 NOISE_FILTER_PATTERN = re.compile(r'[^a-zA-Z0-9\s]')
 TOKEN_BOUNDARY_PATTERN = re.compile(r'\b\w+\b')
 
@@ -66,7 +66,7 @@ def condense_candidates(candidates: Set[str], optimizer: GroundingOptimizer, cat
 
     return set([best_term] if best_term else [])
 
-def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimizer, target_category: str, top_k: int = 5) -> List[Tuple[str, float]]:
+def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimizer, target_category: str,study_info:bool, top_k: int = 5) -> List[Tuple[str, float]]:
     """
     Filters candidates using Keyword VIP Pass + Vector Similarity.
     """
@@ -107,7 +107,7 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
 
         # B. VIP Pass (Golden Keywords)
         # Optimized has_golden_key_word usage
-        has_golden_keyword, socre, _, _ = has_golden_key_word(term_lower, golden_keywords_list, optimizer, 0.8)
+        has_golden_keyword, socre, _, _ = has_golden_key_word(term_lower, golden_keywords_list, optimizer, 0.75)
         
         if has_golden_keyword:
             valid_raw_terms[term] = socre 
@@ -116,7 +116,7 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
         # --- Standard Vector Logic ---
         _, target_score = optimizer.get_best_match_with_score(term, category=target_category)
         
-        if target_score < 0.82:
+        if target_score < 0.75:
             continue
 
         if contrast_category:
@@ -147,18 +147,15 @@ def has_golden_key_word(string: str, words: list[str], optimized: GroundingOptim
             return True, 1.0, w_lower, w 
 
     # 2. Use Cached Vectors
-    target_embeddings = None
-    if words is optimized.valid_treatments:
-        target_embeddings = optimized.treatment_vecs
-    elif words is optimized.valid_tissues:
-        target_embeddings = optimized.tissue_vecs
-    elif words is optimized.valid_mediums:
-        target_embeddings = optimized.medium_vecs
-    else:
-        # Optimization: Don't hardcode 'cuda'. Let the model decide.
-        # This prevents crashes on CPU-only machines and avoids unnecessary transfers.
+    vectored = False
+    for label in LABELS:
+        if words is EXPLICIT_KEYWORDS[label]:
+            target_embeddings = optimized.vectors['explicit'][label]
+            vectored= True
+    if not vectored:
+        # Fallback: Encode the list on the fly if it's a custom list
+        # We use the model's current device (CPU or CUDA) automatically
         target_embeddings = optimized.model.encode(words, convert_to_tensor=True)
-
     # 3. Generate Candidates (N-grams)
     # Use pre-compiled regex for tokenization
     tokens = TOKEN_BOUNDARY_PATTERN.findall(string_lower)
@@ -360,7 +357,7 @@ class UniversalExtractor:
                     
         return candidates
 
-    def _scan_semantic_match(self, text: str, category: str) -> Set[str]:
+    def _scan_semantic_match(self, text: str, category: str, study_text:bool = False) -> Set[str]:
         # --- PHASE A: Keyword-Anchored Context Scan ---
         raw_context_candidates_alt:set = set(complex_split(text))
         
@@ -368,7 +365,8 @@ class UniversalExtractor:
             candidate_set=raw_context_candidates_alt,
             optimizer=self.optimizer,
             target_category=category,
-            top_k=5 
+            top_k=5,
+            study_info = study_text
         )
         valid_context_strings = [x[0] for x in valid_context_tuples]
 
@@ -408,7 +406,8 @@ class UniversalExtractor:
             candidate_set=raw_ngram_candidates,
             optimizer=self.optimizer,
             target_category=category,
-            top_k=5 
+            top_k=5,
+            study_info = study_text
         )
         valid_ngram_strings = [x[0] for x in valid_ngram_tuples]
 

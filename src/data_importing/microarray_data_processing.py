@@ -7,7 +7,8 @@ import sys
 import json
 import GEOparse
 from tqdm import tqdm
-
+import re
+import mygene
 module_dir = './'
 sys.path.append(module_dir)
 
@@ -15,6 +16,8 @@ sys.path.append(module_dir)
 from src.data_importing.helpers.helpers import process_metadata
 from src.data_importing.helpers.download_helper import clean_files,check_metadata_for_cel, count_cel_files
 
+
+LOCUS_REGEX = re.compile(r'^AT[1-5MC]G\d{5}$', re.IGNORECASE)
 class Microarray_tracker:
     def __init__(self) -> None:
         self.platform_counts: dict = {}
@@ -257,8 +260,204 @@ class Microarray_data_processing:
         except Exception as e:
             print(f"    > FAILURE during installation: {e}")
             return False
+        
+    def _map_symbols_to_locus_ids(self, identifiers):
+        """
+        Helper: Takes a list of strings (mix of Locus IDs and Symbols).
+        Returns a dictionary { 'original_string': 'AT_LOCUS_ID' }.
+        Drops items that cannot be resolved.
+        """
+        mg = mygene.MyGeneInfo()
+        mapping = {}
+        to_query = []
+
+        # 1. First pass: Identify what is already a Locus ID
+        for item in identifiers:
+            item_clean = str(item).strip().upper()
+            if LOCUS_REGEX.match(item_clean):
+                mapping[item] = item_clean
+            else:
+                to_query.append(item)
+
+        # 2. Second pass: Query external library for the rest
+        if to_query:
+            print(f"    > Querying MyGene.info for {len(to_query)} non-standard IDs...")
+            # Query for symbol, alias, or name and ask for the 'locus_tag' or 'ensembl.gene'
+            try:
+                results = mg.querymany(to_query, scopes='symbol,alias,name,reporter', 
+                                       fields='locus_tag,ensembl.gene', species='3702', 
+                                       returnall=False, as_dataframe=False, verbose=False)
+                
+                for res in results:
+                    query = res['query']
+                    # Check if we got a hit
+                    locus = None
+                    if 'locus_tag' in res:
+                        locus = res['locus_tag']
+                    elif 'ensembl' in res:
+                        # Sometimes ensembl is a list, sometimes a dict
+                        ens = res['ensembl']
+                        if isinstance(ens, list) and len(ens) > 0:
+                            locus = ens[0].get('gene')
+                        elif isinstance(ens, dict):
+                            locus = ens.get('gene')
+                    
+                    # If we found a locus and it looks valid, save it
+                    if locus and LOCUS_REGEX.match(locus):
+                        mapping[query] = locus.upper()
+                        
+            except Exception as e:
+                print(f"    > Warning: MyGene query failed ({e}). Dropping these IDs.")
+
+        return mapping
     
-    def process_microarray_metadata_and_rma(self, experiment_id, raw_data_folder, output_folder, gse)-> int:
+    def process_microarray_metadata_and_rma(self, experiment_id, raw_data_folder, output_folder, gse) -> int:
+        print(f"\n[RMA Pipeline] Processing {experiment_id}...")
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+            
+        # --- 1. File Discovery ---
+        cel_files = []
+        for root, _, files in os.walk(raw_data_folder):
+            for f in files:
+                if f.lower().endswith('.cel') or f.lower().endswith('.cel.gz'):
+                    cel_files.append(os.path.join(root, f))
+        
+        if not cel_files:
+            print(f"  - ABORTING: No CEL files found in {raw_data_folder}.")
+            raise ValueError('No cel files found')
+
+        print(f"  - Found {len(cel_files)} CEL files.")
+
+        # --- 2. Metadata Processing ---
+        # (Kept your original logic here)
+        print("  - Processing metadata for all samples in study...")
+        try:
+            for _, gsm in gse.gsms.items():
+                process_metadata(experiment_id, gse, gsm, save_path=output_folder)
+        except Exception as e:
+            print(f"    > Metadata processing failed: {e}")
+
+        # --- 3. RMA Normalization ---
+        try:
+            # RPY2 Imports assumed to be available in 'self' or globally
+            cel_files_r = ro.StrVector(cel_files) # adjusted self.ro based on context
+            print("  - Reading CEL files (oligo)...")
+            
+            # (Kept your original Package installation retry logic)
+            try:
+                raw_data = self.oligo.read_celfiles(cel_files_r)
+            except Exception as e_r:
+                error_msg = str(e_r)
+                if "could not be loaded" in error_msg and "pd." in error_msg:
+                    import re
+                    match = re.search(r"(pd\.[a-zA-Z0-9\.]+)", error_msg)
+                    if match:
+                        missing_pkg = match.group(1)
+                        print(f"    > Missing R package detected: {missing_pkg}")
+                        installed = self._install_missing_r_package(missing_pkg)
+                        if installed:
+                            print("    > Retrying read_celfiles...")
+                            raw_data = self.oligo.read_celfiles(cel_files_r)
+                        else:
+                            raise e_r
+                    else:
+                        raise e_r
+                else:
+                    raise e_r
+
+            print("  - Running RMA normalization...")
+            eset = self.oligo.rma(raw_data)
+            exprs_matrix_r = self.biobase.exprs(eset)
+            data_np = np.array(exprs_matrix_r)
+            
+            # Get Probe IDs
+            try:
+                probe_ids = list(exprs_matrix_r.rownames)
+            except:
+                probe_ids = list(self.biobase.featureNames(eset))
+                
+            df = pd.DataFrame(data_np)
+            df.index = probe_ids  
+            df.index.name = "ProbeID"
+            
+            # Clean Column Names
+            clean_names = []
+            for c in cel_files:
+                filename = os.path.basename(c)
+                filename = filename.replace('.gz', '').replace('.cel', '').replace('.CEL', '')
+                clean_names.append(filename.split('_')[0])
+            df.columns = clean_names
+
+            # --- 4. Mapping to Locus ID (Modified Section) ---
+            print("  - Mapping Probe IDs to Arabidopsis Locus IDs...")
+            try:
+                platform_id = gse.metadata.get('platform_id', [''])[0]
+                if platform_id and platform_id in gse.gpls:
+                    gpl = gse.gpls[platform_id]
+                    annot = gpl.table
+                    
+                    # Priority List: Look for explicit Locus columns first, then Symbols
+                    # 'ORF' and 'AGI' usually contain the AT code directly
+                    candidates = ['ORF', 'AGI', 'Locus', 'Locus_id', 'Gene Symbol', 'GENE_SYMBOL', 'SYMBOL']
+                    
+                    target_col = None
+                    for col in candidates:
+                        if col in annot.columns:
+                            target_col = col
+                            break
+                    
+                    if target_col:
+                        print(f"    > Found annotation column: '{target_col}'")
+                        
+                        # 1. Create a dictionary: ProbeID -> Raw Annotation (e.g., "FLC" or "AT5G10140")
+                        # Handle multiple entries like "AT1G01010 /// AT1G01020" by taking the first one
+                        annot['Cleaned_Val'] = annot[target_col].astype(str).apply(lambda x: x.split('///')[0].split('//')[0].strip())
+                        
+                        # Filter out empty strings or 'nan'
+                        valid_annot = annot[annot['Cleaned_Val'].replace('nan', '') != '']
+                        probe_to_raw_map = dict(zip(valid_annot['ID'], valid_annot['Cleaned_Val']))
+                        
+                        # 2. Get unique raw values to convert (optimization)
+                        unique_raw_values = list(set(probe_to_raw_map.values()))
+                        
+                        # 3. Resolve these raw values to Locus IDs using the helper
+                        raw_to_locus_map = self._map_symbols_to_locus_ids(unique_raw_values)
+                        
+                        # 4. Map the DataFrame
+                        # Map Probe -> Raw Value -> Locus ID
+                        df['Raw_Val'] = df.index.map(probe_to_raw_map)
+                        df['LocusID'] = df['Raw_Val'].map(raw_to_locus_map)
+                        
+                        # 5. Drop rows where LocusID is NaN (Failed mapping or invalid ID)
+                        initial_count = len(df)
+                        df = df.dropna(subset=['LocusID'])
+                        
+                        # 6. Group by LocusID (average duplicates if multiple probes map to same gene)
+                        df = df.drop(columns=['Raw_Val'])
+                        df = df.groupby('LocusID').mean()
+                        
+                        print(f"    > Annotation complete. Reduced {initial_count} probes to {len(df)} validated Locus IDs.")
+                    else:
+                        raise ValueError(f"    > WARNING: Could not find suitable gene column in GPL {platform_id}.")
+                else:
+                    raise ValueError("    > Platform data not found in GSE object.")
+                    
+            except Exception as e_annot:
+                print(f"    > Annotation step failed: {e_annot}. Aborting this study.")
+                raise e_annot
+
+            # --- 5. Save ---
+            output_file = os.path.join(output_folder, f"{experiment_id}_RMA_LocusID.csv")
+            df.to_csv(output_file)
+            print(f"  - SUCCESS: Saved to {output_file}")
+            return 0
+            
+        except Exception as e:
+            print(f"  - RMA Failed for {experiment_id}: {e}")
+            raise e
+        
+    def process_microarray_metadata_and_rma_old(self, experiment_id, raw_data_folder, output_folder, gse)-> int:
         print(f"\n[RMA Pipeline] Processing {experiment_id}...")
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
@@ -371,7 +570,7 @@ class Microarray_data_processing:
             print(f"  - RMA Failed for {experiment_id}: {e}")
             raise e
 
-def download_experiments_microarray(gse_list, download_dir, tracker, download_raw=True, scan=True, output_folder='./microarray_processed_data/'):
+def download_experiments_microarray(gse_list, download_dir, tracker:Microarray_tracker, download_raw=True, scan=True, output_folder='./microarray_processed_data/'):
     '''
     Downloads experiments using the tracker object to persist state (ignore/downloaded/processed).
     '''
@@ -493,7 +692,7 @@ def download_experiments_microarray(gse_list, download_dir, tracker, download_ra
 
                 tqdm.write(f'  [{gse_id}] Processing RMA...')
                 try:
-                    data_processor.process_microarray_metadata_and_rma(gse_id, exp_folder, f'{output_folder}/{gse_id}', gse) # SOME DO NOT HAVE THEIR CSV I BELIVE
+                    data_processor.process_microarray_metadata_and_rma(gse_id, exp_folder, f'{output_folder}/{gse_id}', gse)
                     
                     # SUCCESSFUL PROCESSING -> Update State
                     tracker.mark_processed(gse_id)

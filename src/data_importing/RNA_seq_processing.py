@@ -265,10 +265,13 @@ class RNASeq_processor:
         # 2. Construct Nextflow Command
         # Note: --pseudo_aligner salmon activates the fast "Kallisto-like" mode
         # We skip alignment (STAR/HISAT2) and other QC to focus on counts.
+        #TODO: make this run in batches, saves time ln genemo allignment
         cmd = [
             "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
             "-revision", "3.14.0",
+            "-ansi-log",
+            # TODO: check how to run it "silently"
             "--input", samplesheet_path,
             "--outdir", study_out_dir,
             "--pseudo_aligner", "salmon",

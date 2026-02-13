@@ -105,8 +105,8 @@ class LabelMap:
 
         # Heuristic: Only map if 1-to-1 to avoid list confusion
         if len(raw_treats) == 1 and len(ground_treats) == 1:
-            r_val = str(raw_treats[0])
-            g_val = str(ground_treats[0])
+            r_val = str(raw_treats.pop())
+            g_val = str(ground_treats.pop())
             self.add_treatment(r_val, g_val, study_id)
 
     def save_map(self):

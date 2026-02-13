@@ -54,8 +54,8 @@ class TissueEnum(str, Enum):
     WHOLE_PLANT = "whole_plant"
     SILIQUE = "silique"
     CALLUS = "callus"
-    SEED = "seed"
     SEEDLING = "seedling"
+    SEED = "seed"
     STEM = "stem"
     # PROTOPLASTS = "protoplasts"
     # GUARD_CELLS = "guard_cells"
@@ -79,7 +79,7 @@ class TreatmentEnum(str, Enum):
     OTHER_LIGHT = "Other Light Stress"
     CUT = "Cut"
     OTHER = "Other stress"
-    NONE = "No stress"
+    NONE = "Control"
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
 class TreatmentEnum_alt(str, Enum):
@@ -92,12 +92,13 @@ class TreatmentEnum_alt(str, Enum):
     NUTRIENT = "Nutrient Deficiency"
     BIOTIC = "Biotic"
     ABIOTIC = "Abiotic"
-    LOW_LIGHT = "Low Light"
+    LOW_LIGHT = "Dark"
     HIGH_LIGHT = "High Light"
     OTHER_LIGHT = "Light"
     CUT = "cut"
     OTHER = "Other"
-    NONE = "Control"
+    NONE = "No stress"
+
 class MediumEnum(str, Enum):
     MS = "MS"
     B5 = "Gamborg B5 medium"
@@ -120,15 +121,20 @@ VALID_TREATMENTS = [t.value for t in TreatmentEnum]
 VALID_TREATMENTS_ALT= [t.value for t in TreatmentEnum_alt]
 VALID_MEDIUMS = [m.value for m in MediumEnum]
 
+BUCKET_KEYWORDS: dict = {
+    'treatment': VALID_TREATMENTS,
+    'tissue':VALID_TISSUES,
+    'medium':VALID_MEDIUMS
+}
 
 EXPLICIT_KEYWORDS: Dict = {
-    'treatment': VALID_TREATMENTS+VALID_TREATMENTS_ALT,
+    'treatment': VALID_TREATMENTS+VALID_TREATMENTS_ALT+['light','dark'],
     'tissue':VALID_TISSUES,
     'medium':VALID_MEDIUMS
 }
 
 AREA_KEYWORDS:Dict = {
-    'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition','temperature'],
+    'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition','temperature', 'oC'],
     'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part'],
     'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']
 }
