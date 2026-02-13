@@ -2,11 +2,11 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=10:00:00
+#SBATCH --time=24:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=24
-#SBATCH --mem=72G
-#SBATCH --array=0-9%10
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=10G
+# SBATCH --array=0-0%1
 #SBATCH --job-name=processing_RNA_seq
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 # source ~/.bashrc
