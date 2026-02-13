@@ -7,6 +7,7 @@ from tqdm import tqdm
 import GEOparse
 from GEOparse.GEOTypes import GSE,GSM, GPL, GDS
 import sys
+import time
 module_dir = './'
 sys.path.append(module_dir)
 from src.data_importing.helpers.download_helper import check_metadata_for_sra_boolean
@@ -148,24 +149,39 @@ class RNASeq_processor:
                     "--outdir", output_folder, 
                     srr
                 ]
-                
-                try:
-                    # Run the command
-                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-                    
-                    # Verification (Optional but recommended)
-                    # Check if files actually appeared
-                    created_files = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-                    if not created_files:
-                        print(f"Warning: fastq-dump ran but no .gz files found for {srr}")
+                max_retries = 3
+                attempt = 0
+                success = False
 
-                except subprocess.CalledProcessError as e:
-                    print(f"\nCRITICAL ERROR downloading {srr}:")
-                    print(f"Command tried: {' '.join(cmd)}")
-                    # Don't crash the whole loop, just skip this SRR? 
-                    # Or raise e if you want to stop everything.
-                    print(e)
+                while attempt < max_retries and not success:
+                    try:
+                        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                        
+                        # Verify download actually produced files
+                        created_files = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+                        if created_files:
+                            success = True
+                        else:
+                            print(f"Warning: fastq-dump finished but no files found for {srr}. Retrying...")
+                            attempt += 1
+                            
+                    except subprocess.CalledProcessError as e:
+                        attempt += 1
+                        print(f"\n[Attempt {attempt}/{max_retries}] Network error downloading {srr}. Retrying in 10s...")
+                        
+                        # CRITICAL: Clean up partial/corrupt files before retrying
+                        # If fastq-dump crashes halfway, it might leave a broken .gz file
+                        partial_files = [f for f in os.listdir(output_folder) if f.startswith(srr)]
+                        for pf in partial_files:
+                            try:
+                                os.remove(os.path.join(output_folder, pf))
+                            except OSError:
+                                pass
 
+                        time.sleep(10) # Wait for network/server to stabilize
+
+                if not success:
+                    print(f"\nCRITICAL: Failed to download {srr} after {max_retries} attempts. Skipping.")
 
     def generate_samplesheet(self, gse_id, fastq_folder, output_csv):
         """
