@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import rpy2.robjects as ro
 from rpy2.robjects.packages import importr
+import rpy2.robjects.packages as rpackages
+from rpy2.robjects.vectors import StrVector
 import sys
 import json
 import GEOparse
@@ -234,33 +236,68 @@ class Microarray_tracker:
 
 
 class Microarray_data_processing:
-    # ... (Keep existing Data_processing code unchanged) ...
     def __init__(self):
-        try:
-            self.oligo = importr('oligo')
-            self.base = importr('base')
-            self.biobase = importr('Biobase')
-        except Exception as e:
-            print(f"Error: R packages (oligo, Biobase) not installed.:{e}")
-            return
+        # Initialize R environment immediately
+        self._initialize_r_environment()
         
+    def _initialize_r_environment(self):
+        """
+        Installs (if missing) and loads CORE R packages at startup.
+        Assigns them to self for reuse.
+        """
+        print("\n[Init] Setting up R environment...")
+        
+        # 1. Select a mirror to avoid interactive prompts
+        utils = rpackages.importr('utils')
+        utils.chooseCRANmirror(ind=1) 
+
+        # 2. Define Core Packages (The tools needed for every file)
+        # We DO NOT include specific chip annotations here (e.g. pd.at...) 
+        # as those must still be handled dynamically.
+        core_packages = ['BiocManager', 'oligo', 'Biobase']
+
+        # 3. Check and Install Missing Core Packages
+        names_to_install = [x for x in core_packages if not rpackages.isinstalled(x)]
+        if len(names_to_install) > 0:
+            print(f"  - Installing missing core packages: {names_to_install}")
+            
+            # Ensure BiocManager is ready first
+            if not rpackages.isinstalled('BiocManager'):
+                utils.install_packages(StrVector(['BiocManager']))
+            
+            bioc_manager = rpackages.importr('BiocManager')
+            bioc_manager.install(StrVector(names_to_install), update=False, ask=False)
+
+        # 4. Load Packages and Attach to Self
+        # This fixes the "object has no attribute 'oligo'" error
+        try:
+            print("  - Loading R libraries...")
+            self.oligo = rpackages.importr('oligo')
+            self.biobase = rpackages.importr('Biobase')
+            
+            # Keep a reference to utilities we might need later
+            self.r_utils = utils
+            self.bioc_manager = rpackages.importr('BiocManager')
+            
+            print("  - [Success] R environment ready.")
+            
+        except Exception as e:
+            print(f"  - [CRITICAL] Failed to load R packages: {e}")
+            raise e
+
     def _install_missing_r_package(self, package_name):
-        print(f"    > ATTEMPTING TO AUTO-INSTALL: {package_name}...")
+        """
+        Helper for DYNAMIC annotation packages (e.g. pd.hugene...)
+        Only used when a specific chip type is encountered.
+        """
         try:
-            utils = importr('utils')
-            utils.chooseCRANmirror(ind=1)
-            biocmanager = importr('BiocManager')
-            biocmanager.install(ro.StrVector([package_name]), ask=False, update=False)
-            if rpackages.isinstalled(package_name):
-                print(f"    > SUCCESS: {package_name} installed.")
-                return True
-            else:
-                print(f"    > FAILURE: Could not install {package_name}.")
-                return False
+            print(f"    > Attempting to install missing annotation package: {package_name}...")
+            self.bioc_manager.install(StrVector([package_name]), update=False, ask=False)
+            return True
         except Exception as e:
-            print(f"    > FAILURE during installation: {e}")
+            print(f"    > Failed to install {package_name}: {e}")
             return False
-        
+
     def _map_symbols_to_locus_ids(self, identifiers):
         """
         Helper: Takes a list of strings (mix of Locus IDs and Symbols).
