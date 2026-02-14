@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
-    parser.add_argument("--array_index", type=int, default=None, help="SLURM Array Task ID")
+    # parser.add_argument("--array_index", type=int, default=None, help="SLURM Array Task ID")
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
     combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
-    raise ValueError()
+    raise ValueError('DONE')
     # combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
 
     # plot_study_distributions_seaborn(processed_folder, "new_storage/new_plots/intensity/intensity_plot_matplot_test.svg")

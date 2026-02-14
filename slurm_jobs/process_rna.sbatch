@@ -4,9 +4,8 @@
 #SBATCH --qos=medium
 #SBATCH --time=24:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=10G
-# SBATCH --array=0-0%1
 #SBATCH --job-name=processing_RNA_seq
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 # source ~/.bashrc
@@ -44,6 +43,7 @@ export APPTAINER_CACHEDIR="$TMPDIR"
 rm -rf ./work
 
 echo "Work Directory is set to: $NXF_WORK"
-python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' --array_index $SLURM_ARRAY_TASK_ID
+python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/'
+# --array_index $SLURM_ARRAY_TASK_ID
 
 echo "done with main.py"
