@@ -13,4 +13,7 @@ echo "Python Location: $(which python)"
 echo "------------------------------------------------"
 
 # 4. Install
-conda install -y -c bioconda -c conda-forge bioconductor-oligo bioconductor-biobase bioconductor-geoquery r-rsqlite r-essentials
+conda install -c conda-forge mamba -y
+
+echo "mama installed ---------------------------------------------------------"
+mamba install -y -c bioconda -c conda-forge bioconductor-oligo bioconductor-biobase bioconductor-geoquery r-rsqlite r-essentials
