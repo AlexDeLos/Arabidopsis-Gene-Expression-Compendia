@@ -92,7 +92,7 @@ if __name__ == "__main__":
     # Initialize Tracker
 
     # ma_tracker = Microarray_tracker.load_from_json("tracker_stats.json")
-    ma_tracker = Microarray_tracker()
+    # ma_tracker = Microarray_tracker()
     ma = 20000
     scan_folder = f'.{root_storage_dir}microarray_scan_{ma}/'
     processed_folder = f'{root_storage_dir}processed_microarray_data/'
@@ -100,12 +100,12 @@ if __name__ == "__main__":
     microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
     
     # Pass tracker to the download function
-    ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
+    # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
     saved_tracker = Microarray_tracker.load_from_json('new_storage/microarray_data/tracker_stats.json')
-    test = ma_tracker.compare_states(saved_tracker)
+    # test = ma_tracker.compare_states(saved_tracker)
     valid_microarray_ids = download_experiments_microarray(microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
-    ma_tracker.print_summary()
-    ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
+    # ma_tracker.print_summary()
+    # ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
     plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
     combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
