@@ -12,4 +12,4 @@ echo "Active Conda Environment: $CONDA_DEFAULT_ENV"
 echo "Python Location: $(which python)"
 echo "------------------------------------------------"
 
-conda env create -f environment.yml -p ./my_cluster_env
+conda env create -f environment.yml -p my_cluster_env
