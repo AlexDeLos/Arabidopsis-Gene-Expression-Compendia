@@ -18,14 +18,14 @@ echo "Date: $(date)"
 echo "=================================================="
 echo ""
 
-# 1. Load Conda Module
-module use /opt/insy/modulefiles
-module load miniconda/3.9
+# # 1. Load Conda Module
+# module use /opt/insy/modulefiles
+# module load miniconda/3.9
 
-# 2. Activate the PACKED environment directly
-# We use 'source' instead of 'conda activate' to ensure it uses the 
-# exact folder where we patched the R paths.
-source /home/nfs/alexdelossanto/.conda/envs/pre_processing_packed/bin/activate
+# # 2. Activate the PACKED environment directly
+# # We use 'source' instead of 'conda activate' to ensure it uses the 
+# # exact folder where we patched the R paths.
+# source /home/nfs/alexdelossanto/.conda/envs/pre_processing_packed/bin/activate
 
 # 3. Environment Variables
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
