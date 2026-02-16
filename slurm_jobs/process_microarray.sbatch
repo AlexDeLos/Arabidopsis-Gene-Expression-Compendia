@@ -36,6 +36,8 @@ export R_HOME=$CONDA_PREFIX/lib/R
 echo "Environment activated: $CONDA_PREFIX"
 echo "Python being used: $(which python3)"
 
+echo "Gethering data..."
+python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/'
 # 4. Run the Script
 echo "Starting analysis..."
 python3 -u src/data_importing/data_norm_and_analisys.py
