@@ -18,6 +18,22 @@ from src.data_importing.helpers.file_tracker import FileTracker
 # --- CONFIGURATION ---
 Entrez.email = "your.email@example.com" 
 
+def save_list_to_txt(data_list, filename):
+    """Saves a list to a text file, one item per line."""
+    with open(filename, 'w') as f:
+        for item in data_list:
+            f.write(f"{item}\n")
+    print(f"Saved {len(data_list)} IDs to {filename}")
+
+def load_list_from_txt(filename):
+    """Reads a text file into a list, stripping newlines."""
+    if not os.path.exists(filename):
+        return []
+    
+    with open(filename, 'r') as f:
+        # .strip() removes the \n character from the end
+        return [line.strip() for line in f]
+
 MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'#cel"[Supplementary Files]'
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
 STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
@@ -26,6 +42,10 @@ import GEOparse
 import os
 import requests
 import re
+
+
+
+
 
 def download_processed_counts(gse_id, output_dir):
     print(f"Checking metadata for {gse_id}...")
@@ -97,7 +117,10 @@ if __name__ == "__main__":
     scan_folder = f'.{root_storage_dir}microarray_scan/'
     processed_folder = f'{root_storage_dir}processed_microarray_data/'
     downloads_folder = f"{root_storage_dir}microarray_data/"
-    microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
+    # microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
+    filename = './microarray_ids.txt'
+    # save_list_to_txt(microarray_ids,filename)
+    microarray_ids = load_list_from_txt(filename)
     
     # Pass tracker to the download function
     # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
