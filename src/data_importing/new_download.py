@@ -105,6 +105,7 @@ if __name__ == "__main__":
     # test = ma_tracker.compare_states(saved_tracker)
     # microarray_ids = ['GSE62163']
     data_processor = Microarray_data_processing()
+    print(f'processing {len(microarray_ids)} studies')
     valid_microarray_ids = download_experiments_microarray(data_processor,microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
     raise ValueError("DONE")
     
