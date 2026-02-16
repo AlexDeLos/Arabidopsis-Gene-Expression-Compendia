@@ -226,3 +226,4 @@ sys
 /.nextflow
 /work
 .svg
+my_env_packed.tar.gz

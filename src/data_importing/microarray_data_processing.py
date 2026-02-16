@@ -382,27 +382,7 @@ class Microarray_data_processing:
             print("  - Reading CEL files (oligo)...")
             
             # (Kept your original Package installation retry logic)
-            try:
-                raw_data = self.oligo.read_celfiles(cel_files_r)
-            except Exception as e_r:
-                error_msg = str(e_r)
-                if "could not be loaded" in error_msg and "pd." in error_msg:
-                    import re
-                    match = re.search(r"(pd\.[a-zA-Z0-9\.]+)", error_msg)
-                    if match:
-                        missing_pkg = match.group(1)
-                        print(f"    > Missing R package detected: {missing_pkg}")
-                        installed = self._install_missing_r_package(missing_pkg)
-                        if installed:
-                            print("    > Retrying read_celfiles...")
-                            raw_data = self.oligo.read_celfiles(cel_files_r)
-                        else:
-                            raise e_r
-                    else:
-                        raise e_r
-                else:
-                    raise e_r
-
+            raw_data = self.oligo.read_celfiles(cel_files_r)
             print("  - Running RMA normalization...")
             eset = self.oligo.rma(raw_data)
             exprs_matrix_r = self.biobase.exprs(eset)
@@ -483,7 +463,7 @@ class Microarray_data_processing:
             except Exception as e_annot:
                 print(f"    > Annotation step failed: {e_annot}. Aborting this study.")
                 raise e_annot
-
+            df = df.T.groupby(by=df.columns).mean().T
             # --- 5. Save ---
             output_file = os.path.join(output_folder, f"{experiment_id}_RMA_LocusID.csv")
             df.to_csv(output_file)
@@ -607,11 +587,10 @@ class Microarray_data_processing:
             print(f"  - RMA Failed for {experiment_id}: {e}")
             raise e
 
-def download_experiments_microarray(gse_list, download_dir, tracker:Microarray_tracker, download_raw=True, scan=True, output_folder='./microarray_processed_data/'):
+def download_experiments_microarray(data_processor:Microarray_data_processing,gse_list, download_dir, tracker:Microarray_tracker, download_raw=True, scan=True, output_folder='./microarray_processed_data/'):
     '''
     Downloads experiments using the tracker object to persist state (ignore/downloaded/processed).
     '''
-    data_processor = Microarray_data_processing()
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
@@ -645,6 +624,8 @@ def download_experiments_microarray(gse_list, download_dir, tracker:Microarray_t
                 try:
                     # Attempt download or load from disk if partial
                     gse = GEOparse.get_GEO(geo=gse_id, destdir=download_dir, silent=True)
+                    if len(gse.gsms)<5:
+                        raise ValueError('to little samples')
                 except Exception as e:
                     tqdm.write(f"  [{gse_id}] Metadata download failed: {e}")
                     tracker.mark_ignore(gse_id)

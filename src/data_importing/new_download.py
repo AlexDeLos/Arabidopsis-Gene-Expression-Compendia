@@ -5,13 +5,13 @@ import argparse
 module_dir = './'
 sys.path.append(module_dir)
 
+from src.constants import *
+
 # Import the processing function from your other file
-from src.data_importing.microarray_data_processing import Microarray_tracker,download_experiments_microarray
+from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
 from src.data_importing.RNA_seq_processing import download_experiments_RNA_seq_nf_core
 from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
 from src.data_importing.helpers.download_helper import search_geo_accessions
-from src.constants import *
-
 from src.data_importing.helpers.file_tracker import FileTracker
 # from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
@@ -56,7 +56,7 @@ def download_processed_counts(gse_id, output_dir):
 
             print(f"  > Found candidate: {filename}")
             
-            # 4. Download
+            # 4. Download   
             save_path = os.path.join(output_dir, filename)
             try:
                 response = requests.get(url, stream=True)
@@ -103,12 +103,14 @@ if __name__ == "__main__":
     # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
     saved_tracker = Microarray_tracker.load_from_json('new_storage/microarray_data/tracker_stats.json')
     # test = ma_tracker.compare_states(saved_tracker)
-    valid_microarray_ids = download_experiments_microarray(microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
+    # microarray_ids = ['GSE62163']
+    data_processor = Microarray_data_processing()
+    valid_microarray_ids = download_experiments_microarray(data_processor,microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
     # ma_tracker.print_summary()
     # ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
     plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
-    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
+    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined_test_del.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
     raise ValueError('DONE')
     # combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
 
