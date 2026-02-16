@@ -8,8 +8,6 @@ import rpy2
 from rpy2.robjects import r, pandas2ri
 from rpy2.robjects.packages import importr
 import tarfile
-import gzip
-import shutil
 
 
 from rpy2.robjects.packages import importr

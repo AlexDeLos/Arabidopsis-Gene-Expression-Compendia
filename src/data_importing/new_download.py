@@ -94,24 +94,26 @@ if __name__ == "__main__":
     # ma_tracker = Microarray_tracker.load_from_json("tracker_stats.json")
     # ma_tracker = Microarray_tracker()
     ma = 20000
-    scan_folder = f'.{root_storage_dir}microarray_scan_{ma}/'
+    scan_folder = f'.{root_storage_dir}microarray_scan/'
     processed_folder = f'{root_storage_dir}processed_microarray_data/'
     downloads_folder = f"{root_storage_dir}microarray_data/"
     microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
     
     # Pass tracker to the download function
     # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
-    saved_tracker = Microarray_tracker.load_from_json('new_storage/microarray_data/tracker_stats.json')
+    saved_tracker = Microarray_tracker.load_from_json(root_storage_dir+'microarray_data/tracker_stats.json')
     # test = ma_tracker.compare_states(saved_tracker)
     # microarray_ids = ['GSE62163']
     data_processor = Microarray_data_processing()
     valid_microarray_ids = download_experiments_microarray(data_processor,microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
+    raise ValueError("DONE")
+    
     # ma_tracker.print_summary()
     # ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
     plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
-    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined_test_del.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
-    raise ValueError('DONE')
+    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
+    # raise ValueError('DONE')
     # combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
 
     # plot_study_distributions_seaborn(processed_folder, "new_storage/new_plots/intensity/intensity_plot_matplot_test.svg")
