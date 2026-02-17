@@ -155,7 +155,7 @@ if __name__ == "__main__":
         query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
         # --- BATCH CONFIGURATION ---
-        BATCH_SIZE = 5
+        BATCH_SIZE = args.batch_size
         RNA_tracker = FileTracker(file_tracker_loc)
 
         if args.array_index is not None:
