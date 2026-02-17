@@ -38,8 +38,10 @@ STATUS_PROCESSED = 2
 STATUS_IGNORE = 3
 STATUS_ERROR = 4
 
-SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'/final_data/RMA_Microarray_Combined_sample_map.csv', index_col=0) # todo: change back
-
+try:
+    SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'/final_data/RMA_Microarray_Combined_sample_map.csv', index_col=0) # todo: change back
+except FileNotFoundError:
+    SAMPLE_STUDY_MAP = None
 
 # LABELS
 from enum import Enum
