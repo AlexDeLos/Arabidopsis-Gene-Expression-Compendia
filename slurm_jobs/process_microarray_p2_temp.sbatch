@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=50G
-#SBATCH --job-name=microarray_analysis
+#SBATCH --job-name=2_microarray_analysis
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 
 # Print job information

@@ -41,39 +41,14 @@ class GroundingOptimizer:
         lemmatized_terms = [self._lemmatize(t) for t in terms]
         return torch.tensor(self.model.encode(lemmatized_terms, device='cuda' if torch.cuda.is_available() else 'cpu'))
 
-    # --- UPDATED: Heuristics using the Synonyms ---
-    def _check_heuristics(self, text: str, category: str) -> Optional[str]:
-        text_lower = text.lower().strip()
-        
-        IGNORED_TERMS = {
-            'conditions', 'condition', 'time', 'date', 'replicate', 'rep', 
-            'genotype', 'analysis', 'samples', 'study', 'experiment'
-        }
-        if text_lower in IGNORED_TERMS:
-            if category == 'treatment': return "No stress"
-            if category == 'tissue': return "unknown" 
-            return None
-
-        # Optimization: Check directly against the generated EXPLICIT list
-        # We sort by length to match "Root system" before "Root"
-        sorted_candidates = sorted(EXPLICIT_KEYWORDS[category], key=len, reverse=True)
-        
-        for candidate in sorted_candidates:
-            # Word boundary check is safer: matches "leaf" but not "flea"
-            # Using simple inclusion for now as per your original logic
-            if candidate.lower() in text_lower:
-                return candidate
-        
-        return None
-
-    # --- NEW: Generic Collapsing Method ---
-    def _get_canonical_term(self, category: str, term: str) -> str:
+    # --- PUBLIC: Canonicalization Helper ---
+    def canonicalize_term(self, term: str, category: str) -> str:
         """
-        Collapses a synonym (e.g. 'Dark') to its canonical enum value 
+        Public wrapper to collapse a synonym (e.g. 'Dark') to its canonical enum value 
         (e.g. 'Low Light Stress') using the generated CANONICAL_MAP.
         """
-        if category not in CANONICAL_MAP:
-            return term
+        if not term: return "unknown"
+        if category not in CANONICAL_MAP: return term
         
         # 1. Direct Lookup
         if term in CANONICAL_MAP[category]:
@@ -85,11 +60,10 @@ class GroundingOptimizer:
             if syn.lower() == term_lower:
                 return canonical
                 
-        return term # Return original if no mapping found
+        # 3. If no map found, return original (or could return 'unknown')
+        return term 
 
     def find_semantic_match(self, string: str, words: List[str], target_embeddings, threshold: float) -> Tuple[bool, float, Optional[str], Optional[str]]:
-        # ... (This method remains exactly the same as your provided code) ...
-        # [Use previous implementation]
         if not string or not words: return False, 0.0, None, None
         string_lower = string.lower()
         for w in words:
@@ -131,34 +105,32 @@ class GroundingOptimizer:
     
     def get_best_match_with_score(self, text: str, category: str) -> Tuple[Optional[str], float]:
         """
-        Finds the best match for a string within the explicit ontology (including synonyms),
+        Finds the best match within the EXPLICIT ontology (Synonyms included),
         but returns the CANONICAL (bucket) term.
         """
         if not text: 
             return None, 0.0
 
         # 1. Prepare Query
-        # We ensure the query vector is created on the same device as the stored vectors
         clean_text = self._lemmatize(text)
         target_device = self.vectors['explicit'][category].device
         query_vec = self.model.encode(clean_text, convert_to_tensor=True, device=target_device)
 
-        # 2. Compute Cosine Similarity against the EXPLICIT list (which includes synonyms)
+        # 2. Compute Cosine Similarity against EXPLICIT list
         scores = util.cos_sim(query_vec, self.vectors['explicit'][category])[0]
         
         # 3. Find Best Match
         best_idx = torch.argmax(scores).item()
         best_score = scores[best_idx].item()
         
-        # 4. Retrieve the matched term (This matches the index in EXPLICIT_KEYWORDS)
-        # Note: This might be a synonym (e.g., "Dark")
+        # 4. Retrieve matched raw term (e.g. "Dark")
         matched_raw_term = EXPLICIT_KEYWORDS[category][best_idx]
         
-        # 5. Collapse to Canonical (e.g., "Dark" -> "Low Light Stress")
-        # This ensures the extractor returns the standardized Enum value
-        canonical_term = self._get_canonical_term(category, matched_raw_term)
+        # 5. Collapse to Canonical (e.g. "Low Light Stress")
+        canonical_term = self.canonicalize_term(matched_raw_term, category)
         
         return canonical_term, best_score
+
     def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap) -> List:
         
         local_cache = {label: {} for label in LABELS}
@@ -167,7 +139,6 @@ class GroundingOptimizer:
         # --- PASS 1: Grounding ---
         for sample in extracted_samples:
             
-            # Clean sets (kept from original)
             for key, val in sample.items():
                 if key == 'sample_id': continue
                 if val != set():
@@ -184,7 +155,9 @@ class GroundingOptimizer:
                     
                     if raw_tissue not in local_cache[label]:
                         if raw_tissue in label_map.map_tissue:
-                            local_cache[label][raw_tissue] = label_map.map_tissue[raw_tissue]
+                            # Trust label map, but ensure it's canonical if possible
+                            mapped = label_map.map_tissue[raw_tissue]
+                            local_cache[label][raw_tissue] = self.canonicalize_term(mapped, label)
                         else:
                             # 1. Bucket Match (Canonical)
                             _, score, _, best_keyword = self.find_semantic_match(raw_tissue, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.88)
@@ -192,6 +165,7 @@ class GroundingOptimizer:
                             # 2. Explicit Match (Synonyms)
                             _, score_, _, best_keyword_ = self.find_semantic_match(raw_tissue, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.88)
                             
+                            # Prefer Explicit match if better
                             if score_ > score:
                                 score = score_
                                 best_keyword = best_keyword_
@@ -202,8 +176,7 @@ class GroundingOptimizer:
                         
                         if best_fit and best_fit != 'unknown':
                             # --- COLLAPSE SYNONYMS HERE ---
-                            # This now uses the map generated in constants.py
-                            canonical_fit = self._get_canonical_term(label, best_fit)
+                            canonical_fit = self.canonicalize_term(best_fit, label)
                             local_cache[label][raw_tissue] = canonical_fit
                         else:
                             local_cache[label][raw_tissue] = "unknown"
@@ -222,7 +195,6 @@ class GroundingOptimizer:
                     for t in raw:
                         val = local_cache[label].get(t, "unknown")
                         final_treats.append(val)
-                    # Sort and Deduplicate
                     new_sample[label] = list(sorted(set(final_treats)))
             final_samples.append(new_sample)
 

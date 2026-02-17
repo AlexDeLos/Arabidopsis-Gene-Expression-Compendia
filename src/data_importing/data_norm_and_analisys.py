@@ -21,7 +21,6 @@ from src.data_analisys.utils.cluster_exploration_utils import *
 
 # --- Constants & Configuration ---
 print('using old sample map')
-SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'/final_data/RMA_Microarray_Combined_sample_map_old.csv', index_col=0) # todo: change back
 
 def get_study(sample: str):
     """Extracts StudyID from sample name."""

@@ -9,7 +9,7 @@ from src.constants import *
 
 # Import the processing function from your other file
 from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
-from src.data_importing.RNA_seq_processing import download_experiments_RNA_seq_nf_core
+from src.data_importing.RNA_seq_processing_batch import download_experiments_RNA_seq_nf_core
 from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
 from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.data_importing.helpers.file_tracker import FileTracker
@@ -99,10 +99,12 @@ def download_processed_counts(gse_id, output_dir):
 #     download_processed_counts(i, "./count_data_folder")
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
-
+    run_microarray = False
+    run_rna_seq = True
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
-    # parser.add_argument("--array_index", type=int, default=None, help="SLURM Array Task ID")
+    parser.add_argument("-b", "--batch_size", help="output_dir", default=10)
+    parser.add_argument("--array_index", type=int, default=3, help="SLURM Array Task ID")
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -110,33 +112,26 @@ if __name__ == "__main__":
     print("--- STARTING MICROARRAY SEARCH ---")
     
     # Initialize Tracker
+    if run_microarray:
+        ma = 20000
+        scan_folder = f'.{root_storage_dir}microarray_scan/'
+        processed_folder = f'{root_storage_dir}processed_microarray_data/'
+        downloads_folder = f"{root_storage_dir}microarray_data/"
+        # microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
+        filename = './microarray_ids.txt'
+        # save_list_to_txt(microarray_ids,filename)
+        microarray_ids = load_list_from_txt(filename)
+        
+        # Pass tracker to the download function
+        # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
+        saved_tracker = Microarray_tracker.load_from_json(root_storage_dir+'microarray_data/tracker_stats.json')
+        data_processor = Microarray_data_processing()
+        print(f'processing {len(microarray_ids)} studies')
+        valid_microarray_ids = download_experiments_microarray(data_processor,microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
 
-    # ma_tracker = Microarray_tracker.load_from_json("tracker_stats.json")
-    # ma_tracker = Microarray_tracker()
-    ma = 20000
-    scan_folder = f'.{root_storage_dir}microarray_scan/'
-    processed_folder = f'{root_storage_dir}processed_microarray_data/'
-    downloads_folder = f"{root_storage_dir}microarray_data/"
-    # microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
-    filename = './microarray_ids.txt'
-    # save_list_to_txt(microarray_ids,filename)
-    microarray_ids = load_list_from_txt(filename)
-    
-    # Pass tracker to the download function
-    # ma_tracker.sync_with_filesystem(downloads_folder,processed_folder)
-    saved_tracker = Microarray_tracker.load_from_json(root_storage_dir+'microarray_data/tracker_stats.json')
-    # test = ma_tracker.compare_states(saved_tracker)
-    # microarray_ids = ['GSE62163']
-    data_processor = Microarray_data_processing()
-    print(f'processing {len(microarray_ids)} studies')
-    valid_microarray_ids = download_experiments_microarray(data_processor,microarray_ids, downloads_folder, saved_tracker, download_raw=True, scan=False,output_folder=processed_folder)
-    raise ValueError("DONE")
-    
-    # ma_tracker.print_summary()
-    # ma_tracker.save_to_json(f"{root_storage_dir}{scan_folder}tracker_stats.json")
-    plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
+        plot_tracker_results(f"{root_storage_dir}{scan_folder}tracker_stats.json", output_dir= scan_folder)
 
-    combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
+        combined,map = combine_files_microarray(processed_folder, "RMA_Microarray_Combined.csv", f"{root_storage_dir}final_data",combination_method='max',combine_genes=True)
     # raise ValueError('DONE')
     # combined = pd.read_csv(f'{root_storage_dir}final_data/RMA_Microarray_Combined.csv')
 
@@ -152,29 +147,70 @@ if __name__ == "__main__":
     def read_id(path):
         with open(path, 'r') as f:
                 return (f.read().strip())
+    if run_rna_seq:
+        file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
+        
+        # Load your IDs
+        rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
+        query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
+        
+        # --- BATCH CONFIGURATION ---
+        BATCH_SIZE = 5
+        RNA_tracker = FileTracker(file_tracker_loc)
 
-    file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
-    rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
-    query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")#= ['GSE299572']# 
-    RNA_tracker = FileTracker(file_tracker_loc)
-    if args.array_index is not None:
-        # --- PARALLEL MODE ---
-        # Python checks if the index is valid
-        if 0 <= args.array_index < len(rnaseq_ids):
-            target_id = rnaseq_ids[args.array_index]
-            print(f"--- ARRAY JOB: Processing ID #{args.array_index}: {target_id} ---")
-            # Process ONLY this one ID
-            download_experiments_RNA_seq_nf_core([target_id],root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=True, scan=False,run_and_delete=False)
+        if args.array_index is not None:
+            # --- PARALLEL BATCH MODE ---
+            # Logic: Array Index 0 processes IDs 0-4, Index 1 processes 5-9, etc.
+            
+            start_idx = args.array_index * BATCH_SIZE
+            end_idx = start_idx + BATCH_SIZE
+            
+            # Use rnaseq_ids (from file) or query_ids (from search) depending on your goal
+            target_list = rnaseq_ids 
+
+            if start_idx < len(target_list):
+                # Slice the list to get the batch
+                current_batch = target_list[start_idx : end_idx]
+                
+                print(f"--- ARRAY JOB #{args.array_index} ---")
+                print(f"Processing batch of {len(current_batch)} studies")
+                print(f"Range: {start_idx} to {end_idx}")
+                print(f"IDs: {current_batch}")
+
+                # Pass the BATCH list to the function
+                download_experiments_RNA_seq_nf_core(
+                    gse_list=current_batch,
+                    root_storage_dir=root_storage_dir, 
+                    output_dir=f"{root_storage_dir}rnaseq_data",
+                    tracker=RNA_tracker, 
+                    download_raw=True, 
+                    scan=False,
+                    run_and_delete=True, # Enable deletion to save space after batch
+                    batch_size=BATCH_SIZE # Should match slice size
+                )
+            else:
+                print(f"Index {args.array_index} (Start ID {start_idx}) is out of bounds for {len(target_list)} studies.")
+        
         else:
-            print(f"Index {args.array_index} is out of bounds for {len(rnaseq_ids)} studies.")
-    else:
-        # --- SERIAL MODE (Original behavior) ---
-        pass
-        download_experiments_RNA_seq_nf_core(query_ids,root_storage_dir, f"{root_storage_dir}rnaseq_data",RNA_tracker, download_raw=False, scan=True,run_and_delete=True)
-    # 1. Get the data
+            # --- SERIAL MODE ---
+            # Pass the FULL list, the function handles the batching loop internally
+            print(f"--- SERIAL JOB: Processing {len(query_ids)} studies in batches of {BATCH_SIZE} ---")
+            
+            # download_experiments_RNA_seq_nf_core(
+            #     gse_list=query_ids,
+            #     root_storage_dir=root_storage_dir, 
+            #     output_dir=f"{root_storage_dir}rnaseq_data",
+            #     tracker=RNA_tracker, 
+            #     download_raw=False, # Usually False for serial scanning? Set True if you want to download.
+            #     scan=True,
+            #     run_and_delete=True,
+            #     batch_size=BATCH_SIZE
+            # )
 
-    # 2. Make the plots
-    RNA_tracker.get_pie_charts()
-    RNA_tracker.produce_study_dis()
-    RNA_tracker.produce_platform_dis()
-    print("\nDone!")
+        # 2. Make the plots (Optional: might want to skip this in Array jobs to avoid write conflicts)
+        if args.array_index is None:
+            RNA_tracker.get_pie_charts()
+            RNA_tracker.produce_study_dis()
+            RNA_tracker.produce_platform_dis()
+            
+        print("\nDone!")

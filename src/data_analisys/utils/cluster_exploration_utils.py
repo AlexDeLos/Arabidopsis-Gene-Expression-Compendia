@@ -6,7 +6,11 @@ import math
 import matplotlib.pyplot as plt
 import re
 from collections import defaultdict
+import sys
+module_dir = './'
+sys.path.append(module_dir)
 
+from src.constants import *
 def to_int(x:list,name:str,path:str):
     new_x = []
     seen = {}
@@ -53,8 +57,14 @@ def to_int_(x:list):
 def get_samples(data_df):
     return list(map(lambda x : x.split('_')[-1],data_df.columns))
 
-def get_studies(data_df):
-    return list(map(lambda x : x.split('_')[0],data_df.columns))
+def get_study(sample: str):
+    """Extracts StudyID from sample name."""
+    try:
+        sample_key = sample.split('.')[0]
+        return SAMPLE_STUDY_MAP.loc[sample_key, 'StudyID']
+    except KeyError:
+        # Fallback if sample not found
+        return "Unknown_Study"
 
 def get_label_map_new(data_df,labels_df):
     labels_map = {}

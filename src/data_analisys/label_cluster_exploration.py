@@ -77,7 +77,7 @@ def run_label_cluster_exploration(fil=0,types_ = ['tissue_normalized','tissue_no
             print(f"Processing data type: {type_}")
             print(f"Original shape: {data_df.shape}")
             # Get the study ID for each sample (column) and wrap in a pandas Series
-            studies_series = pd.Series(get_studies(data_df), index=data_df.columns)
+            studies_series = pd.Series(list(map(get_study, data_df.columns)))
 
             # Count the number of samples per study
             study_counts = studies_series.value_counts()
@@ -265,5 +265,5 @@ def run_label_cluster_exploration(fil=0,types_ = ['tissue_normalized','tissue_no
 
     print("DONE WITH CLUSTER EXPLORATION")
 if __name__ == '__main__':
-    run_label_cluster_exploration()
-    run_label_cluster_exploration(15)
+    run_label_cluster_exploration(5,['filter','study_corrected'])
+    # run_label_cluster_exploration(15)

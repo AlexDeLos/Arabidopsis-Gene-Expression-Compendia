@@ -10,7 +10,7 @@ sys.path.append(module_dir)
 from src.constants import *
 
 
-Data_types = ['imputed','study_corrected','tissue_normalized','tissue_normalized_2']# ,'tissue_normalized','tissue_normalized_2','robust', 'standardized', '2_way_norm',
+Data_types = ['filter','study_corrected']# ,'tissue_normalized','tissue_normalized_2','robust', 'standardized', '2_way_norm',
 #process and filter the data
 run_preprocessing()
 #RUN METADATA AND LABELING
