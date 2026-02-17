@@ -170,14 +170,18 @@ class RNASeq_processor:
         Runs nf-core/rnaseq on a combined samplesheet.
         """
         os.makedirs(batch_out_dir, exist_ok=True)
-        
+        project_root = os.getcwd() 
+        config_path = os.path.join(project_root, ".nextflow.config")
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
 
         cmd = [
             "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
+            "-c", config_path,
             "-revision", "3.14.0",
             "-ansi-log", "false",
+            "--slurm_account", "ewi-insy-prb",
+            "--slurm_partition", "ewi-insy-prb,prb,ewi-insy,insy,general",
             "--input", samplesheet_path,
             "--outdir", batch_out_dir,
             "--pseudo_aligner", "salmon",
