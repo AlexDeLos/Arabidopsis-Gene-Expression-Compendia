@@ -72,8 +72,10 @@ class RNASeq_processor:
                 for attempt in range(max_retries):
                     try:
                         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
+                        print(f'Subprocess for sample {gsm} completed: {str(cmd)}')
                         if any(f.startswith(srr) and f.endswith('.gz') for f in os.listdir(output_folder)):
                             success = True
+                            print(f'Subprocess genrated files for sample {gsm}')
                             break
                     except subprocess.CalledProcessError:
                         print(f"Retrying {srr} ({attempt+1}/{max_retries})...")
@@ -85,7 +87,7 @@ class RNASeq_processor:
 
                 if not success:
                     print(f"\nFailed to download {srr} after retries.")
-
+        print(f'Done downloading for {gse}')
     def get_samplesheet_rows(self, gse_id, fastq_folder):
         """
         Generates samplesheet rows for a single study.
