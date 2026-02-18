@@ -103,7 +103,7 @@ if __name__ == "__main__":
     run_rna_seq = True
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
-    parser.add_argument("-b", "--batch_size", help="output_dir", default=10)
+    parser.add_argument("-b", "--batch_size", help="output_dir", default=10,type=int)
     parser.add_argument("--array_index", type=int, default=3, help="SLURM Array Task ID")
     args = parser.parse_args()
 
@@ -152,18 +152,18 @@ if __name__ == "__main__":
         
         # Load your IDs
         rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
-        query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
+        # query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
         # --- BATCH CONFIGURATION ---
-        BATCH_SIZE = args.batch_size
+        BATCH_SIZE:int = int(args.batch_size)
         RNA_tracker = FileTracker(file_tracker_loc)
 
         if args.array_index is not None:
             # --- PARALLEL BATCH MODE ---
             # Logic: Array Index 0 processes IDs 0-4, Index 1 processes 5-9, etc.
             
-            start_idx = args.array_index * BATCH_SIZE
-            end_idx = start_idx + BATCH_SIZE
+            start_idx:int = int(args.array_index) * BATCH_SIZE
+            end_idx:int = start_idx + BATCH_SIZE
             
             # Use rnaseq_ids (from file) or query_ids (from search) depending on your goal
             target_list = rnaseq_ids 
