@@ -24,7 +24,7 @@ class RNASeq_processor:
         self.profile = profile
         
         # Verify Tools
-        required = ['fasterq-dump', 'trimmomatic', 'hisat2', 'samtools', 'featureCounts']
+        required = ['fastq-dump','trimmomatic', 'hisat2', 'samtools', 'featureCounts']
         for tool in required:
             if not shutil.which(tool):
                 print(f"WARNING: {tool} not found in PATH. Pipeline may fail.")
@@ -49,49 +49,6 @@ class RNASeq_processor:
         except:
             return []
 
-    def download_fastq_faster(self, gse, output_folder, temp_files):
-        """
-        Downloads using fasterq-dump (fast) and immediately compresses using pigz (fast).
-        """
-        if not os.path.exists(output_folder): os.makedirs(output_folder)
-        if not os.path.exists(temp_files): os.makedirs(temp_files)
-
-        sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
-        sra_map = {k:v for k,v in sra_map.items() if v}
-        
-        fasterq_path = os.path.expanduser("~/fasterq-dump")
-        zip_cmd = "pigz" if shutil.which("pigz") else "gzip"
-
-        for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
-            for srr in srrs:
-                # 1. Check if ZIPPED file exists
-                existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-                if existing_gz: 
-                    continue
-
-                # 2. Run fasterq-dump
-                cmd = [fasterq_path if CLUSTER_RUN else "fasterq-dump", 
-                       "--split-files", "--outdir", output_folder, 
-                       "--temp", temp_files , "--threads", self.threads, srr]
-                
-                try:
-                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-                    
-                    # 3. Compress
-                    raw_fastqs = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.fastq')]
-                    if not raw_fastqs:
-                        continue
-
-                    for fq in raw_fastqs:
-                        full_path = os.path.join(output_folder, fq)
-                        if zip_cmd == "pigz":
-                            subprocess.run(["pigz", "-f", "-p", self.threads, full_path], check=True)
-                        else:
-                            subprocess.run(["gzip", "-f", full_path], check=True)
-                                
-                except subprocess.CalledProcessError as e:
-                    print(f"\nCRITICAL ERROR downloading {srr}: {e}")
-                    raise e
                 
     def download_fastq(self, gse, output_folder, temp_files):
         """Downloads using fastq-dump with built-in compression."""
@@ -302,6 +259,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         try:
                             processor.download_fastq(gse, fastq_folder, cluster_temp)
                             tracker.mark_downloaded(gse_id)
+                            print(f"Download completed for {gse_id}")
                         except Exception as e:
                             print(f"Download failed for {gse_id}: {e}")
                             tracker.mark_ignore(gse_id)
