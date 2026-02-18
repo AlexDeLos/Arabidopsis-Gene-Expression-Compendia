@@ -227,3 +227,4 @@ sys
 /work
 .svg
 my_env_packed.tar.gz
+.nextflow.log*

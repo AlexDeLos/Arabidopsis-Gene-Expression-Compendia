@@ -239,6 +239,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         
         # --- PHASE 1: DOWNLOAD & PREPARE ---
         for gse_id in batch:
+            # gse_id = 'GSE277725'
             try:
                 # 1. Setup Folders
                 fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
@@ -254,8 +255,17 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 if not check_metadata_for_sra_boolean(gse):
                     print(f"No SRA data for {gse_id}")
                     tracker.mark_ignore(gse_id); continue
-                
-                # 3. Download
+                # --- DEBUG: KEEP ONLY 1 SAMPLE ---
+                if len(gse.gsms) > 1:
+                    # 1. Pick the first sample ID
+                    first_sample_id = list(gse.gsms.keys())[0]
+                    
+                    # 2. Overwrite the dictionary to contain only that sample
+                    # The download loop iterates over gse.gsms, so this effectively filters the job
+                    gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
+                    
+                    print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
+                # ---------------------------------                # 3. Download
                 if download_raw:
                     if not tracker.is_downloaded(gse_id):
                         try:
@@ -270,11 +280,14 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
 
                 # 4. Generate Samplesheet Rows
                 if os.path.exists(fastq_folder) and os.listdir(fastq_folder):
+                    print(f'Generating sample sheet rows for: {gse_id}')
                     rows = processor.get_samplesheet_rows(gse_id, fastq_folder)
                     if rows:
                         batch_samplesheet_rows.extend(rows)
                         batch_study_map[gse_id] = [r[0] for r in rows] # Store sample names (col 0)
                         batch_fastq_dirs.append(fastq_folder)
+
+                        print(f'DONE generating sample sheet for: {gse_id}')
                     else:
                         print(f"No valid FASTQ pairs found for {gse_id}")
                         tracker.mark_ignore(gse_id)

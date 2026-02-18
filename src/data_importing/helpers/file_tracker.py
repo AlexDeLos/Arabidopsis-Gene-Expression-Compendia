@@ -52,12 +52,15 @@ class FileTracker:
 
     # --- MARKER METHODS ---
     def mark_processed(self, gse_id):
+        print(f'Marking {gse_id} as processed')
         self.set_status(gse_id, STATUS_PROCESSED)
 
     def mark_downloaded(self, gse_id):
+        print(f'Marking {gse_id} as downloaded')
         self.set_status(gse_id, STATUS_DOWNLOADED)
 
     def mark_ignore(self, gse_id):
+        print(f'Marking {gse_id} as ignore')
         self.set_status(gse_id, STATUS_IGNORE)
 
     def mark_error(self, gse_id):
