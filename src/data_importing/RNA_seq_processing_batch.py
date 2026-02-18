@@ -9,7 +9,8 @@ import GEOparse
 from GEOparse.GEOTypes import GSE, GSM, GPL, GDS
 import sys
 import time
-import glob
+from Bio import Entrez
+Entrez.email = "A.DeLosSantosSubirats@tudelft.nl"
 
 module_dir = './'
 sys.path.append(module_dir)
@@ -55,11 +56,21 @@ class RNASeq_processor:
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
 
+        print(f"Fetching SRR IDs for {len(gse.gsms)} samples...")
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
+        
+        # DEBUG 2: Print the raw map before filtering
+        print(f"RAW SRA MAP: {sra_map}")
+
         sra_map = {k:v for k,v in sra_map.items() if v}
         
-        fastq_dump_cmd = "fastq-dump"
-
+        # DEBUG 3: Print the map after filtering
+        if not sra_map:
+            print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
+        if CLUSTER_RUN:
+            fastq_dump_cmd = '/home/nfs/alexdelossanto/sratoolkit.3.0.0-ubuntu64/bin/fastq-dump'
+        else:
+            fastq_dump_cmd = "fastq-dump"
         for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
             for srr in srrs:
                 existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
