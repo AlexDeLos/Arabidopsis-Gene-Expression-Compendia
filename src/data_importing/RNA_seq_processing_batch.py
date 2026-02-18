@@ -11,7 +11,9 @@ import sys
 import time
 from Bio import Entrez
 Entrez.email = "A.DeLosSantosSubirats@tudelft.nl"
-
+import ssl
+# Force Python to ignore SSL certificate verification globally
+ssl._create_default_https_context = ssl._create_unverified_context
 module_dir = './'
 sys.path.append(module_dir)
 from src.data_importing.helpers.download_helper import check_metadata_for_sra_boolean
