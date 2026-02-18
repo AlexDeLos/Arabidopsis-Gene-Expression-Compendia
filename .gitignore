@@ -228,4 +228,3 @@ sys
 .svg
 my_env_packed.tar.gz
 .nextflow.log*
-.nextflow.config
