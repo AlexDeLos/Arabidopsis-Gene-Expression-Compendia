@@ -292,6 +292,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"No valid FASTQ pairs found for {gse_id}")
                         tracker.mark_ignore(gse_id)
                 else:
+                    print(f'for fastq_folder = {fastq_folder}')
+                    print(f'os.path.exists(fastq_folder) {os.path.exists(fastq_folder)}')
+                    print(f'os.listdir(fastq_folder) {os.listdir(fastq_folder)}')
                     tracker.mark_ignore(gse_id)
             
             except Exception as e:
