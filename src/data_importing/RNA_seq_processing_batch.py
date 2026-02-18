@@ -32,23 +32,20 @@ class RNASeq_processor:
 
     def get_srr_ids(self, gsm_id):
         """Fetches SRR IDs for a GSM from NCBI."""
-        try:
-            handle = Entrez.esearch(db="sra", term=gsm_id)
-            record = Entrez.read(handle)
-            handle.close()
-            if not record['IdList']: return []
-            
-            handle = Entrez.esummary(db="sra", id=",".join(record['IdList']))
-            summaries = Entrez.read(handle)
-            handle.close()
-            
-            run_ids = []
-            import re
-            for summary in summaries:
-                run_ids.extend(re.findall(r'acc="([A-Z0-9]+)"', summary.get('Runs', '')))
-            return list(set(run_ids))
-        except:
-            return []
+        handle = Entrez.esearch(db="sra", term=gsm_id)
+        record = Entrez.read(handle)
+        handle.close()
+        if not record['IdList']: return []
+        
+        handle = Entrez.esummary(db="sra", id=",".join(record['IdList']))
+        summaries = Entrez.read(handle)
+        handle.close()
+        
+        run_ids = []
+        import re
+        for summary in summaries:
+            run_ids.extend(re.findall(r'acc="([A-Z0-9]+)"', summary.get('Runs', '')))
+        return list(set(run_ids))
 
                 
     def download_fastq(self, gse, output_folder, temp_files):
