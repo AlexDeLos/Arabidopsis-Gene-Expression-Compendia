@@ -43,7 +43,8 @@ mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 # Define Batch Size
 BATCH_SIZE=5
-
+echo "Environment activated: $CONDA_PREFIX"
+echo "Python being used: $(which python3)"
 echo "Work Directory is set to: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 

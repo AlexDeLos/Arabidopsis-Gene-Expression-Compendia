@@ -109,12 +109,12 @@ if __name__ == "__main__":
 
     root_storage_dir = args.out_dir
     # 1. Microarray Data
-    print("--- STARTING MICROARRAY SEARCH ---")
     run_microarray:bool = args.ma
     run_rna_seq:bool = args.rna
     
     # Initialize Tracker
     if run_microarray:
+        print("--- STARTING MICROARRAY SEARCH ---")
         ma = 20000
         scan_folder = f'.{root_storage_dir}microarray_scan/'
         processed_folder = f'{root_storage_dir}processed_microarray_data/'
@@ -150,6 +150,7 @@ if __name__ == "__main__":
         with open(path, 'r') as f:
                 return (f.read().strip())
     if run_rna_seq:
+        print('Running RNA SEQ')
         file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
         
         # Load your IDs
@@ -178,6 +179,7 @@ if __name__ == "__main__":
                 print(f"Processing batch of {len(current_batch)} studies")
                 print(f"Range: {start_idx} to {end_idx}")
                 print(f"IDs: {current_batch}")
+                print(f'tracker dir:{RNA_tracker.tracker_dir}')
 
                 # Pass the BATCH list to the function
                 download_experiments_RNA_seq_nf_core(
@@ -196,7 +198,7 @@ if __name__ == "__main__":
         else:
             # --- SERIAL MODE ---
             # Pass the FULL list, the function handles the batching loop internally
-            print(f"--- SERIAL JOB: Processing {len(query_ids)} studies in batches of {BATCH_SIZE} ---")
+            # print(f"--- SERIAL JOB: Processing {len(query_ids)} studies in batches of {BATCH_SIZE} ---")
             
             # download_experiments_RNA_seq_nf_core(
             #     gse_list=query_ids,
