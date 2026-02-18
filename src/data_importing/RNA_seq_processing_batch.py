@@ -223,7 +223,7 @@ def chunk_list(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True, run_and_delete:bool=True, batch_size:int=5):
+def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
     """
@@ -265,17 +265,19 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 if not check_metadata_for_sra_boolean(gse):
                     print(f"No SRA data for {gse_id}")
                     tracker.mark_ignore(gse_id); continue
-                # --- DEBUG: KEEP ONLY 1 SAMPLE ---
-                if len(gse.gsms) > 1:
-                    # 1. Pick the first sample ID
-                    first_sample_id = list(gse.gsms.keys())[0]
-                    
-                    # 2. Overwrite the dictionary to contain only that sample
-                    # The download loop iterates over gse.gsms, so this effectively filters the job
-                    gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
-                    
-                    print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
-                # ---------------------------------                # 3. Download
+                if debug:
+                    # --- DEBUG: KEEP ONLY 1 SAMPLE ---
+                    if len(gse.gsms) > 1:
+                        # 1. Pick the first sample ID
+                        first_sample_id = list(gse.gsms.keys())[0]
+                        
+                        # 2. Overwrite the dictionary to contain only that sample
+                        # The download loop iterates over gse.gsms, so this effectively filters the job
+                        gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
+                        
+                        print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
+                    # ---------------------------------
+                # 3. Download
                 if download_raw:
                     if not tracker.is_downloaded(gse_id):
                         try:
