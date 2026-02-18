@@ -196,6 +196,7 @@ if __name__ == "__main__":
                 print(f"Index {args.array_index} (Start ID {start_idx}) is out of bounds for {len(target_list)} studies.")
         
         else:
+            raise ValueError('NO array index')
             # --- SERIAL MODE ---
             # Pass the FULL list, the function handles the batching loop internally
             # print(f"--- SERIAL JOB: Processing {len(query_ids)} studies in batches of {BATCH_SIZE} ---")
