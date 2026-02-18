@@ -50,6 +50,6 @@ echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
 # --- RUN THE SCRIPT ---
 # We pass the array index and the batch size as arguments
-python3 -u src/data_importing/new_download.py \
+python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE --rna
