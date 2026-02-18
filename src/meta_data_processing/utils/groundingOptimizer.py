@@ -17,7 +17,7 @@ from src.meta_data_processing.utils.labelMap import LabelMap
 class GroundingOptimizer:
     def __init__(self):
         print("Initializing GroundingOptimizer...")
-        self.model = SentenceTransformer('FremyCompany/BioLORD-2023')
+        self.model = SentenceTransformer('FremyCompany/BioLORD-2023',device='cuda')
         
         try:
             self.nlp = spacy.load("en_core_web_sm", disable=['parser', 'ner'])
@@ -39,7 +39,7 @@ class GroundingOptimizer:
 
     def _encode_ontology(self, terms: list):
         lemmatized_terms = [self._lemmatize(t) for t in terms]
-        return torch.tensor(self.model.encode(lemmatized_terms, device='cuda' if torch.cuda.is_available() else 'cpu'))
+        return torch.tensor(self.model.encode(lemmatized_terms, device='cuda' if torch.cuda.is_available() else 'cpu', convert_to_tensor=True))
 
     # --- PUBLIC: Canonicalization Helper ---
     def canonicalize_term(self, term: str, category: str) -> str:

@@ -129,19 +129,24 @@ MEDIUM_SYNONYMS = {
 }
 
 # 4. Master Configuration (The "Registry")
-# To add a new label type (e.g. 'genotype'), add it here with its Enum and Synonyms.
 LABEL_CONFIG = {
     'treatment': {
         'enum': TreatmentEnum,
-        'synonyms': TREATMENT_SYNONYMS
+        'synonyms': TREATMENT_SYNONYMS,
+        'search_triggers': ['treatment', 'treated', 'stress', 'condition', 'exposure'],
+        'priority_cols': ['characteristics_ch1', 'treatment_protocol_ch1']
     },
     'tissue': {
         'enum': TissueEnum,
-        'synonyms': TISSUE_SYNONYMS
+        'synonyms': TISSUE_SYNONYMS,
+        'search_triggers': ['tissue', 'organ', 'source', 'derived from'],
+        'priority_cols': ['source_name_ch1', 'characteristics_ch1']
     },
     'medium': {
         'enum': MediumEnum,
-        'synonyms': MEDIUM_SYNONYMS
+        'synonyms': MEDIUM_SYNONYMS,
+        'search_triggers': ['medium', 'growth medium', 'substrate'],
+        'priority_cols': ['growth_protocol_ch1', 'characteristics_ch1']
     }
 }
 
@@ -185,9 +190,7 @@ for label in LABELS:
                     EXPLICIT_KEYWORDS[label].append(syn)
                 CANONICAL_MAP[label][syn] = canonical_val
 
-# 6. Legacy / Area Keywords (Kept from your original)
-AREA_KEYWORDS = {
-    'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition','temperature', 'oC'],
-    'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part'],
-    'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']
-}
+
+# Auto-generate trigger mapping for the extractor
+ALL_TRIGGERS = {label: config['search_triggers'] + EXPLICIT_KEYWORDS[label] 
+                for label, config in LABEL_CONFIG.items()}

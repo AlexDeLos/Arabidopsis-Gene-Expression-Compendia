@@ -38,13 +38,14 @@ def save_labels(labels,saving_path):
 
 def condense_labels(in_folder, saving_path, Studies=None):
     os.makedirs(saving_path, exist_ok=True)
-    uni_extractor = UniversalExtractor()
+    optimizer = GroundingOptimizer()
+    uni_extractor = UniversalExtractor(optimizer)
     # --- COMPONENT 1: Restore LabelMap ---
     # This loads your historical mappings (map.json, map_treatment.json, etc.)
     seen = LabelMap('./new_storage/maps')
     
     # Initialize Optimizer
-    optimizer = GroundingOptimizer()
+    
     
     study_dirs = [d for d in os.listdir(in_folder) if os.path.isdir(os.path.join(in_folder, d))]
     

@@ -43,7 +43,7 @@ export APPTAINER_CACHEDIR="$TMPDIR"
 rm -rf ./work
 
 echo "Work Directory is set to: $NXF_WORK"
-python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/'
+python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' --rna
 # --array_index $SLURM_ARRAY_TASK_ID
 
 echo "done with main.py"

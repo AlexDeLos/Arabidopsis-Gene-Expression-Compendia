@@ -99,17 +99,19 @@ def download_processed_counts(gse_id, output_dir):
 #     download_processed_counts(i, "./count_data_folder")
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
-    run_microarray = False
-    run_rna_seq = True
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
     parser.add_argument("-b", "--batch_size", help="output_dir", default=10,type=int)
     parser.add_argument("--array_index", type=int, default=3, help="SLURM Array Task ID")
+    parser.add_argument("--ma", action="store_true", default=False)
+    parser.add_argument("--rna", action="store_true", default=False)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
     # 1. Microarray Data
     print("--- STARTING MICROARRAY SEARCH ---")
+    run_microarray:bool = args.ma
+    run_rna_seq:bool = args.rna
     
     # Initialize Tracker
     if run_microarray:

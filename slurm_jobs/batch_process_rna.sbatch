@@ -51,4 +51,4 @@ echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 # We pass the array index and the batch size as arguments
 python3 -u src/data_importing/new_download.py \
     --array_index $SLURM_ARRAY_TASK_ID \
-    --batch_size $BATCH_SIZE
+    --batch_size $BATCH_SIZE --rna

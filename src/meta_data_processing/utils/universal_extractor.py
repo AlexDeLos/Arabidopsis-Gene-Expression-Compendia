@@ -143,169 +143,117 @@ def has_golden_key_word(string: str, words: list[str], optimized: GroundingOptim
     return False, max_score, None, None
 
 
+import re
+import torch
+from typing import Dict, List, Set, Any, Tuple
+from sentence_transformers import util
+from src.constants import LABELS, LABEL_CONFIG, EXPLICIT_KEYWORDS
+
 class UniversalExtractor:
-    def __init__(self):
-        self.optimizer = GroundingOptimizer()
-        self.trigger_keywords = {
-            'treatment': ['treatment', 'treated', 'stress', 'condition', 'exposed to', 'exposure', 'incubated', 'temperature', 'growth condition']+ EXPLICIT_KEYWORDS.get('treatment', []),
-            'tissue': ['tissue', 'organ', 'source', 'derived from', 'cells', 'cell type', 'organism part']+ EXPLICIT_KEYWORDS.get('tissue', []),
-            'medium': ['medium', 'growth medium', 'grown on', 'cultured in', 'substrate']+ EXPLICIT_KEYWORDS.get('medium', [])
-        }
+    def __init__(self, optimizer):
+        self.optimizer = optimizer
+        self.model = optimizer.model
+        # Pre-compute trigger vectors for column identification
+        self.trigger_vectors = {}
+        for label in LABELS:
+            triggers = LABEL_CONFIG[label].get('search_triggers', [])
+            # Combine triggers with explicit keywords for better coverage
+            combined_triggers = list(set(triggers + EXPLICIT_KEYWORDS.get(label, [])))
+            self.trigger_vectors[label] = self.model.encode(combined_triggers, convert_to_tensor=True)
+
+    def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id: str) -> Dict[str, Set[str]]:
+        extracted = {}
         
-        self.explicit_vectors = {
-            cat: self.optimizer.model.encode(terms) 
-            for cat, terms in AREA_KEYWORDS.items()
-        }
-        self.last_study:str = ''
-        self.extracted_data_study = {"tissue": [], "treatment": [], "medium": []}
-
-    def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id:str) -> Dict:
-        if study_id != self.last_study:
-            extracted_data = {"tissue": set(), "treatment": set(), "medium": set()}
-            self.extracted_data_study = extracted_data.copy()
-        else:
-            extracted_data = self.extracted_data_study.copy()
-
-        for category in LABELS:
-            if extracted_data[category] != set():
-                continue
+        for label_type in LABELS:
+            # Step 1: Check Explicit Columns (Column names matching the label_type)
+            hits = self._extract_from_matched_columns(sample_metadata, label_type)
             
-            # 1. Explicit Columns (High Confidence)
-            explicit_hits = self._check_for_explicit_columns(sample_metadata, category)
-            if explicit_hits:
-                # IMPORTANT: Canonicalize the explicit hits! 
-                # If column says "Dark", we save "Low Light Stress"
-                canonical_hits = {self.optimizer.canonicalize_term(h, category) for h in explicit_hits}
-                extracted_data[category] = canonical_hits
-                continue 
-
-            # 2. Priority Text Scan
-            priority_text = self._get_priority_text(sample_metadata, category)
-            scanned_hits = self._scan_semantic_match(priority_text, category=category)
-            if scanned_hits:
-                final_hits = condense_candidates(scanned_hits, self.optimizer, category)
-                extracted_data[category] = set(final_hits)
-                continue
-
-            # 3. Broad Sample Text Scan
-            broad_text_sample = self._get_broad_text(sample_metadata, {})
-            scanned_broad_sample = self._scan_semantic_match(broad_text_sample, category=category)
-            if scanned_broad_sample:
-                final_hits = condense_candidates(scanned_broad_sample, self.optimizer, category)
-                extracted_data[category] = set(final_hits)
-                continue
-
-            # 4. Study Level Fallback
-            broad_text = self._get_broad_text({}, study_metadata)
-            scanned_broad = self._scan_semantic_match(broad_text, category=category)
-            final_hits = condense_candidates(scanned_broad, self.optimizer, category)
-            extracted_data[category] = set(final_hits)
-
-        self.last_study = study_id
-        return extracted_data
-
-    def _get_priority_text(self, metadata: Dict, category: str) -> str:
-        text_bits = []
-        text_bits.append(str(metadata.get('title', '')))
-        text_bits.append(str(metadata.get('source_name_ch1', '')))
-        text_bits.append(str(metadata.get('characteristics_ch1', '')))
-        text_bits.append(str(metadata.get('growth_protocol_ch1', '')))
-        text_bits.append(str(metadata.get('characteristics', '')))
-        for key, val in metadata.items():
-            if self._is_key_semantic_match(key, category):
-                if isinstance(val, list): text_bits.extend([str(v) for v in val])
-                else: text_bits.append(str(val))
-        return " ".join(text_bits)
-    
-    @lru_cache(maxsize=1024)
-    def _is_key_semantic_match(self, key_text: str, category: str, threshold: float = 0.85) -> bool:
-        clean_key = key_text.replace('_', ' ').replace('-', ' ')
-        clean_key = re.sub(r'(?<!^)(?=[A-Z])', ' ', clean_key).lower().strip()
-        key_vector = self.optimizer.model.encode(clean_key)
-        category_vectors = self.explicit_vectors[category]
-        scores = util.cos_sim(key_vector, category_vectors)[0]
-        return bool(scores.max() > threshold)
-    
-    def _check_for_explicit_columns(self, metadata: Dict, category: str) -> Set[str]:
-        found_values = set()
-        generic_container_keys = {
-            'source_name_ch1', 'characteristics_ch1', 'characteristics', 
-            'growth_protocol_ch1', 'description', 'title'
-        }
-
-        for key, val in metadata.items():
-            raw_values = val if isinstance(val, list) else [str(val)]
+            # Step 2: Fallback to Priority Text (Sample Title/Characteristics)
+            if not hits:
+                priority_text = self._get_text_blob(sample_metadata, ['title', 'characteristics_ch1', 'source_name_ch1'])
+                hits = self._semantic_ngram_search(priority_text, label_type)
             
-            if self._is_key_semantic_match(key, category, threshold=0.85):
-                found_values.update([str(v) for v in raw_values])
-                continue 
+            # Step 3: Fallback to Study Level Metadata
+            if not hits:
+                study_text = self._get_text_blob(study_metadata, ['summary', 'overall_design'])
+                hits = self._semantic_ngram_search(study_text, label_type)
+            
+            # Requirement: If empty, set to unspecified
+            extracted[label_type] = hits if hits else {"unspecified"}
+            
+        return extracted
 
-            if key in generic_container_keys:
-                for item in raw_values:
-                    item_str = str(item).strip()
-                    if ':' in item_str:
-                        parts = item_str.split(':', 1)
-                        sub_key = parts[0].strip()
-                        sub_val = parts[1].strip().strip('"').strip("'")
-                        
-                        if self._is_key_semantic_match(sub_key, category, threshold=0.90):
-                            if len(sub_val) > 1:
-                                found_values.add(sub_val)
-                                continue 
+    def _get_text_blob(self, metadata: Dict, keys: List[str]) -> str:
+        """Helper to collect text from specific metadata fields."""
+        bits = []
+        for k in keys:
+            val = metadata.get(k, "")
+            if isinstance(val, list): bits.extend([str(v) for v in val])
+            else: bits.append(str(val))
+        return " ".join(bits).lower()
 
-        return found_values
-
-    def _get_broad_text(self, sample_meta: Dict, study_meta: Dict) -> str:
-        text_bits = []
-        text_bits.append(str(sample_meta.get('description', '')))
-        text_bits.append(str(sample_meta.get('growth_protocol_ch1', '')))
-        text_bits.append(str(sample_meta.get('treatment_protocol_ch1', '')))
-        text_bits.append(str(study_meta.get('summary', '')))
-        text_bits.append(str(study_meta.get('overall_design', '')))
-        return " ".join(text_bits)
-
-    def _scan_semantic_match(self, text: str, category: str, study_text:bool = False) -> Set[str]:
-        # PHASE A: Keyword-Anchored
-        raw_context_candidates_alt = set(complex_split(text))
-        valid_context_tuples = extract_valid_candidates(raw_context_candidates_alt, self.optimizer, category, study_text, top_k=5)
-        valid_context_strings = [x[0] for x in valid_context_tuples]
-
-        # PHASE B: N-Gram Scan
-        clean_text = NOISE_FILTER_PATTERN.sub(' ', text.lower())
-        tokens = clean_text.split()[:600] 
-        STOPWORDS = {"the", "and", "of", "in", "to", "with", "for", "on", "at", "by", "from", "was", "were", "are", "is", "an", "a", "or", "using", "analysis", "data", "samples", "study", "results", "between", "under", "total", "rna"}
-
-        raw_ngram_candidates = set()
-        max_n = 3 
+    def _is_relevant_column(self, key: str, label_type: str, threshold: float = 0.82) -> bool:
+        """Uses Cosine Similarity to see if a column name (key) relates to the label_type."""
+        clean_key = key.replace('_', ' ').lower()
+        key_vec = self.model.encode(clean_key, convert_to_tensor=True)
         
-        for n in range(1, max_n + 1):
-            for i in range(len(tokens) - n + 1):
-                chunk_tokens = tokens[i : i + n]
-                if chunk_tokens[0] in STOPWORDS or chunk_tokens[-1] in STOPWORDS: continue
-                if any(len(t) < 2 for t in chunk_tokens): continue
-                raw_ngram_candidates.add(" ".join(chunk_tokens))
+        # Batch compare against all triggers for this label
+        scores = util.cos_sim(key_vec, self.trigger_vectors[label_type])
+        return torch.max(scores).item() > threshold
 
-        if not raw_ngram_candidates and not valid_context_strings:
-            return set()
+    def _extract_from_matched_columns(self, metadata: Dict, label_type: str) -> Set[str]:
+        """Scans keys for semantic matches to the label type and extracts values."""
+        found = set()
+        for key, value in metadata.items():
+            if self._is_relevant_column(key, label_type):
+                if isinstance(value, list):
+                    found.update([str(v) for v in value])
+                else:
+                    # Handle colon-separated values like 'tissue: leaf'
+                    val_str = str(value)
+                    if ":" in val_str:
+                        found.add(val_str.split(":")[-1].strip())
+                    else:
+                        found.add(val_str.strip())
+        return {f for f in found if len(f) > 1}
 
-        valid_ngram_tuples = extract_valid_candidates(raw_ngram_candidates, self.optimizer, category, study_text, top_k=5)
-        valid_ngram_strings = [x[0] for x in valid_ngram_tuples]
-
-        # PHASE C: Merge
-        merged_candidates = []
-        seen = set()
+    def _semantic_ngram_search(self, text: str, label_type: str, threshold: float = 0.80) -> Set[str]:
+        """
+        Chunks text into n-grams and compares them to the valid ontology values
+        defined in EXPLICIT_KEYWORDS.
+        """
+        if not text: return set()
         
-        if valid_context_strings:
-            for cand in valid_context_strings:
-                if cand not in seen:
-                    merged_candidates.append(cand)
-                    seen.add(cand)
-            return set(valid_context_strings) 
-        
-        if valid_ngram_strings:
-            for cand in valid_ngram_strings:
-                if cand not in seen:
-                    merged_candidates.append(cand)
-                    seen.add(cand)
+        # Clean text and tokenize
+        words = re.findall(r'\b\w+\b', text)
+        if not words: return set()
 
-        return condense_candidates(merged_candidates, self.optimizer, category)
+        # Generate N-grams (1 to 3 words)
+        candidates = []
+        for n in range(1, 4):
+            for i in range(len(words) - n + 1):
+                candidates.append(" ".join(words[i:i+n]))
+        
+        if not candidates: return set()
+
+        # Deduplicate and Encode Candidates in one batch for speed
+        unique_candidates = list(set(candidates))
+        candidate_vectors = self.model.encode(unique_candidates, convert_to_tensor=True)
+        
+        # Get target vectors (The valid synonyms/canonical names for this label)
+        # These are pre-computed in your GroundingOptimizer
+        target_vectors = self.optimizer.vectors['explicit'][label_type]
+        
+        # Compute Similarity Matrix (Candidates x Ontology)
+        cosine_matrix = util.cos_sim(candidate_vectors, target_vectors)
+        
+        # Find matches above threshold
+        matches = torch.where(cosine_matrix > threshold)
+        
+        results = set()
+        for idx in matches[0]:
+            # We return the raw string found in text. 
+            # The grounding step will later map this to the Enum.
+            results.add(unique_candidates[idx.item()])
+            
+        return results
