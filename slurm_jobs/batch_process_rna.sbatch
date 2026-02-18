@@ -8,7 +8,7 @@
 #SBATCH --mem=10G
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=0-19
+#SBATCH --array=0-1
 
 # Print job information
 echo "=================================================="
