@@ -8,7 +8,7 @@
 #SBATCH --mem=10G
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=0-19
+#SBATCH --array=0-1
 
 # Print job information
 echo "=================================================="
@@ -38,8 +38,9 @@ export SINGULARITY_TMPDIR="$TMPDIR"
 export SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# Clean previous work for this specific job if needed (Be careful with shared work dirs)
-# rm -rf ./work 
+# Prevent host Conda from bleeding into Singularity containers
+export SINGULARITYENV_CONDA_AUTO_ACTIVATE_BASE="false"
+export APPTAINERENV_CONDA_AUTO_ACTIVATE_BASE="false"
 
 # Define Batch Size
 BATCH_SIZE=5
