@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import os
 import sys
 import gc
@@ -14,7 +13,6 @@ from src.data_analisys.utils.cluster_exploration_utils_2 import (
     prepare_data_structure, align_labels_to_data, 
     run_pca, run_umap, run_tsne, plot_projection
 )
-from src.meta_data_processing.utils.labelMap import LabelMap 
 # Assuming you have a function to load labels, e.g., load_labels_study
 
 def run_exploration_on_dataframe(
@@ -85,7 +83,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 umap_emb, text_labels, 
                 title=f'UMAP - {cat.capitalize()} (ARI: {ari_score:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.png'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.svg'
             )
             
             # t-SNE
@@ -93,7 +91,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 tsne_emb, text_labels, 
                 title=f't-SNE - {cat.capitalize()} (Sil: {sil_score:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.png'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.svg'
             )
 
             del X, X_pca, umap_emb, tsne_emb
@@ -118,10 +116,10 @@ if __name__ == "__main__":
         # 1. Load Labels
         print(f"Loading labels from: {LABELS_PATH}")
         labels = load_labels_study(LABELS_PATH)
-        labels = keys_upper(labels)
+        # labels = keys_upper(labels)
 
         # Prepare Label Dictionary
-        labels_types = ['TREATMENT', 'TISSUE', 'MEDIUM', 'study_id'] 
+        labels_types = LABELS
         labels_df = make_df_from_labels(labels, labels_types)
         labels_map = labels_df.to_dict() # Structure: {'category': {'sample': 'value'}}
         
@@ -158,7 +156,7 @@ if __name__ == "__main__":
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
             # 3. Run Pipeline
-            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/{EXPERIMENT_NAME}/refactored_plots/{file}"
+            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/refactored_plots/{file}"
             
             print(f"Starting exploration pipeline for {EXPERIMENT_NAME}...")
             

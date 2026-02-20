@@ -94,29 +94,48 @@ def run_tsne(data, perplexity=30):
 
 def plot_projection(embedding, labels, title, output_path):
     """
-    Generic plotting function for 2D embeddings (PCA, UMAP, t-SNE).
+    Generic plotting function for 2D embeddings (PCA, UMAP, t-SNE)
+    with sample counts in the legend.
     """
     plt.figure(figsize=(10, 8))
     
     # Create DataFrame for Seaborn
     plot_df = pd.DataFrame(embedding, columns=['Dim1', 'Dim2'])
-    plot_df['Label'] = labels
+    plot_df['Raw_Label'] = labels
+    
+    # 1. Calculate the counts for each unique label
+    label_counts = plot_df['Raw_Label'].value_counts().to_dict()
+    
+    # 2. Create a new formatted label string: "LabelName (n=15)"
+    plot_df['Label_with_Count'] = plot_df['Raw_Label'].apply(
+        lambda x: f"{x} (n={label_counts[x]})"
+    )
+    
+    unique_label_count = len(label_counts)
     
     # Limit number of legend items if too many
-    if len(set(labels)) > 20:
+    if unique_label_count > 40:
         sns.scatterplot(
-            data=plot_df, x='Dim1', y='Dim2', hue='Label', 
-            alpha=0.6, s=15, legend=False, palette='tab20'
+            data=plot_df, x='Dim1', y='Dim2', hue='Label_with_Count', 
+            alpha=0.6, s=15, legend=False, palette='tab20',
         )
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     else:
+        # Use a dynamic palette to avoid errors if unique labels are between 11 and 20
+        palette = 'tab20' if unique_label_count > 10 else 'tab10'
+        
         sns.scatterplot(
-            data=plot_df, x='Dim1', y='Dim2', hue='Label', 
-            alpha=0.6, s=15, palette='tab10'
+            data=plot_df, x='Dim1', y='Dim2', hue='Label_with_Count', 
+            alpha=0.6, s=15, palette=palette
         )
+        # 3. Move the larger legend outside the plot box so it doesn't cover data
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
         
     plt.title(title)
     plt.xlabel('Dimension 1')
     plt.ylabel('Dimension 2')
-    plt.tight_layout()
+    
+    # Use tight_layout so the external legend isn't cut off when saving
+    plt.tight_layout() 
     plt.savefig(output_path)
     plt.close()

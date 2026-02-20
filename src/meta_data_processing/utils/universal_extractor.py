@@ -5,8 +5,6 @@ from src.constants import TissueEnum, TreatmentEnum, MediumEnum, EXPLICIT_KEYWOR
 from src.meta_data_processing.utils.groundingOptimizer import GroundingOptimizer
 import sys
 import torch
-from functools import lru_cache
-
 module_dir = './'
 sys.path.append(module_dir)
 
@@ -155,11 +153,15 @@ class UniversalExtractor:
         self.model = optimizer.model
         # Pre-compute trigger vectors for column identification
         self.trigger_vectors = {}
+        self.search_col_vectors = {}
+        self._column_cache = {}
         for label in LABELS:
             triggers = LABEL_CONFIG[label].get('search_triggers', [])
             # Combine triggers with explicit keywords for better coverage
             combined_triggers = list(set(triggers + EXPLICIT_KEYWORDS.get(label, [])))
             self.trigger_vectors[label] = self.model.encode(combined_triggers, convert_to_tensor=True)
+            cols = LABEL_CONFIG[label].get('priority_cols', [])
+            self.search_col_vectors[label] = self.model.encode(cols, convert_to_tensor=True)
 
     def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id: str) -> Dict[str, Set[str]]:
         extracted = {}
@@ -193,19 +195,64 @@ class UniversalExtractor:
         return " ".join(bits).lower()
 
     def _is_relevant_column(self, key: str, label_type: str, threshold: float = 0.82) -> bool:
-        """Uses Cosine Similarity to see if a column name (key) relates to the label_type."""
+        cache_key = f"rel_{key}_{label_type}"
+        if cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+
+        if label_type not in self.trigger_vectors: 
+            return False
+
         clean_key = key.replace('_', ' ').lower()
         key_vec = self.model.encode(clean_key, convert_to_tensor=True)
-        
-        # Batch compare against all triggers for this label
         scores = util.cos_sim(key_vec, self.trigger_vectors[label_type])
-        return torch.max(scores).item() > threshold
+        result = torch.max(scores).item() > threshold
+        
+        self._column_cache[cache_key] = result
+        return result
 
+    def _is_priority_column(self, key: str, label_type: str, threshold: float = 0.82) -> bool:
+        cache_key = f"prio_{key}_{label_type}"
+        if cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+
+        if label_type not in self.search_col_vectors:
+            return False
+
+        clean_key = key.replace('_', ' ').lower()
+        key_vec = self.model.encode(clean_key, convert_to_tensor=True)
+        scores = util.cos_sim(key_vec, self.search_col_vectors[label_type])
+        result = torch.max(scores).item() > threshold
+        
+        self._column_cache[cache_key] = result
+        return result
+    
     def _extract_from_matched_columns(self, metadata: Dict, label_type: str) -> Set[str]:
         """Scans keys for semantic matches to the label type and extracts values."""
         found = set()
         for key, value in metadata.items():
             if self._is_relevant_column(key, label_type):
+                # Handle lists of values
+                vals = value if isinstance(value, list) else [value]
+                
+                for val in vals:
+                    val_str = str(val).strip()
+                    if ":" in val_str:
+                        val_str = val_str.split(":")[-1].strip()
+                        
+                    # THE FIX: If the value is a long phrase/sentence, extract n-grams from it!
+                    if len(val_str.split()) > 3:
+                        # Lower threshold slightly for column text since we KNOW the column is relevant
+                        ngrams = self._semantic_ngram_search(val_str, label_type, threshold=0.75)
+                        found.update(ngrams)
+                    else:
+                        found.add(val_str)
+                        
+        return {f for f in found if len(f) > 1}    
+    def _extract_from_matched_columns_old(self, metadata: Dict, label_type: str) -> Set[str]:
+        """Scans keys for semantic matches to the label type and extracts values."""
+        found = set()
+        for key, value in metadata.items():
+            if self._is_relevant_column(key, label_type) or self._is_priority_column(key, label_type):
                 if isinstance(value, list):
                     found.update([str(v) for v in value])
                 else:
@@ -224,8 +271,11 @@ class UniversalExtractor:
         """
         if not text: return set()
         
-        # Clean text and tokenize
-        words = re.findall(r'\b\w+\b', text)
+        # 1. Strip out highly common, distracting prefixes/words that confuse the vectorizer
+        noise_words = r'\b(genotype|mutant|wild-type|wildtype|age|weeks|days|old|developmental stage|cell type)\b' #TODO move this to the constants file
+        clean_text = re.sub(noise_words, '', text, flags=re.IGNORECASE)
+        
+        words = re.findall(r'\b[\w/-]+\b', clean_text)
         if not words: return set()
 
         # Generate N-grams (1 to 3 words)

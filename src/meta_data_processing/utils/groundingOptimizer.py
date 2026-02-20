@@ -130,42 +130,74 @@ class GroundingOptimizer:
         canonical_term = self.canonicalize_term(matched_raw_term, category)
         
         return canonical_term, best_score
-
+    def remove_redundant_unknowns(self,samples):
+        cleaned_samples = []
+        
+        for sample in samples:
+            cleaned_sample = {}
+            for key, value in sample.items():
+                # Check if the value is a list (to avoid touching strings like sample_id)
+                if isinstance(value, list):
+                    # Filter out the 'unknown' elements
+                    valid_labels = [item for item in value if item != 'unknown']
+                    
+                    # If there are valid labels left, use the filtered list
+                    if len(valid_labels) > 0:
+                        cleaned_sample[key] = valid_labels
+                    else:
+                        # If the list was ONLY 'unknown', keep it as is
+                        cleaned_sample[key] = value
+                else:
+                    # Keep non-list items (like 'sample_id') exactly the same
+                    cleaned_sample[key] = value
+                    
+            cleaned_samples.append(cleaned_sample)
+            
+        return cleaned_samples
+    
     def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap) -> List:
         
+        # IMPORT THESE AT THE TOP OF YOUR FILE OR INSIDE THE CLASS
+        from src.constants import UNIQUE_LABELS, CONTROL_MAP
+
         local_cache = {label: {} for label in LABELS}
         final_samples = []
 
-        # --- PASS 1: Grounding ---
+        # --- PASS 1: Grounding & Scoring ---
         for sample in extracted_samples:
             
             for key, val in sample.items():
                 if key == 'sample_id': continue
-                if val != set():
-                    val_ = re.sub(r'[^a-zA-Z0-9 ,]', '', val.pop())
+                if val and val != set():
+                    if isinstance(val, set):
+                        val_str = list(val)[0]
+                    else:
+                        val_str = str(val)
+                    val_ = re.sub(r'[^a-zA-Z0-9 ,./-]', '', val_str)
                     sample[key] = set(val_.split(','))
 
             for label in LABELS:
-                raw_tissues = sample.get(label, 'unspecified')
-                if isinstance(raw_tissues, str): raw_tissues = {raw_tissues}
+                raw_terms = sample.get(label, 'unspecified')
+                if isinstance(raw_terms, str): raw_terms = {raw_terms}
 
-                for raw_tissue in raw_tissues:
+                for raw_term in raw_terms:
                     best_fit: str = 'unknown'
                     max_score = 0.55
                     
-                    if raw_tissue not in local_cache[label]:
-                        if raw_tissue in label_map.map_tissue:
-                            # Trust label map, but ensure it's canonical if possible
-                            mapped = label_map.map_tissue[raw_tissue]
-                            local_cache[label][raw_tissue] = self.canonicalize_term(mapped, label)
+                    if raw_term not in local_cache[label]:
+                        mapped_val = label_map._get_value(label, raw_term)
+                        
+                        if mapped_val is not None:
+                            # Trust label map completely. Assign a massive score (2.0) so it always wins.
+                            canonical_fit = self.canonicalize_term(mapped_val, label)
+                            local_cache[label][raw_term] = {"val": canonical_fit, "score": 2.0}
                         else:
                             # 1. Bucket Match (Canonical)
-                            _, score, _, best_keyword = self.find_semantic_match(raw_tissue, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.88)
+                            _, score, _, best_keyword = self.find_semantic_match(raw_term, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.88)
                             
                             # 2. Explicit Match (Synonyms)
-                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_tissue, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.88)
+                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_term, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.88)
                             
-                            # Prefer Explicit match if better
                             if score_ > score:
                                 score = score_
                                 best_keyword = best_keyword_
@@ -174,14 +206,13 @@ class GroundingOptimizer:
                                 best_fit = str(best_keyword)
                                 max_score = score
                         
-                        if best_fit and best_fit != 'unknown':
-                            # --- COLLAPSE SYNONYMS HERE ---
-                            canonical_fit = self.canonicalize_term(best_fit, label)
-                            local_cache[label][raw_tissue] = canonical_fit
-                        else:
-                            local_cache[label][raw_tissue] = "unknown"
+                            if best_fit and best_fit != 'unknown':
+                                canonical_fit = self.canonicalize_term(best_fit, label)
+                                local_cache[label][raw_term] = {"val": canonical_fit, "score": max_score}
+                            else:
+                                local_cache[label][raw_term] = {"val": "unknown", "score": 0.0}
 
-        # --- PASS 2: Apply ---
+        # --- PASS 2: Apply Rules (Unique & Control) ---
         for sample in extracted_samples:
             new_sample = sample.copy()
             for label in LABELS:
@@ -190,12 +221,34 @@ class GroundingOptimizer:
                 
                 if not raw or raw == {'unspecified'}:
                     new_sample[label] = ["unspecified"]
+                    continue
+                
+                # Fetch mapped items and their scores
+                mapped_items = []
+                for t in raw:
+                    item = local_cache[label].get(t, {"val": "unknown", "score": 0.0})
+                    mapped_items.append(item)
+
+                # RULE 1: Highest-score Unique Label
+                if label in UNIQUE_LABELS and len(mapped_items) > 1:
+                    # Sort descending by score
+                    mapped_items.sort(key=lambda x: x["score"], reverse=True)
+                    # Pick the highest scoring item that isn't 'unknown' (or fallback to unknown if that's all there is)
+                    best_item = next((item for item in mapped_items if item["val"] != "unknown"), mapped_items[0])
+                    final_vals = [best_item["val"]]
                 else:
-                    final_treats = []
-                    for t in raw:
-                        val = local_cache[label].get(t, "unknown")
-                        final_treats.append(val)
-                    new_sample[label] = list(sorted(set(final_treats)))
+                    final_vals = [item["val"] for item in mapped_items]
+
+                # Clean up into a unique list
+                final_vals = list(sorted(set(final_vals)))
+
+                # RULE 2: Control Dominance
+                control_val = CONTROL_MAP.get(label)
+                if control_val and control_val in final_vals:
+                    final_vals = [control_val]
+                
+                new_sample[label] = final_vals
+                
             final_samples.append(new_sample)
 
-        return final_samples
+        return self.remove_redundant_unknowns(final_samples)
