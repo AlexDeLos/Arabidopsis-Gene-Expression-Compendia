@@ -944,7 +944,7 @@ def combine_files_microarray(
             # The folder name 'd' is assumed to be the Study ID (e.g., GSE12345)
             study_id = d 
             
-            expected_csv_name = f"{d}_RMA_Genes.csv"
+            expected_csv_name = f"{d}_RMA_LocusID.csv"
             file_path = os.path.join(root, d, expected_csv_name)
             
             if os.path.exists(file_path):

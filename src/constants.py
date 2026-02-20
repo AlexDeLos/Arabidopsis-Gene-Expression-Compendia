@@ -4,7 +4,7 @@ from typing import Dict
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
 CLUSTER_RUN = GLOBAL_DIR_PATH !='/home/alex/Documents/GitHub/Dataset_fusion_Microarray/'
-EXPERIMENT_NAME = '4.4'
+EXPERIMENT_NAME = '4.5'
 
 if CLUSTER_RUN:
     STORAGE_DIR ='/tudelft.net/staff-umbrella/GeneExpressionStorage/'
@@ -58,14 +58,14 @@ class TissueEnum(str, Enum):
     SHOOT = "shoot"
     ROSETTE = "rosette"
     BUD = "bud"
-    WHOLE_PLANT = "whole_plant"
+    WHOLE_PLANT = "whole plant"
     SILIQUE = "silique"
     CALLUS = "callus"
     SEEDLING = "seedling"
     SEED = "seed"
     STEM = "stem"
     POLLEN = "pollen"
-    CELL_CULTURE = "cell_culture"
+    CELL_CULTURE = "cell culture"
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
 

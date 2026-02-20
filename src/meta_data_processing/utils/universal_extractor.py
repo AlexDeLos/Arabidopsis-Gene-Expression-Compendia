@@ -226,42 +226,76 @@ class UniversalExtractor:
         self._column_cache[cache_key] = result
         return result
     
+    def _is_relevant_element(self, text: str, label_type: str, threshold: float = 0.82) -> bool:
+        """
+        Modified version of _is_relevant_column.
+        Evaluates if a specific string (like a sub-key from a list element) is relevant to the label type.
+        """
+        cache_key = f"rel_elem_{text}_{label_type}"
+        if cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+
+        if label_type not in self.trigger_vectors: 
+            return False
+
+        clean_text = text.replace('_', ' ').lower().strip()
+        text_vec = self.model.encode(clean_text, convert_to_tensor=True)
+        
+        scores = util.cos_sim(text_vec, self.trigger_vectors[label_type])
+        result = torch.max(scores).item() > threshold
+        
+        self._column_cache[cache_key] = result
+        return result
+
+
     def _extract_from_matched_columns(self, metadata: Dict, label_type: str) -> Set[str]:
-        """Scans keys for semantic matches to the label type and extracts values."""
+        """Scans keys and priority lists for semantic matches to the label type and extracts values."""
         found = set()
         for key, value in metadata.items():
-            if self._is_relevant_column(key, label_type):
-                # Handle lists of values
-                vals = value if isinstance(value, list) else [value]
-                
+            vals = value if isinstance(value, list) else [value]
+            
+            # --- CASE 1: The key is a priority column (e.g., 'characteristics_ch1') ---
+            if self._is_priority_column(key, label_type):
                 for val in vals:
                     val_str = str(val).strip()
+                    
+                    # Elements often come as 'sub_key: value' (e.g., 'tissue: whole plant')
                     if ":" in val_str:
-                        val_str = val_str.split(":")[-1].strip()
+                        # Split only on the first colon
+                        sub_key, actual_val = val_str.split(":", 1) 
                         
-                    # THE FIX: If the value is a long phrase/sentence, extract n-grams from it!
+                        # Check if the sub_key (e.g., 'developmental stage') is relevant
+                        if self._is_relevant_element(sub_key.strip(), label_type):
+                            actual_val = actual_val.strip()
+                            
+                            if len(actual_val.split()) > 3:
+                                ngrams = self._semantic_ngram_search(actual_val, label_type, threshold=0.75)
+                                found.update(ngrams)
+                            else:
+                                found.add(actual_val)
+                    else:
+                        # If no colon exists, check if the whole string contains relevant trigger words
+                        if self._is_relevant_element(val_str, label_type):
+                            if len(val_str.split()) > 3:
+                                ngrams = self._semantic_ngram_search(val_str, label_type, threshold=0.75)
+                                found.update(ngrams)
+                            else:
+                                found.add(val_str)
+                                
+            # --- CASE 2: The key itself is highly relevant (e.g., key='tissue') ---
+            elif self._is_relevant_column(key, label_type):
+                for val in vals:
+                    val_str = str(val).strip()
+                    
+                    if ":" in val_str:
+                        val_str = val_str.split(":", 1)[-1].strip()
+                        
                     if len(val_str.split()) > 3:
-                        # Lower threshold slightly for column text since we KNOW the column is relevant
                         ngrams = self._semantic_ngram_search(val_str, label_type, threshold=0.75)
                         found.update(ngrams)
                     else:
                         found.add(val_str)
                         
-        return {f for f in found if len(f) > 1}    
-    def _extract_from_matched_columns_old(self, metadata: Dict, label_type: str) -> Set[str]:
-        """Scans keys for semantic matches to the label type and extracts values."""
-        found = set()
-        for key, value in metadata.items():
-            if self._is_relevant_column(key, label_type) or self._is_priority_column(key, label_type):
-                if isinstance(value, list):
-                    found.update([str(v) for v in value])
-                else:
-                    # Handle colon-separated values like 'tissue: leaf'
-                    val_str = str(value)
-                    if ":" in val_str:
-                        found.add(val_str.split(":")[-1].strip())
-                    else:
-                        found.add(val_str.strip())
         return {f for f in found if len(f) > 1}
 
     def _semantic_ngram_search(self, text: str, label_type: str, threshold: float = 0.80) -> Set[str]:
