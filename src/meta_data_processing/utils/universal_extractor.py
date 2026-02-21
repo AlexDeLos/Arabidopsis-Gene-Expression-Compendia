@@ -226,7 +226,7 @@ class UniversalExtractor:
         self._column_cache[cache_key] = result
         return result
     
-    def _is_relevant_element(self, text: str, label_type: str, threshold: float = 0.82) -> bool:
+    def _is_relevant_element_old(self, text: str, label_type: str, threshold: float = 0.82) -> bool:
         """
         Modified version of _is_relevant_column.
         Evaluates if a specific string (like a sub-key from a list element) is relevant to the label type.
@@ -247,7 +247,37 @@ class UniversalExtractor:
         self._column_cache[cache_key] = result
         return result
 
+    def _is_relevant_element(self, text: str, label_type: str, threshold: float = 0.65) -> bool:
+        clean_text = text.replace('_', ' ').lower().strip()
+        
+        # 1. FAST PATH: Instant Keyword Match (Bypasses vector dilution)
+        # If the text explicitly says "stress" or "treatment", we know it's relevant!
+        triggers = LABEL_CONFIG[label_type].get('search_triggers', [])
+        for trigger in triggers:
+            # Matches whole words to prevent accidental substring matches
+            if re.search(fr'\b{re.escape(trigger)}\b', clean_text):
+                return True
 
+        # 2. VECTOR FALLBACK: Topic Truncation for implied meanings
+        words = clean_text.split()
+        if len(words) > 4:
+            clean_text = " ".join(words[:4]) # Truncate tighter to 4 words
+
+        cache_key = f"rel_elem_{clean_text}_{label_type}"
+        if cache_key in self._column_cache:
+            return self._column_cache[cache_key]
+
+        if label_type not in self.trigger_vectors: 
+            return False
+
+        text_vec = self.model.encode(clean_text, convert_to_tensor=True)
+        scores = util.cos_sim(text_vec, self.trigger_vectors[label_type])
+        
+        # Lowered threshold allows for slight dilution
+        result = torch.max(scores).item() > threshold
+        
+        self._column_cache[cache_key] = result
+        return result
     def _extract_from_matched_columns(self, metadata: Dict, label_type: str) -> Set[str]:
         """Scans keys and priority lists for semantic matches to the label type and extracts values."""
         found = set()
@@ -258,6 +288,59 @@ class UniversalExtractor:
             if self._is_priority_column(key, label_type):
                 for val in vals:
                     val_str = str(val).strip()
+                    # Removed replace('-',' ') here to protect terms like 'Col-0' or 'UV-B'
+                    val_str_clean = val_str.replace('_', ' ')
+                    
+                    if ":" in val_str_clean:
+                        sub_key, actual_val = val_str_clean.split(":", 1) 
+                        
+                        if self._is_relevant_element(sub_key.strip(), label_type):
+                            actual_val = actual_val.strip()
+                            
+                            # THE FIX: If the value is long, extract ONLY the keywords
+                            if len(actual_val.split()) > 3:
+                                ngrams = self._semantic_ngram_search(actual_val, label_type, threshold=0.75)
+                                found.update(ngrams)
+                            else:
+                                found.add(actual_val)
+                    else:
+                        # NO COLON exists (e.g., pure paragraph in a protocol column)
+                        # Check if the start of the string indicates it's relevant to this label_type
+                        if self._is_relevant_element(val_str_clean, label_type):
+                            if len(val_str_clean.split()) > 3:
+                                # This will extract ONLY "Osmotic stress" from your massive paragraph!
+                                ngrams = self._semantic_ngram_search(val_str_clean, label_type, threshold=0.75)
+                                found.update(ngrams)
+                            else:
+                                found.add(val_str_clean)
+                                
+            # --- CASE 2: The key itself is highly relevant (e.g., key='tissue') ---
+            elif self._is_relevant_column(key, label_type):
+                for val in vals:
+                    val_str = str(val).strip()
+                    
+                    if ":" in val_str:
+                        val_str = val_str.split(":", 1)[-1].strip()
+                        
+                    if len(val_str.split()) > 3:
+                        ngrams = self._semantic_ngram_search(val_str, label_type, threshold=0.75)
+                        found.update(ngrams)
+                    else:
+                        found.add(val_str)
+                        
+        return {f for f in found if len(f) > 1}
+
+    def _extract_from_matched_columns_old(self, metadata: Dict, label_type: str) -> Set[str]:
+        """Scans keys and priority lists for semantic matches to the label type and extracts values."""
+        found = set()
+        for key, value in metadata.items():
+            vals = value if isinstance(value, list) else [value]
+            
+            # --- CASE 1: The key is a priority column (e.g., 'characteristics_ch1') ---
+            if self._is_priority_column(key, label_type):
+                for val in vals:
+                    val_str = str(val).strip()
+                    val_str = val_str.replace('_',' ').replace('-',' ')
                     
                     # Elements often come as 'sub_key: value' (e.g., 'tissue: whole plant')
                     if ":" in val_str:
@@ -297,8 +380,43 @@ class UniversalExtractor:
                         found.add(val_str)
                         
         return {f for f in found if len(f) > 1}
+    def _semantic_ngram_search(self, text: str, label_type: str, threshold: float = 0.75) -> Set[str]:
+        if not text: return set()
+        
+        # 1. Strip out noise words that poison the vectors
+        noise_words = r'\b(genotype|mutant|wild-type|wildtype|age|weeks|days|old|developmental stage|cell type)\b'
+        clean_text = re.sub(noise_words, '', text, flags=re.IGNORECASE)
+        
+        # 2. THE FIX FOR TITLES: Break apart squished string formatting
+        # Converts "AtGen_6-2521_Osmoticstress-Roots" -> "AtGen 6 2521 Osmoticstress Roots"
+        clean_text = clean_text.replace('_', ' ').replace('-', ' ')
+        
+        # Tokenize (Now keeping forward slash for things like "1/2 MS")
+        words = re.findall(r'\b[\w/]+\b', clean_text)
+        if not words: return set()
 
-    def _semantic_ngram_search(self, text: str, label_type: str, threshold: float = 0.80) -> Set[str]:
+        # Generate N-grams (1 to 3 words)
+        candidates = []
+        for n in range(1, 4):
+            for i in range(len(words) - n + 1):
+                candidates.append(" ".join(words[i:i+n]))
+        
+        if not candidates: return set()
+
+        unique_candidates = list(set(candidates))
+        candidate_vectors = self.model.encode(unique_candidates, convert_to_tensor=True)
+        target_vectors = self.optimizer.vectors['explicit'][label_type]
+        
+        cosine_matrix = util.cos_sim(candidate_vectors, target_vectors)
+        matches = torch.where(cosine_matrix > threshold)
+        
+        results = set()
+        for idx in matches[0]:
+            results.add(unique_candidates[idx.item()])
+            
+        return results
+
+    def _semantic_ngram_search_old(self, text: str, label_type: str, threshold: float = 0.80) -> Set[str]:
         """
         Chunks text into n-grams and compares them to the valid ontology values
         defined in EXPLICIT_KEYWORDS.

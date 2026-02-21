@@ -269,19 +269,19 @@ LABEL_CONFIG = {
         'enum': TreatmentEnum,
         'synonyms': TREATMENT_SYNONYMS,
         'search_triggers': ['treatment', 'treated', 'stress', 'condition', 'exposure'],
-        'priority_cols': ['characteristics_ch1', 'treatment_protocol_ch1','treatment']
+        'priority_cols': ['titel','characteristics_ch1', 'treatment_protocol_ch1','treatment']
     },
     'tissue': {
         'enum': TissueEnum,
         'synonyms': TISSUE_SYNONYMS,
         'search_triggers': ['tissue', 'organ', 'source', 'derived from'],
-        'priority_cols': ['source_name_ch1', 'characteristics_ch1','tissue']
+        'priority_cols': ['titel','source_name_ch1', 'characteristics_ch1','tissue']
     },
     'medium': {
         'enum': MediumEnum,
         'synonyms': MEDIUM_SYNONYMS,
         'search_triggers': ['medium', 'growth medium', 'substrate'],
-        'priority_cols': ['growth_protocol_ch1', 'characteristics_ch1','medium']
+        'priority_cols': ['titel','growth_protocol_ch1', 'characteristics_ch1','medium']
     }
 }
 

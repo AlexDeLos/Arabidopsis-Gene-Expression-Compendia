@@ -3,7 +3,7 @@ from typing import List, Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer, util
 from spacy.cli import download
 import torch
-import copy
+from src.constants import UNIQUE_LABELS, CONTROL_MAP
 import re
 import sys
 
@@ -156,9 +156,6 @@ class GroundingOptimizer:
         return cleaned_samples
     
     def batch_process_study(self, data: Dict, extracted_samples: List[Dict], label_map: LabelMap) -> List:
-        
-        # IMPORT THESE AT THE TOP OF YOUR FILE OR INSIDE THE CLASS
-        from src.constants import UNIQUE_LABELS, CONTROL_MAP
 
         local_cache = {label: {} for label in LABELS}
         final_samples = []
