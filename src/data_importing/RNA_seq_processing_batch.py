@@ -144,7 +144,7 @@ class RNASeq_processor:
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
 
         cmd = [
-            "nextflow", "run", "nf-core/rnaseq",
+            "nextflow", "run", "    ",
             "-profile", self.profile,
             "-c", config_path,
             "-revision", "3.14.0",
@@ -168,7 +168,13 @@ class RNASeq_processor:
         ]
         
         try:
-            subprocess.run(cmd, check=True)
+            clean_env = os.environ.copy()
+
+            # 2. Delete any variable that mentions CONDA so it doesn't leak
+            for key in list(clean_env.keys()):
+                if 'CONDA' in key:
+                    del clean_env[key]
+            subprocess.run(cmd, check=True,env = clean_env)
             return True
         except subprocess.CalledProcessError as e:
             print(f"Nextflow Batch Error: {e}")

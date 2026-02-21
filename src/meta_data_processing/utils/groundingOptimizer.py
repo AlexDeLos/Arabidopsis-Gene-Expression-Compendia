@@ -165,13 +165,26 @@ class GroundingOptimizer:
             
             for key, val in sample.items():
                 if key == 'sample_id': continue
-                if val and val != set():
-                    if isinstance(val, set):
-                        val_str = list(val)[0]
-                    else:
-                        val_str = str(val)
-                    val_ = re.sub(r'[^a-zA-Z0-9 ,./-]', '', val_str)
-                    sample[key] = set(val_.split(','))
+                
+                # Create a new set to hold the cleaned and split values
+                new_vals = set()
+                
+                # Ensure val is iterable
+                if isinstance(val, str): 
+                    val = {val}
+                    
+                for el in val:
+                    # Clean the string (removes parenthesis, keeps commas, etc.)
+                    val_ = re.sub(r'[^a-zA-Z0-9 ,./-]', '', str(el))
+                    
+                    # Split by comma, strip whitespace, and add to new set
+                    for piece in val_.split(','):
+                        clean_piece = piece.strip()
+                        if clean_piece:  # Prevent adding empty strings
+                            new_vals.add(clean_piece)
+                
+                # Overwrite the original set with the cleanly split one
+                sample[key] = new_vals
 
             for label in LABELS:
                 raw_terms = sample.get(label, 'unspecified')
@@ -179,7 +192,7 @@ class GroundingOptimizer:
 
                 for raw_term in raw_terms:
                     best_fit: str = 'unknown'
-                    max_score = 0.55
+                    max_score = 0.75
                     
                     if raw_term not in local_cache[label]:
                         mapped_val = label_map._get_value(label, raw_term)
@@ -190,10 +203,10 @@ class GroundingOptimizer:
                             local_cache[label][raw_term] = {"val": canonical_fit, "score": 2.0}
                         else:
                             # 1. Bucket Match (Canonical)
-                            _, score, _, best_keyword = self.find_semantic_match(raw_term, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.88)
+                            _, score, _, best_keyword = self.find_semantic_match(raw_term, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.8)
                             
                             # 2. Explicit Match (Synonyms)
-                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_term, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.88)
+                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_term, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.75)
                             
                             if score_ > score:
                                 score = score_

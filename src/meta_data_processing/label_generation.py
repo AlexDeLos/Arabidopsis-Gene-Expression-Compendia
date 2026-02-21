@@ -42,7 +42,7 @@ def condense_labels(in_folder, saving_path, Studies=None):
     uni_extractor = UniversalExtractor(optimizer)
     # --- COMPONENT 1: Restore LabelMap ---
     # This loads your historical mappings (map.json, map_treatment.json, etc.)
-    seen = LabelMap('./new_storage/maps')
+    seen = LabelMap(f'{STORAGE_DIR}/maps/{EXPERIMENT_NAME}')
     
     # Initialize Optimizer
     
@@ -117,7 +117,7 @@ def condense_labels(in_folder, saving_path, Studies=None):
 
 
 if __name__ == '__main__':
-    condense_labels(in_folder='new_storage/processed_microarray_data_OLD/',saving_path=LABELS_PATH,Studies=['GSE5622'])#'GSE5622',Studies=['GSE37130']'GSE9996'
+    condense_labels(in_folder='new_storage/processed_microarray_data_OLD/',saving_path=LABELS_PATH)#,Studies=['GSE5622','GSE31158'])#'GSE5622',Studies=['GSE37130']'GSE9996'
 
 
     labels_1 = load_labels_study(LABELS_PATH)
