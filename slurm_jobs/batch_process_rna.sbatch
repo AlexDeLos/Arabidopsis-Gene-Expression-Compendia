@@ -43,12 +43,19 @@ export SINGULARITY_TMPDIR="$TMPDIR"
 export SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# --- CRITICAL FIX FOR SINGULARITY ---
-# Prevent Singularity containers from executing your ~/.bashrc Conda init inside the container
-export SINGULARITYENV_BASH_ENV=""
-export SINGULARITYENV_ENV=""
-export APPTAINERENV_BASH_ENV=""
-export APPTAINERENV_ENV=""
+# Singularity/Apptainer Cache Setup
+# 1. Nextflow stores the finalized .sif images here (Keep on shared storage)
+export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+
+# 2. Apptainer MUST build the layers on a local node drive to avoid NFS 'chmod' crashes
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_$USER"
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_$USER"
+mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+
+# (Fallback for older Singularity versions)
+export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
+export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 
 # Prevent host Conda paths from bleeding into the container
 export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
