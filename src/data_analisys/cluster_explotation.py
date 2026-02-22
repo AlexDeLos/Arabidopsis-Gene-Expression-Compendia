@@ -268,7 +268,7 @@ from src.data_analisys.utils.cluster_exploration_utils import *
 # --- Example Usage / Main Block ---
 if __name__ == "__main__":
     all_metrics = {}
-    for file in ['filter','study_corrected']:
+    for file in ['filter','imputed','study_corrected']:
         # 1. Load Labels
         print(f"Loading labels from: {LABELS_PATH}")
         labels = load_labels_study(LABELS_PATH)
@@ -282,7 +282,7 @@ if __name__ == "__main__":
         del labels, labels_df # Clean up
 
         # 2. Load Data
-        data_path = f'./new_storage/final_data/{file}.csv' # Overriding constant as per your snippet
+        data_path = f'{STORAGE_DIR}/final_data/{file}.csv' # Overriding constant as per your snippet
         
         if os.path.exists(data_path):
             print(f"Loading expression data from: {data_path}")
