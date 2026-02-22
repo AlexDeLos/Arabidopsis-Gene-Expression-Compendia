@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
@@ -9,6 +9,7 @@
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 #SBATCH --array=0-0
+#SBATCH --export=NONE   # <-- CRITICAL: Prevents your login environment from bleeding into the job
 
 # Print job information
 echo "=================================================="
@@ -18,12 +19,16 @@ echo "Node: $(hostname)"
 echo "Date: $(date)"
 echo "=================================================="
 
+# 1. Clean environment and load modules
+module purge
 module use /opt/insy/modulefiles
 module load miniconda/3.9
 
+# 2. Properly initialize Conda for non-interactive scripts
+eval "$(conda shell.bash hook)"
 conda activate download_env
 
-# Ensure clean environment
+# Ensure clean Java environment
 unset JAVA_HOME
 unset NXF_JAVA_HOME
 
@@ -32,25 +37,29 @@ export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 export NXF_WORK="$BIG_STORAGE/work"
 mkdir -p "$NXF_WORK"
 
-# Singularity Cache Setup (Critical for Nextflow)
+# Singularity Cache Setup
 export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
 export SINGULARITY_TMPDIR="$TMPDIR"
 export SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# Prevent host Conda from bleeding into Singularity containers
-export SINGULARITYENV_CONDA_AUTO_ACTIVATE_BASE="false"
-export APPTAINERENV_CONDA_AUTO_ACTIVATE_BASE="false"
+# --- CRITICAL FIX FOR SINGULARITY ---
+# Prevent Singularity containers from executing your ~/.bashrc Conda init inside the container
+export SINGULARITYENV_BASH_ENV=""
+export SINGULARITYENV_ENV=""
+export APPTAINERENV_BASH_ENV=""
+export APPTAINERENV_ENV=""
+
+# Prevent host Conda paths from bleeding into the container
+export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Define Batch Size
 BATCH_SIZE=5
-echo "Environment activated: $CONDA_PREFIX"
+echo "Environment activated: $CONDA_DEFAULT_ENV"
 echo "Python being used: $(which python3)"
 echo "Work Directory is set to: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
-# --- RUN THE SCRIPT ---
-# We pass the array index and the batch size as arguments
-python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' \
-    --array_index $SLURM_ARRAY_TASK_ID \
-    --batch_size $BATCH_SIZE --rna
+# --- RUN THE PIPELINE ---
+python3 RNA_seq_processing_batch.py --index $SLURM_ARRAY_TASK_ID --batch_size $BATCH_SIZE
