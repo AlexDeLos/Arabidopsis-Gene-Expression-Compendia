@@ -357,7 +357,7 @@ def normalize_all_with_covariates():
     covariates_df = pd.DataFrame({
         'treatment': maps_aligned['treatment'].apply(lambda x: '_'.join(x)).tolist(),
         'tissue': maps_aligned['tissue'].apply(lambda x: '_'.join(x)).tolist(),
-        'medium': maps_aligned['medium'].apply(lambda x: '_'.join(x)).tolist()
+        # 'medium': maps_aligned['medium'].apply(lambda x: '_'.join(x)).tolist()
     }, index=df.columns)
     
     # 6. Run ComBat
@@ -369,5 +369,5 @@ def normalize_all_with_covariates():
     
     
 if __name__ == '__main__':
-    run_preprocessing()
+    # run_preprocessing()
     normalize_all_with_covariates()
