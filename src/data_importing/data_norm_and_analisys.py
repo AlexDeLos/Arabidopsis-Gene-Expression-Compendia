@@ -356,7 +356,7 @@ def normalize_all_with_covariates():
     # We flatten the fused lists with an underscore for the final model matrix.
     covariates_df = pd.DataFrame({
         'treatment': maps_aligned['treatment'].apply(lambda x: '_'.join(x)).tolist(),
-        'tissue': maps_aligned['tissue'].apply(lambda x: '_'.join(x)).tolist(),
+        # 'tissue': maps_aligned['tissue'].apply(lambda x: '_'.join(x)).tolist(),
         # 'medium': maps_aligned['medium'].apply(lambda x: '_'.join(x)).tolist()
     }, index=df.columns)
     

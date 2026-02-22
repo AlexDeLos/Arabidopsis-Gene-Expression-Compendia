@@ -144,7 +144,7 @@ class RNASeq_processor:
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
 
         cmd = [
-            "nextflow", "run", "    ",
+            "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
             "-c", config_path,
             "-revision", "3.14.0",
