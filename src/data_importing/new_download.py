@@ -190,7 +190,7 @@ if __name__ == "__main__":
                     download_raw=True, 
                     scan=False,
                     run_and_delete=True, # Enable deletion to save space after batch
-                    batch_size=BATCH_SIZE # Should match slice size
+                    batch_size=BATCH_SIZE, # Should match slice size
                     debug=True
                 )
             else:
