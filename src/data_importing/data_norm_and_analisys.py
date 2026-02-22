@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from collections import Counter
+from sklearn.impute import KNNImputer
+import matplotlib.pyplot as plt
 import os
 import sys
 
@@ -17,8 +19,68 @@ sys.path.append(module_dir)
 from src.constants import *
 from src.data_analisys.utils.cluster_exploration_utils import *
 
-# --- Constants & Configuration ---import pandas as pd
-from sklearn.impute import KNNImputer
+def plot_filtering_summary(df_before, df_after, output_path):
+    """
+    Creates a combined visualization showing the counts of genes/samples
+    and a heatmap of missing values before and after filtering.
+    """
+    print(f"  [Plotting] Generating filtering summary visualization...")
+    
+    fig = plt.figure(figsize=(16, 12))
+    fig.suptitle('Data Filtering Summary (0s converted to NaNs)', fontsize=20, fontweight='bold')
+
+    # Create a grid layout: Top half for bar chart, Bottom half for heatmaps
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 2.5])
+
+    # --- 1. Bar Chart: Gene and Sample Counts ---
+    ax_bars = fig.add_subplot(gs[0, :])
+    
+    categories = ['Genes (Rows)', 'Samples (Columns)']
+    before_counts = [df_before.shape[0], df_before.shape[1]]
+    after_counts = [df_after.shape[0], df_after.shape[1]]
+
+    x = np.arange(len(categories))
+    width = 0.35
+
+    ax_bars.bar(x - width/2, before_counts, width, label='Before Filtering', color='#ff9999', edgecolor='black')
+    ax_bars.bar(x + width/2, after_counts, width, label='After Filtering', color='#66b3ff', edgecolor='black')
+
+    ax_bars.set_ylabel('Count', fontsize=12)
+    ax_bars.set_title('Total Genes and Samples Before vs After', fontsize=14)
+    ax_bars.set_xticks(x)
+    ax_bars.set_xticklabels(categories, fontsize=12)
+    ax_bars.legend()
+
+    # Add text labels on top of the bars
+    for i, v in enumerate(before_counts):
+        ax_bars.text(i - width/2, v + (max(before_counts)*0.02), f"{v:,}", ha='center', va='bottom', fontweight='bold')
+    for i, v in enumerate(after_counts):
+        ax_bars.text(i + width/2, v + (max(before_counts)*0.02), f"{v:,}", ha='center', va='bottom', fontweight='bold')
+
+    # --- 2. Heatmap: Missingness Before ---
+    ax_heat_before = fig.add_subplot(gs[1, 0])
+    # Yellow/Light = Missing (True), Dark/Purple = Present (False)
+    ax_heat_before.imshow(df_before.isna(), aspect='auto', cmap='viridis', interpolation='nearest')
+    
+    pct_missing_before = (df_before.isna().sum().sum() / df_before.size) * 100
+    ax_heat_before.set_title(f'Missingness Before\n({pct_missing_before:.1f}% Total Missing)', fontsize=14)
+    ax_heat_before.set_xlabel('Samples', fontsize=12)
+    ax_heat_before.set_ylabel('Genes', fontsize=12)
+
+    # --- 3. Heatmap: Missingness After ---
+    ax_heat_after = fig.add_subplot(gs[1, 1])
+    ax_heat_after.imshow(df_after.isna(), aspect='auto', cmap='viridis', interpolation='nearest')
+    
+    pct_missing_after = (df_after.isna().sum().sum() / df_after.size) * 100
+    ax_heat_after.set_title(f'Missingness After\n({pct_missing_after:.1f}% Total Missing)', fontsize=14)
+    ax_heat_after.set_xlabel('Samples', fontsize=12)
+    ax_heat_after.set_ylabel('Genes', fontsize=12)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96]) # Leave room for suptitle
+    
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"  [Plotting] Saved to {output_path}")
 
 def apply_KNN_impute(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
     """
@@ -157,7 +219,9 @@ def run_preprocessing(no_change=False):
         # Filter Cols (Samples) > 20% NaN (which now includes 0s)
         nan_samples = filtered_df.isna().mean() * 100
         filtered_df = filtered_df[filtered_df.columns[nan_samples <= 20]]
-
+        
+        plot_output = os.path.join(out_path, 'filtering_missingness_summary.png')
+        plot_filtering_summary(big_df, filtered_df, plot_output)
         filtered_df.to_csv(path+'filter.csv')
     
     # --- 2. NEW: KNN Imputation ---
