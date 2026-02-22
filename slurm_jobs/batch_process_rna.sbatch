@@ -32,30 +32,27 @@ conda activate download_env
 unset JAVA_HOME
 unset NXF_JAVA_HOME
 
-# Define your storage paths
+# Define your base storage paths
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 export NXF_WORK="$BIG_STORAGE/work"
 mkdir -p "$NXF_WORK"
 
-# Singularity Cache Setup
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
-export SINGULARITY_TMPDIR="$TMPDIR"
-export SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
-mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+# --- APPTAINER/SINGULARITY NFS CHMOD FIX ---
+# 1. Define permanent storage on the network drive
+PERM_CACHE="$BIG_STORAGE/singularity_images"
+mkdir -p "$PERM_CACHE"
 
-# Singularity/Apptainer Cache Setup
-# 1. Nextflow stores the finalized .sif images here (Keep on shared storage)
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_images"
-mkdir -p "$NXF_SINGULARITY_CACHEDIR"
-
-# 2. Apptainer MUST build the layers on a local node drive to avoid NFS 'chmod' crashes
+# 2. Set Nextflow and Apptainer to exclusively use the local node's /tmp drive
+export NXF_SINGULARITY_CACHEDIR="/tmp/nxf_cache_$USER"
 export APPTAINER_CACHEDIR="/tmp/apptainer_cache_$USER"
 export APPTAINER_TMPDIR="/tmp/apptainer_tmp_$USER"
-mkdir -p "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
-
-# (Fallback for older Singularity versions)
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+
+# 3. Pre-load any previously downloaded images from NFS to local /tmp
+echo "Pre-loading cached Singularity images to local node..."
+cp -u "$PERM_CACHE"/*.img "$PERM_CACHE"/*.sif "$NXF_SINGULARITY_CACHEDIR/" 2>/dev/null || true
 
 # Prevent host Conda paths from bleeding into the container
 export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -69,6 +66,16 @@ echo "Work Directory is set to: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
 # --- RUN THE PIPELINE ---
-python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' \
+echo "Running RNA SEQ download and processing..."
+python3 -u src/data_importing/new_download.py \
+    -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
-    --batch_size $BATCH_SIZE --rna
+    --batch_size $BATCH_SIZE \
+    --rna
+
+# --- CLEANUP & SAVE ---
+# 4. Save any newly pulled images back to the NFS for future jobs
+echo "Saving Singularity images back to permanent storage..."
+cp -u "$NXF_SINGULARITY_CACHEDIR"/*.img "$NXF_SINGULARITY_CACHEDIR"/*.sif "$PERM_CACHE/" 2>/dev/null || true
+
+echo "Job finished successfully."
