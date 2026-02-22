@@ -5,18 +5,16 @@ import os
 import sys
 
 # --- R Integration Imports ---
+from rpy2.robjects.conversion import localconverter
 import rpy2.robjects as ro
 from rpy2.robjects import pandas2ri, numpy2ri
 from rpy2.robjects.packages import importr
 # Scikit-learn
-from sklearn.preprocessing import RobustScaler
 
 # Local imports
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
-# Assuming these helpers exist in your src folder
-from src.data_importing.helpers.helpers import get_first_indexs, apply_KNN_impute, box_plot
 from src.data_analisys.utils.cluster_exploration_utils import *
 
 # --- Constants & Configuration ---
@@ -61,9 +59,19 @@ def run_r_combat(df, batch_list, covar_df=None):
     mod_r = ro.r('NULL')
     if covar_df is not None and not covar_df.empty:
         print(f"  [R-ComBat] Creating model matrix with covariates: {list(covar_df.columns)}")
-        covar_r = pandas2ri.py2rpy(covar_df)
+        
+        # 1. Force all columns to be strings so R can interpret them as categorical factors
+        covar_df = covar_df.astype(str)
+        
+        # 2. Use the localconverter context to safely translate Pandas -> R
+        with localconverter(ro.default_converter + pandas2ri.converter):
+            covar_r = ro.conversion.py2rpy(covar_df)
+            
+        # 3. Build the formula
         formula_str = "~ " + " + ".join(covar_df.columns)
         formula = ro.Formula(formula_str)
+        
+        # 4. Generate the model matrix
         mod_r = stats.model_matrix(formula, data=covar_r)
 
     # 3. Run ComBat
@@ -154,60 +162,6 @@ def run_preprocessing(plot_boxPlots=False, no_change=False):
         study_corrected_df.to_csv(path + 'study_corrected.csv')
 
     return    
-    # --- 3. Standard Scaler ---
-    try:
-        standardized_df = pd.read_csv(path+'/standardized.csv', index_col=0)
-    except FileNotFoundError:
-        if no_change: raise
-        standardized_df = ((df_impute.T - df_impute.T.mean()) / df_impute.T.std()).T
-        standardized_df.to_csv(path+'/standardized.csv')
-
-    # --- 4. Robust Scaler ---
-    try:
-        robust_df = pd.read_csv(path+'/robust.csv', index_col=0)
-    except FileNotFoundError:
-        if no_change: raise
-        scaler = RobustScaler()
-        robust_df = pd.DataFrame(scaler.fit_transform(df_impute.T).T, 
-                                 columns=df_impute.columns, index=df_impute.index)
-        robust_df.to_csv(path+'/robust.csv')
-    
-    # --- 5. Two-way Norm (Median/IQR) ---
-    try:
-        double_norm = pd.read_csv(path+'/2_way_norm.csv', index_col=0)
-    except FileNotFoundError:
-        if no_change: raise            
-        mat = study_corrected_df.to_numpy()
-        q75, q25 = np.percentile(mat, [75, 25], axis=1, keepdims=True)
-        iqr = q75 - q25
-        # Avoid div by zero
-        iqr[iqr == 0] = 1.0 
-        norm = (mat - np.median(mat, axis=1, keepdims=True)) / iqr
-        double_norm = pd.DataFrame(norm, columns=study_corrected_df.columns, index=study_corrected_df.index)
-        double_norm.to_csv(path+'/2_way_norm.csv')
-
-    # --- 6. Scalers on Corrected Data ---
-    try:
-        standardized_df_ = pd.read_csv(path+'/standardized+.csv', index_col=0)
-    except FileNotFoundError:
-        if no_change: raise
-        standardized_df_ = ((study_corrected_df.T - study_corrected_df.T.mean()) / study_corrected_df.T.std()).T
-        standardized_df_.to_csv(path+'/standardized+.csv')
-    
-    try:
-        robust_df_ = pd.read_csv(path+'/robust+.csv', index_col=0)
-    except FileNotFoundError:
-        if no_change: raise
-        scaler_ = RobustScaler()
-        robust_df_ = pd.DataFrame(scaler_.fit_transform(study_corrected_df.T).T, 
-                                  columns=study_corrected_df.columns, index=study_corrected_df.index)
-        robust_df_.to_csv(path+'/robust+.csv')
-    
-    if plot_boxPlots:
-        print("Generating Boxplots...")
-        # Add your box_plot calls here...
-    
-    print('Preprocessing Done')
 
 def _flatten_covariate(value):
     if isinstance(value, list):
@@ -267,42 +221,59 @@ def normalize_by_cov(df_small, cov='treatment'):
         print("Retrying without covariates...")
         return run_r_combat(df, batches)
 
-def normalize_by_tissue_2():
-    print("Running normalize_by_tissue_2...")
-    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv', index_col=0)
+def normalize_all_with_covariates():
+    print("Running ComBat on full dataset with biological covariates...")
+    
+    # 1. Load data
+    df = pd.read_csv(PROCESSED_DATA_FOLDER+'filter.csv', index_col=0)
     labels = load_labels_study(LABELS_PATH)
-    labels = keys_upper(labels)
 
-    labels_types = ['TREATMENT', 'TISSUE', 'MEDIUM']
+    # 2. Get labels
+    labels_types = LABELS
     labels_df = make_df_from_labels(labels, labels_types)
-    maps = get_label_map_new(df, labels_df)
     
-    df_normalized_parts = []
-    tissues = ["root", "leaf", "shoot", "rosette", "whole_plant", "callus", "seedling"]
+    # --- NEW DEDUPLICATION LOGIC ---
+    # Group by index and compute the union of the labels (merging lists)
+    def combine_label_lists(series):
+        combined = set()
+        for val in series:
+            # If the value is a list (e.g., ['heat stress']), add its elements
+            if isinstance(val, list):
+                combined.update([str(v) for v in val if pd.notna(v)])
+            # If it's a single string/value, add it directly
+            elif pd.notna(val):
+                combined.add(str(val))
+        # Return as a unique, sorted list to satisfy the requirement
+        return sorted(list(combined))
+
+    # Apply the fusion. This guarantees strictly unique indices.
+    labels_df = labels_df.groupby(level=0).agg(combine_label_lists)
     
-    for tissue in tissues:
-        print(f"Processing tissue: {tissue}")
-        try:
-            df_copy, maps_copy = get_df_and_maps(df, maps, 'TISSUE', tissue)
-            if df_copy.empty:
-                continue
-            df_small = normalize_by_cov(df_copy)
-            df_normalized_parts.append(df_small)
-        except Exception as e:
-            print(f"Skipping tissue {tissue}: {e}")
-
-    if not df_normalized_parts:
-        print("No tissues processed.")
-        return
-
-    df_normalized = pd.concat(df_normalized_parts, axis=1)
-    df_normalized.to_csv(PROCESSED_DATA_FOLDER+'/tissue_normalized.csv')
-
-    # Final batch correction on the merged result
-    batches = list(map(get_study, df_normalized.columns))
-    df_norm_2 = run_r_combat(df_normalized, batches)
-    df_norm_2.to_csv(PROCESSED_DATA_FOLDER+'/tissue_normalized_2.csv')
-
+    # 3. Align DataFrame and metadata maps perfectly
+    cols_in_maps = [c for c in df.columns if c in labels_df.index]
+    df = df[cols_in_maps]
+    maps_aligned = labels_df.loc[cols_in_maps]
+    
+    # 4. Extract batches (Study IDs)
+    batches = [get_study(c) for c in df.columns]
+    
+    # 5. Build the Covariate DataFrame containing your labels
+    # R's ComBat requires strings for categorical factors, not Python lists.
+    # We flatten the fused lists with an underscore for the final model matrix.
+    covariates_df = pd.DataFrame({
+        'treatment': maps_aligned['treatment'].apply(lambda x: '_'.join(x)).tolist(),
+        'tissue': maps_aligned['tissue'].apply(lambda x: '_'.join(x)).tolist(),
+        'medium': maps_aligned['medium'].apply(lambda x: '_'.join(x)).tolist()
+    }, index=df.columns)
+    
+    # 6. Run ComBat
+    df_normalized = run_r_combat(df, batch_list=batches, covar_df=covariates_df)
+    
+    # 7. Save results
+    df_normalized.to_csv(PROCESSED_DATA_FOLDER+'/fully_normalized_with_covariates.csv')
+    print("Finished! Saved to fully_normalized_with_covariates.csv")
+    
+    
 if __name__ == '__main__':
     run_preprocessing()
-    # normalize_by_tissue_2()
+    normalize_all_with_covariates()

@@ -54,8 +54,6 @@ def to_int_(x:list):
             floor = floor+1
     return new_x,seen
 
-def get_samples(data_df):
-    return list(map(lambda x : x.split('_')[-1],data_df.columns))
 
 def get_study(sample: str):
     """Extracts StudyID from sample name."""
@@ -65,10 +63,17 @@ def get_study(sample: str):
     except KeyError:
         # Fallback if sample not found
         return "Unknown_Study"
+def get_studies(df):
+    studies=[]
+    for el in df.columns:
+        studies.append(get_study(el))
+    return studies
+
 
 def get_label_map_new(data_df,labels_df):
     labels_map = {}
-    for sample,study in zip(get_samples(data_df),get_studies(data_df)):
+    for sample,study in zip(data_df.columns,get_studies(data_df)):
+        sample=sample.split('.')[0].upper() #TODO: where does this lower case come from? gsm77182
         temp = dict(labels_df.loc[sample])
         for i in temp:
             temp[i] = str(temp[i])
@@ -160,16 +165,6 @@ def make_df_from_labels(data_dict,col):
     # Select and order the columns you want
     # df = df[['study_id', 'control', 'treatment', 'tissue', 'agar']]
     return df[col]
-
-def keys_upper(test_dict):
-    res = dict()
-    for key in test_dict.keys():
-        if isinstance(test_dict[key], dict):
-            res[key.upper()] = keys_upper(test_dict[key])
-        else:
-            res[key.upper()] = test_dict[key]
-    return res
-
 
 
 def get_incomplete_studies(maps,sample_index,label):
