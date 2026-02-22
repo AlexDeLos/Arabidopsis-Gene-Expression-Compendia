@@ -139,7 +139,7 @@ class RNASeq_processor:
         Runs nf-core/rnaseq on a combined samplesheet.
         """
         os.makedirs(batch_out_dir, exist_ok=True)
-        project_root = os.getcwd() 
+        project_root = os.getcwd()
         config_path = os.path.join(project_root, ".nextflow.config")
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
 
@@ -236,7 +236,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     
-    processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='singularity')
+    processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='singularity,slurm')
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
     valid_gse_ids = []
 
