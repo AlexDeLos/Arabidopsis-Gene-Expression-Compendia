@@ -2,10 +2,10 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=36:00:00
+#SBATCH --time=5:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=50G
 #SBATCH --job-name=microarray_dowload
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 
