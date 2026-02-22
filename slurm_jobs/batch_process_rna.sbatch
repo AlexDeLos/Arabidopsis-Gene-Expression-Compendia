@@ -62,4 +62,4 @@ echo "Work Directory is set to: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
 # --- RUN THE PIPELINE ---
-python3 RNA_seq_processing_batch.py --index $SLURM_ARRAY_TASK_ID --batch_size $BATCH_SIZE
+python3 src/data_importing/new_download.py --index $SLURM_ARRAY_TASK_ID --batch_size $BATCH_SIZE
