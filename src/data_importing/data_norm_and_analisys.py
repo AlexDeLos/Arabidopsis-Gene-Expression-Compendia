@@ -17,8 +17,34 @@ sys.path.append(module_dir)
 from src.constants import *
 from src.data_analisys.utils.cluster_exploration_utils import *
 
-# --- Constants & Configuration ---
-print('using old sample map')
+# --- Constants & Configuration ---import pandas as pd
+from sklearn.impute import KNNImputer
+
+def apply_KNN_impute(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
+    """
+    Imputes missing values (NaNs) in a pandas DataFrame using K-Nearest Neighbors.
+    
+    Parameters:
+    - df: The input DataFrame containing missing values.
+    - n_neighbors: The number of nearest neighbors to use for imputation.
+    
+    Returns:
+    - A new DataFrame with the missing values imputed, preserving index and columns.
+    """
+    print(f"  [KNN Impute] Imputing missing values using {n_neighbors} neighbors...")
+    
+    # Initialize the imputer
+    imputer = KNNImputer(n_neighbors=n_neighbors, weights="uniform")
+    
+    # Fit and transform the data
+    # Note: KNNImputer returns a numpy array, so we must reconstruct the DataFrame
+    imputed_array = imputer.fit_transform(df)
+    
+    # Reconstruct the DataFrame with original indices and columns
+    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    
+    print("  [KNN Impute] Imputation complete.")
+    return df_imputed
 
 def get_study(sample: str):
     """Extracts StudyID from sample name."""
@@ -104,14 +130,14 @@ def run_r_combat(df, batch_list, covar_df=None):
     
     return result_df
 
-def run_preprocessing(plot_boxPlots=False, no_change=False):
+def run_preprocessing(no_change=False):
     path = PROCESSED_DATA_FOLDER
     out_path = FILTERING_FIGURES
     os.makedirs(out_path, exist_ok=True)
 
-    # --- 1. Load Data ---
+    # --- 1. Load and Filter Data ---
     try:
-        filtered_df = pd.read_csv(path+'filter_old.csv', index_col=0) # todo: change back
+        filtered_df = pd.read_csv(path+'filter.csv', index_col=0) 
         print('Successfully loaded filtered data.')
     except FileNotFoundError:
         if no_change: raise
@@ -120,19 +146,31 @@ def run_preprocessing(plot_boxPlots=False, no_change=False):
         big_df = pd.read_csv(COMBINED_DATA_OUTPUT_FILE, index_col=0)
         big_df = fuse_columns_by_sample(big_df)
         
-        # Filter Rows (Genes) > 20% NaN
+        # --- NEW: Treat 0 as NaN ---
+        # This converts all exactly 0.0 values to NaN so they get filtered and imputed
+        big_df = big_df.replace(0, np.nan)
+        
+        # Filter Rows (Genes) > 20% NaN (which now includes 0s)
         nan_genes = big_df.isna().mean(axis=1) * 100
         filtered_df = big_df.loc[nan_genes <= 20]
 
-        # Filter Cols (Samples) > 20% NaN
+        # Filter Cols (Samples) > 20% NaN (which now includes 0s)
         nan_samples = filtered_df.isna().mean() * 100
         filtered_df = filtered_df[filtered_df.columns[nan_samples <= 20]]
 
         filtered_df.to_csv(path+'filter.csv')
     
-    df_impute = filtered_df
+    # --- 2. NEW: KNN Imputation ---
+    try:
+        df_impute = pd.read_csv(path+'imputed.csv', index_col=0)
+        print('Successfully loaded imputed data.')
+    except FileNotFoundError:
+        print("Running KNN Imputation on missing/zero values...")
+        # Using the apply_KNN_impute function imported at the top of your script
+        df_impute = apply_KNN_impute(filtered_df)
+        df_impute.to_csv(path+'imputed.csv')
 
-    # --- 2. Batch Correction (ComBat) ---
+    # --- 3. Batch Correction (ComBat) ---
     try:
         study_corrected_df = pd.read_csv(path+'study_corrected.csv', index_col=0)
     except FileNotFoundError:
@@ -155,13 +193,13 @@ def run_preprocessing(plot_boxPlots=False, no_change=False):
                 valid_cols.append(col)
                 valid_batches.append(study)
 
-        df_impute = df_impute[valid_cols]
+        df_impute_combat = df_impute[valid_cols]
         
         # Run R ComBat
-        study_corrected_df = run_r_combat(df_impute, valid_batches)
+        study_corrected_df = run_r_combat(df_impute_combat, valid_batches)
         study_corrected_df.to_csv(path + 'study_corrected.csv')
 
-    return    
+    return
 
 def _flatten_covariate(value):
     if isinstance(value, list):
@@ -198,12 +236,6 @@ def normalize_by_cov(df_small, cov='treatment'):
     print(pd.crosstab(check_df['treatment'], check_df['batch']))
 
     # 4. Handle Confounding
-    # We want to keep 'cov' (e.g., treatment) and drop 'tissue' if it's not the target
-    # R handles 'biological' variables vs 'adjustment' variables.
-    # Here we just pass the one we want to PRESERVE to the model matrix.
-    
-    # If we want to preserve 'cov', we include it in the dataframe passed to R.
-    # The others are effectively ignored by the model (not adjusted for).
     covar_to_use = covar_df[[cov]].copy()
     
     # Check if variable has at least 2 levels (otherwise model matrix fails)
@@ -232,8 +264,6 @@ def normalize_all_with_covariates():
     labels_types = LABELS
     labels_df = make_df_from_labels(labels, labels_types)
     
-    # --- NEW DEDUPLICATION LOGIC ---
-    # Group by index and compute the union of the labels (merging lists)
     def combine_label_lists(series):
         combined = set()
         for val in series:
