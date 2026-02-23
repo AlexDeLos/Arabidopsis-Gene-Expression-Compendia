@@ -163,7 +163,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 umap_emb, text_labels, 
                 title=f'UMAP - {cat.capitalize()} (KNN Purity: {knn_purity:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.png'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.svg'
             )
             
             # t-SNE
@@ -171,7 +171,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 tsne_emb, text_labels, 
                 title=f't-SNE - {cat.capitalize()} (Var Explained: {var_explained:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.png'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.svg'
             )
 
             del X, X_pca, umap_emb, tsne_emb
@@ -256,7 +256,7 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     # Save the figure
-    output_path = os.path.join(output_folder, f"{experiment_name}_Summary.png")
+    output_path = os.path.join(output_folder, f"{experiment_name}_Summary.svg")
     plt.savefig(output_path, format='svg', bbox_inches='tight')
     
     # Also save a PNG for easy viewing without vector tools
