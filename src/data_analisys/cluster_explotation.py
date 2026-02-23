@@ -133,10 +133,7 @@ def run_exploration_on_dataframe(
             var_explained = variance_explained_by_label(X_pca, text_labels)
             
             # 5. Batch ASW within Biology
-            if cat != 'study_id':
-                batch_asw = calculate_asw_batch_within_biology(X_pca, batch_text_labels, text_labels)
-            else:
-                batch_asw = np.nan # It doesn't make sense to calculate batch ASW inside of a batch
+            batch_asw = calculate_asw_batch_within_biology(X_pca, batch_text_labels, text_labels)
             
             print(f"     * Silhouette: {sil_score:.4f}")
             print(f"     * ARI: {ari_score:.4f}")
