@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import sys
 import gc
+import seaborn as sns
+import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score, adjusted_rand_score
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import KNeighborsClassifier
@@ -184,10 +186,6 @@ def run_exploration_on_dataframe(
     print("\nProcessing Complete.")
     return res_df
 
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-import os
 
 def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_name: str = "Normalization_Comparison"):
     """
@@ -199,8 +197,7 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     print(f"\n[Generating Metric Comparison Plots...]")
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-
-    # 1. Combine all dataframes into one long-format dataframe for seaborn
+    
     combined_data = []
     for stage_name, df in metrics_dict.items():
         df_copy = df.copy()
@@ -212,15 +209,16 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     # Set presentation-ready aesthetic
     sns.set_theme(style="whitegrid", context="talk")
 
-    # 2. Setup the figure grid (2x2 plots)
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    # 2. Setup the figure grid (Changed to 2x3 to fit 5 plots)
+    fig, axes = plt.subplots(2, 3, figsize=(24, 12))
     fig.suptitle('Batch Correction Evaluation Metrics', fontsize=20, fontweight='bold', y=0.98)
 
     # --- Plot A: Variance Explained (Goal: Study drops, Biology stays/rises) ---
     sns.barplot(data=plot_df, x='Category', y='Variance_Explained', hue='Stage', ax=axes[0, 0], palette='Set2')
     axes[0, 0].set_title('Variance Explained (Higher = More Influence)')
     axes[0, 0].set_ylabel('R² Score')
-    axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
+    if not plot_df['Variance_Explained'].dropna().empty:
+        axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
 
     # --- Plot B: KNN Purity (Goal: Biology stays high, Study drops) ---
     sns.barplot(data=plot_df, x='Category', y='KNN_Purity', hue='Stage', ax=axes[0, 1], palette='Set2')
@@ -231,22 +229,35 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     # --- Plot C: Batch ASW within Biology (Goal: Biology categories drop closer to 0) ---
     # We filter out 'study_id' because calculating batch ASW within batch is NaN/irrelevant
     bio_only_df = plot_df[plot_df['Category'] != 'study_id']
-    sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[1, 0], palette='Set2')
-    axes[1, 0].set_title('Batch ASW within Biology (Lower = Better Mixing)')
-    axes[1, 0].set_ylabel('Silhouette Score of Batch')
-    axes[1, 0].set_ylim(0, max(plot_df['Batch_ASW_within_Bio'].dropna()) * 1.2)
+    sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[0, 2], palette='Set2')
+    axes[0, 2].set_title('Batch ASW within Bio (Lower = Better Mixing)')
+    axes[0, 2].set_ylabel('Silhouette Score of Batch')
+    if not bio_only_df['Batch_ASW_within_Bio'].dropna().empty:
+        axes[0, 2].set_ylim(0, max(bio_only_df['Batch_ASW_within_Bio'].dropna()) * 1.2)
 
     # --- Plot D: Adjusted Rand Index (Goal: Study drops closer to 0) ---
-    sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 1], palette='Set2')
-    axes[1, 1].set_title('Adjusted Rand Index (ARI) (Lower = Better Mixed)')
-    axes[1, 1].set_ylabel('ARI Score')
+    sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 0], palette='Set2')
+    axes[1, 0].set_title('Adjusted Rand Index (ARI) (Lower = Better Mixed)')
+    axes[1, 0].set_ylabel('ARI Score')
+
+    # --- Plot E: Silhouette Score (NEW) (Goal: Biology increases, Study decreases) ---
+    # Note: Make sure 'Silhouette_Score' perfectly matches the column name in your metrics_df!
+    sns.barplot(data=plot_df, x='Category', y='Silhouette_Score', hue='Stage', ax=axes[1, 1], palette='Set2')
+    axes[1, 1].set_title('Silhouette Score (Higher = Tighter Clusters)')
+    axes[1, 1].set_ylabel('Silhouette Score')
+
+    # --- Hide the 6th empty subplot ---
+    fig.delaxes(axes[1, 2])
 
     # Formatting adjustments
-    for ax in axes.flat:
+    # Only iterate through the axes that actually have plots drawn on them
+    active_axes = [axes[0, 0], axes[0, 1], axes[0, 2], axes[1, 0], axes[1, 1]]
+    for i, ax in enumerate(active_axes):
         ax.set_xlabel('')
-        # Move legend outside or remove redundant ones
-        if ax != axes[0, 0]: 
-            ax.get_legend().remove()
+        # Move legend to only the first plot to avoid clutter
+        if i != 0: 
+            if ax.get_legend() is not None:
+                ax.get_legend().remove()
         else:
             ax.legend(title='Pipeline Stage', loc='upper right')
 
