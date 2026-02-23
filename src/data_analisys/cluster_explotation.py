@@ -327,8 +327,8 @@ if __name__ == "__main__":
             
             # Store it for comparison plotting
             # We rename the keys to be more presentable ('filter' -> 'Raw Data')
-            stage_name = 'Raw Data' if file == 'filter' else 'ComBat Corrected'
-            all_metrics[stage_name] = metrics_df
+            # stage_name = 'Raw Data' if file == 'filter' else 'ComBat Corrected'
+            all_metrics[file] = metrics_df
             
         else:
             print(f"Error: Data file not found at {data_path}")
