@@ -256,7 +256,7 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     # Save the figure
-    output_path = os.path.join(output_folder, f"{experiment_name}_Summary.svg")
+    output_path = os.path.join(output_folder, f"{experiment_name}_Summary.png")
     plt.savefig(output_path, format='svg', bbox_inches='tight')
     
     # Also save a PNG for easy viewing without vector tools
