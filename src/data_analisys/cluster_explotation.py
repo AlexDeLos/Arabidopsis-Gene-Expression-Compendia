@@ -163,7 +163,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 umap_emb, text_labels, 
                 title=f'UMAP - {cat.capitalize()} (KNN Purity: {knn_purity:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.svg'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_UMAP.png'
             )
             
             # t-SNE
@@ -171,7 +171,7 @@ def run_exploration_on_dataframe(
             plot_projection(
                 tsne_emb, text_labels, 
                 title=f't-SNE - {cat.capitalize()} (Var Explained: {var_explained:.2f})', 
-                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.svg'
+                output_path=f'{output_folder}/{experiment_name}_{cat}_TSNE.png'
             )
 
             del X, X_pca, umap_emb, tsne_emb

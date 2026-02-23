@@ -191,7 +191,7 @@ if __name__ == "__main__":
                     scan=False,
                     run_and_delete=True, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
-                    debug=True
+                    debug=False
                 )
             else:
                 print(f"Index {args.array_index} (Start ID {start_idx}) is out of bounds for {len(target_list)} studies.")
