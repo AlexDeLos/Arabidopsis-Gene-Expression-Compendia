@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score, adjusted_rand_score
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import cross_val_score
+from scipy.stats import chi2_contingency
 
 module_dir = './'
 sys.path.append(module_dir)
@@ -187,17 +189,84 @@ def run_exploration_on_dataframe(
     return res_df
 
 
-def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_name: str = "Normalization_Comparison"):
+
+def calculate_cramers_v(series1: pd.Series, series2: pd.Series) -> float:
+    """Calculates Cramer's V statistic for association between two categorical series."""
+    # Create contingency table
+    contingency_table = pd.crosstab(series1, series2)
+    # If table is empty or too small, return 0 correlation
+    if contingency_table.empty or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
+        return 0.0
+        
+    # Chi-square test
+    chi2, _, _, _ = chi2_contingency(contingency_table)
+    
+    # Cramer's V calculation
+    n = contingency_table.sum().sum()
+    min_dim = min(contingency_table.shape) - 1
+    # Avoid division by zero if min_dim is 0
+    if min_dim == 0 or n == 0:
+        return 0.0
+        
+    v = np.sqrt(chi2 / (n * min_dim))
+    return v
+
+def calculate_multilabel_association(study_series: pd.Series, multilabel_series: pd.Series) -> float:
     """
-    Plots a comparison of pre- and post-normalization metrics.
+    Calculates the mean Cramer's V association between a single categorical variable (study_id)
+    and a multi-label variable (e.g., treatment lists).
+    """
+    # 1. Ensure everything is a list (convert strings/NaNs safely)
+    clean_labels = multilabel_series.apply(
+        lambda x: list(x) if isinstance(x, (list, tuple, set)) else ([str(x)] if pd.notna(x) else [])
+    ).tolist()
+    
+    # 2. Binarize the multi-labels into a matrix (0s and 1s)
+    mlb = MultiLabelBinarizer()
+    binary_matrix = mlb.fit_transform(clean_labels)
+    
+    # If there are no labels, return 0
+    if binary_matrix.shape[1] == 0:
+        return 0.0
+        
+    v_scores = []
+    
+    # 3. Calculate association for each individual label vs the study_id
+    for i, label in enumerate(mlb.classes_):
+        binary_col = binary_matrix[:, i]
+        
+        # Skip labels that are present in EVERY sample or NO samples (zero variance)
+        if len(np.unique(binary_col)) < 2:
+            continue
+            
+        # Calculate Cramer's V between the study and this specific label's presence/absence
+        v = calculate_cramers_v(study_series, binary_col)
+        v_scores.append(v)
+        
+    # 4. Return the average association across all labels in this category
+    if not v_scores:
+        return 0.0
+        
+    return float(np.mean(v_scores))
+
+# Updated Signature to accept metadata_df
+def plot_metrics_comparison(metrics_dict: dict, 
+                            metadata_df: pd.DataFrame, 
+                            output_folder: str, 
+                            experiment_name: str = "Normalization_Comparison"):
+    """
+    Plots a comparison of pre- and post-normalization metrics in a 2x3 grid.
+    The 6th plot shows inherent confounding between study_id and biological variables.
     
     :param metrics_dict: A dictionary of DataFrames, e.g., {'Raw': filter_df, 'ComBat': combat_df}
+    :param metadata_df: The original metadata DataFrame containing actual labels (tissue, treatment, study_id)
     :param output_folder: Where to save the plots.
     """
     print(f"\n[Generating Metric Comparison Plots...]")
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    
+
+    # --- 1. Prepare Metrics Data ---
     combined_data = []
     for stage_name, df in metrics_dict.items():
         df_copy = df.copy()
@@ -206,88 +275,141 @@ def plot_metrics_comparison(metrics_dict: dict, output_folder: str, experiment_n
     
     plot_df = pd.concat(combined_data, ignore_index=True)
 
+    # --- 2. Prepare Confounding Correlation Data (New Step) ---
+    bio_targets = LABELS
+    confounding_data = []
+    
+    if 'study_id' in metadata_df.columns:
+        for target in bio_targets:
+            if target in metadata_df.columns:
+                target_data = metadata_df[target]
+                
+                # Check if this column contains lists/sets
+                has_lists = target_data.apply(lambda x: isinstance(x, (list, tuple, set))).any()
+                
+                if has_lists:
+                    # Use the new multi-label metric
+                    v_score = calculate_multilabel_association(metadata_df['study_id'], target_data)
+                elif target_data.nunique() > 1:
+                    # Use the standard metric for flat strings
+                    v_score = calculate_cramers_v(metadata_df['study_id'], target_data)
+                else:
+                    v_score = 0.0
+                    
+                confounding_data.append({'Variable': target.capitalize(), 'Cramers_V': v_score})
+            else:
+                confounding_data.append({'Variable': target.capitalize() + " (Missing)", 'Cramers_V': 0})
+                
+    confounding_df = pd.DataFrame(confounding_data)
+
     # Set presentation-ready aesthetic
     sns.set_theme(style="whitegrid", context="talk")
 
-    # 2. Setup the figure grid (Changed to 2x3 to fit 5 plots)
+    # 3. Setup the figure grid (2x3 plots)
     fig, axes = plt.subplots(2, 3, figsize=(24, 12))
-    fig.suptitle('Batch Correction Evaluation Metrics', fontsize=20, fontweight='bold', y=0.98)
+    fig.suptitle('Batch Correction Evaluation & Confounding Check', fontsize=20, fontweight='bold', y=0.99)
 
-    # --- Plot A: Variance Explained (Goal: Study drops, Biology stays/rises) ---
+    # --- Plot A: Variance Explained ---
     sns.barplot(data=plot_df, x='Category', y='Variance_Explained', hue='Stage', ax=axes[0, 0], palette='Set2')
-    axes[0, 0].set_title('Variance Explained (Higher = More Influence)')
+    axes[0, 0].set_title('A. Variance Explained (Higher = More Influence)')
     axes[0, 0].set_ylabel('R² Score')
     if not plot_df['Variance_Explained'].dropna().empty:
         axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
 
-    # --- Plot B: KNN Purity (Goal: Biology stays high, Study drops) ---
+    # --- Plot B: KNN Purity ---
     sns.barplot(data=plot_df, x='Category', y='KNN_Purity', hue='Stage', ax=axes[0, 1], palette='Set2')
-    axes[0, 1].set_title('KNN Purity (Higher = Better Local Grouping)')
+    axes[0, 1].set_title('B. KNN Purity (Higher = Better Local Grouping)')
     axes[0, 1].set_ylabel('Purity Score')
     axes[0, 1].set_ylim(0, 1.1)
 
-    # --- Plot C: Batch ASW within Biology (Goal: Biology categories drop closer to 0) ---
-    # We filter out 'study_id' because calculating batch ASW within batch is NaN/irrelevant
+    # --- Plot C: Batch ASW within Biology ---
     bio_only_df = plot_df[plot_df['Category'] != 'study_id']
     sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[0, 2], palette='Set2')
-    axes[0, 2].set_title('Batch ASW within Bio (Lower = Better Mixing)')
+    axes[0, 2].set_title('C. Batch ASW within Bio (Lower = Better Mixing)')
     axes[0, 2].set_ylabel('Silhouette Score of Batch')
     if not bio_only_df['Batch_ASW_within_Bio'].dropna().empty:
-        axes[0, 2].set_ylim(0, max(bio_only_df['Batch_ASW_within_Bio'].dropna()) * 1.2)
+         # Ensure y-limit accommodates 0 if some scores are negative
+        ymax = max(bio_only_df['Batch_ASW_within_Bio'].dropna()) * 1.2
+        ymin = min(bio_only_df['Batch_ASW_within_Bio'].dropna().min(), 0) - 0.05
+        axes[0, 2].set_ylim(ymin, ymax)
 
-    # --- Plot D: Adjusted Rand Index (Goal: Study drops closer to 0) ---
+    # --- Plot D: Adjusted Rand Index (ARI) ---
     sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 0], palette='Set2')
-    axes[1, 0].set_title('Adjusted Rand Index (ARI) (Lower = Better Mixed)')
+    axes[1, 0].set_title('D. Adjusted Rand Index (ARI) (Lower = Better Mixed)')
     axes[1, 0].set_ylabel('ARI Score')
 
-    # --- Plot E: Silhouette Score (NEW) (Goal: Biology increases, Study decreases) ---
-    # Note: Make sure 'Silhouette_Score' perfectly matches the column name in your metrics_df!
-    sns.barplot(data=plot_df, x='Category', y='Silhouette_Score', hue='Stage', ax=axes[1, 1], palette='Set2')
-    axes[1, 1].set_title('Silhouette Score (Higher = Tighter Clusters)')
+    # --- Plot E: Silhouette Score ---
+    sns.barplot(data=plot_df, x='Category', y='Silhouette', hue='Stage', ax=axes[1, 1], palette='Set2')
+    axes[1, 1].set_title('E. Silhouette Score (Higher = Tighter Clusters)')
     axes[1, 1].set_ylabel('Silhouette Score')
 
-    # --- Hide the 6th empty subplot ---
-    fig.delaxes(axes[1, 2])
+    # --- Plot F: Experimental Confounding (NEW) ---
+    # Plotting Cramer's V correlation between study_id and other variables
+    ax_conf = axes[1, 2]
+    if not confounding_df.empty:
+        # Use a distinct color, as this isn't comparing stages
+        sns.barplot(data=confounding_df, x='Variable', y='Cramers_V', ax=ax_conf, color=sns.color_palette("deep")[0])
+        ax_conf.set_title('F. Inherent Confounding: Study ID vs. Biology')
+        ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)")
+        ax_conf.set_ylim(0, 1.1)
+        
+        # Add data labels on top of bars for clarity
+        for p in ax_conf.patches:
+             ax_conf.annotate(f'{p.get_height():.2f}', 
+                              (p.get_x() + p.get_width() / 2., p.get_height()), 
+                              ha = 'center', va = 'center', 
+                              xytext = (0, 9), 
+                              textcoords = 'offset points',
+                              fontsize=12)
+    else:
+        ax_conf.text(0.5, 0.5, "Metadata missing or insufficient data\nfor confounding check.", 
+                     ha='center', va='center')
+        ax_conf.set_title('F. Inherent Confounding Check')
+
 
     # Formatting adjustments
-    # Only iterate through the axes that actually have plots drawn on them
-    active_axes = [axes[0, 0], axes[0, 1], axes[0, 2], axes[1, 0], axes[1, 1]]
+    active_axes = axes.flatten()
     for i, ax in enumerate(active_axes):
         ax.set_xlabel('')
-        # Move legend to only the first plot to avoid clutter
-        if i != 0: 
-            if ax.get_legend() is not None:
+        # Handle legends: keep only on plot A, remove from B,C,D,E. Plot F doesn't have one.
+        if ax.get_legend() is not None:
+            if i == 0: 
+                ax.legend(title='Pipeline Stage', loc='upper right', bbox_to_anchor=(1.0, 1.05))
+            else:
                 ax.get_legend().remove()
-        else:
-            ax.legend(title='Pipeline Stage', loc='upper right')
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
     
     # Save the figure
-    output_path = os.path.join(output_folder, f"{experiment_name}_Summary.svg")
-    plt.savefig(output_path, format='svg', bbox_inches='tight')
-    
-    # Also save a PNG for easy viewing without vector tools
-    plt.savefig(output_path.replace('.svg', '.png'), format='png', bbox_inches='tight', dpi=300)
-    print(f"  -> Saved plots to {output_path}")
+    output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
+    # Use try/except blocks for saving in case of tight layout issues on some systems
+    try:
+        plt.savefig(output_path, format='svg', bbox_inches='tight')
+        plt.savefig(output_path.replace('.svg', '.png'), format='png', bbox_inches='tight', dpi=300)
+    except Exception as e:
+         print(f"[Warning] Could not save with tight bbox layout: {e}. Saving standard layout.")
+         plt.savefig(output_path, format='svg')
+         plt.savefig(output_path.replace('.svg', '.png'), format='png', dpi=300)
+
+    print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.png')}")
     plt.close()
         
 from src.data_analisys.utils.cluster_exploration_utils import *
 # --- Example Usage / Main Block ---
 if __name__ == "__main__":
     all_metrics = {}
+    print(f"Loading labels from: {LABELS_PATH}")
+    labels = load_labels_study(LABELS_PATH)
+    # labels = keys_upper(labels)
+
+    # Prepare Label Dictionary
+    labels_types = LABELS
+    labels_df = make_df_from_labels(labels, labels_types)
+    labels_map = labels_df.to_dict() # Structure: {'category': {'sample': 'value'}}
+    
+    del labels,labels_df
     for file in ['filter','imputed','study_corrected']:
         # 1. Load Labels
-        print(f"Loading labels from: {LABELS_PATH}")
-        labels = load_labels_study(LABELS_PATH)
-        # labels = keys_upper(labels)
-
-        # Prepare Label Dictionary
-        labels_types = LABELS
-        labels_df = make_df_from_labels(labels, labels_types)
-        labels_map = labels_df.to_dict() # Structure: {'category': {'sample': 'value'}}
-        
-        del labels, labels_df # Clean up
 
         # 2. Load Data
         data_path = f'{STORAGE_DIR}/final_data/{file}.csv' # Overriding constant as per your snippet
@@ -314,9 +436,9 @@ if __name__ == "__main__":
                     # Generate the label
                     study_val = get_study(sample)
                     # Assign it to the map
-                    labels_map['study_id'][sample] = study_val
+                    labels_map['study_id'][sample.upper()] = study_val
                     count_filled += 1
-                    
+            df.columns = [c.upper() for c in df.columns]
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
             # 3. Run Pipeline
@@ -344,5 +466,6 @@ if __name__ == "__main__":
         comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/refactored_plots/Comparisons"
         plot_metrics_comparison(
             metrics_dict=all_metrics, 
+            metadata_df=pd.DataFrame(labels_map),
             output_folder=comparison_output_dir
         )

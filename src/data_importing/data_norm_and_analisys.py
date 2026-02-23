@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from sklearn.impute import KNNImputer
+from sklearn.decomposition import TruncatedSVD
 import matplotlib.pyplot as plt
 import os
 import sys
@@ -366,8 +367,67 @@ def normalize_all_with_covariates():
     # 7. Save results
     df_normalized.to_csv(PROCESSED_DATA_FOLDER+'/fully_normalized_with_covariates.csv')
     print("Finished! Saved to fully_normalized_with_covariates.csv")
+
+
+def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_threshold: float = 0.95):
+    """
+    Approximates the Rank-in algorithm for cross-platform transcriptomic data integration
+    (Microarray & RNA-seq) as described by Tang et al., 2021.
     
+    :param df: pandas DataFrame of raw expression data (rows = genes, columns = samples).
+    :param n_bins: Number of groups to partition the sorted genes into (default is 100, per the paper).
+    :param variance_threshold: The amount of cumulative variance to retain during SVD reconstruction.
+    :return: A pandas DataFrame containing the Rank-in adjusted expression matrix.
+    """
+    print(f"\n[Rank-in] Step 1: Transforming raw expression into internal relative rankings ({n_bins} bins)...")
     
+    # 1. Intra-sample Rank Transformation
+    rank_matrix = df.rank(pct=True, method='average')
+    
+    # MULTIPLY AND CEILING (Ensuring the result stays a pandas DataFrame)
+    binned_matrix = pd.DataFrame(
+        np.ceil(rank_matrix.values * n_bins), 
+        index=df.index, 
+        columns=df.columns
+    )
+    
+    print("[Rank-in] Step 2: Centering the rank matrix for Singular Value Decomposition (SVD)...")
+    # Center the matrix across samples before applying SVD
+    gene_means = binned_matrix.mean(axis=1)
+    binned_centered = binned_matrix.sub(gene_means, axis=0)
+    
+    # Transpose for sklearn SVD which expects (n_samples, n_features)
+    X = binned_centered.T 
+    
+    print("[Rank-in] Step 3: Applying SVD adjustment to filter platform noise...")
+    # Determine the number of components needed to retain the specified variance
+    max_components = min(X.shape) - 1
+    svd_test = TruncatedSVD(n_components=max_components, random_state=42)
+    svd_test.fit(X)
+    
+    cumulative_variance = np.cumsum(svd_test.explained_variance_ratio_)
+    optimal_k = np.argmax(cumulative_variance >= variance_threshold) + 1
+    
+    print(f"  -> Selected top {optimal_k} SVD components to retain {variance_threshold*100}% biological variance.")
+    
+    # Reconstruct the matrix using only the top k components
+    svd_final = TruncatedSVD(n_components=optimal_k, random_state=42)
+    X_reduced = svd_final.fit_transform(X)
+    X_reconstructed = svd_final.inverse_transform(X_reduced)
+    
+    # Transpose back to (genes x samples) and add the gene means back (de-center)
+    adjusted_matrix = X_reconstructed.T
+    adjusted_df = pd.DataFrame(
+        adjusted_matrix, 
+        index=binned_matrix.index, 
+        columns=binned_matrix.columns
+    ).add(gene_means, axis=0)
+    
+    print("[Rank-in] Normalization complete.")
+    adjusted_df.to_csv(PROCESSED_DATA_FOLDER+'rankin.csv')
+    return adjusted_df
 if __name__ == '__main__':
     # run_preprocessing()
-    normalize_all_with_covariates()
+    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv')
+    run_rank_in_normalization(df)
+    # normalize_all_with_covariates()

@@ -271,6 +271,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 if not check_metadata_for_sra_boolean(gse):
                     print(f"No SRA data for {gse_id}")
                     tracker.mark_ignore(gse_id); continue
+                if len(gse.gsms) < 5:
+                    tracker.mark_ignore(gse_id); continue
+
                 if debug:
                     # --- DEBUG: KEEP ONLY 1 SAMPLE ---
                     if len(gse.gsms) > 1:

@@ -150,8 +150,8 @@ def make_df_from_labels(data_dict,col):
         for sample_id, sample_data in samples.items():
             # Create a new record with study_id included
             record = {
-                'study_id': study_id,
-                'sample_id': sample_id,
+                'study_id': study_id.upper(),
+                'sample_id': sample_id.upper(),
                 **sample_data  # Unpack all sample data
             }
             records.append(record)

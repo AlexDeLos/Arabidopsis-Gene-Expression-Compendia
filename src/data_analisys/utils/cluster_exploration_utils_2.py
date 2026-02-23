@@ -6,7 +6,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 import umap
 from sklearn.manifold import TSNE
-import os
+import matplotlib
+matplotlib.use('Agg')
 
 def prepare_data_structure(df: pd.DataFrame):
     """
@@ -81,8 +82,8 @@ def run_umap(data, n_neighbors=15, min_dist=0.1):
     reducer = umap.UMAP(
         n_neighbors=n_neighbors, 
         min_dist=min_dist, 
-        init='pca',  # <--- THIS FIXES THE WARNING
-        n_jobs=-1
+        init='pca',
+        n_jobs=1
     )
     return reducer.fit_transform(data)
 
