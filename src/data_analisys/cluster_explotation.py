@@ -314,6 +314,7 @@ def plot_metrics_comparison(metrics_dict: dict,
     axes[0, 0].set_title('A. Variance Explained (Higher = More Influence)')
     axes[0, 0].set_ylabel('R² Score')
     if not plot_df['Variance_Explained'].dropna().empty:
+        # axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
         axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
 
     # --- Plot B: KNN Purity ---
@@ -325,7 +326,7 @@ def plot_metrics_comparison(metrics_dict: dict,
     # --- Plot C: Batch ASW within Biology ---
     bio_only_df = plot_df[plot_df['Category'] != 'study_id']
     sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[0, 2], palette='Set2')
-    axes[0, 2].set_title('C. Batch ASW within Bio (Lower = Better Mixing)')
+    axes[0, 2].set_title('C. Batch ASW within Bio (Lower = +Study Mixing)')
     axes[0, 2].set_ylabel('Silhouette Score of Batch')
     if not bio_only_df['Batch_ASW_within_Bio'].dropna().empty:
          # Ensure y-limit accommodates 0 if some scores are negative
@@ -335,7 +336,7 @@ def plot_metrics_comparison(metrics_dict: dict,
 
     # --- Plot D: Adjusted Rand Index (ARI) ---
     sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 0], palette='Set2')
-    axes[1, 0].set_title('D. Adjusted Rand Index (ARI) (Lower = Better Mixed)')
+    axes[1, 0].set_title('D. Adjusted Rand Index (Align. w. clutsers)')
     axes[1, 0].set_ylabel('ARI Score')
 
     # --- Plot E: Silhouette Score ---
