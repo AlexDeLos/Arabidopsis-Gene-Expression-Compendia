@@ -428,6 +428,6 @@ def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_thre
     return adjusted_df
 if __name__ == '__main__':
     # run_preprocessing()
-    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv')
+    df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv',index_col=0)
     run_rank_in_normalization(df)
     # normalize_all_with_covariates()

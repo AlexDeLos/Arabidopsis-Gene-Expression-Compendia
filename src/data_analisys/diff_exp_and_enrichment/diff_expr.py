@@ -15,7 +15,7 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
     os.makedirs(output_dir,exist_ok=True)
     for treatment in treatments:
         try:
-            output_filename = f"{tissue if tissue is not None else 'All-Tissues'}_{treatment}"
+            output_filename = f"{tissue if tissue is not None else 'All-tissues'}_{treatment}"
             file_to_output = f"{output_dir}{output_filename}_genes.csv"
             print(f"--- Starting analysis for treatment: {treatment} across all tissues ---")
             # if os.path.isfile(file_to_output):
@@ -33,14 +33,14 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
 
             # 2. Create masks for the target treatment and control samples
             if tissue:
-                is_tissue = design['TISSUE'].str.contains(tissue, na=False)
+                is_tissue = design['tissue'].str.contains(tissue, na=False)
             else:
-                is_tissue = design['TISSUE'].str.contains('', na=False)
-            is_treatment = design['TREATMENT'].str.contains(treatment, na=False)
-            is_only_treatment = design['TREATMENT'].apply(lambda x: len(x) == len(treatment)+4 and treatment in x)
+                is_tissue = design['tissue'].str.contains('', na=False)
+            is_treatment = design['treatment'].str.contains(treatment, na=False)
+            is_only_treatment = design['treatment'].apply(lambda x: len(x) == len(treatment)+4 and treatment in x)
             if pure:
                 is_treatment = is_only_treatment
-            is_control = design['TREATMENT'].str.contains("No stress", na=False)
+            is_control = design['treatment'].str.contains("No stress", na=False)
             
             if samples is not None:
                 is_study = design['sample_id'].apply(lambda x: x in samples)
@@ -61,35 +61,35 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
             design_filtered = design_filtered.drop_duplicates()
 
             design_filtered = design_filtered.sort_values(by='sample_id').reset_index(drop=True)
-            design_filtered = design_filtered.groupby(['TREATMENT','TISSUE']).filter(lambda x: len(x) >= filter_low_combination)
+            design_filtered = design_filtered.groupby(['treatment','tissue']).filter(lambda x: len(x) >= filter_low_combination)
             data_filtered = data_filtered[design_filtered['sample_id']]
             
 
             print(f"Found and aligned {len(design_filtered)} samples for '{treatment}' vs. 'No stress'.")
             
             # 4. Create the final metadata DataFrame for the model
-            metadata = design_filtered[['sample_id', 'TREATMENT', 'TISSUE']].copy()
+            metadata = design_filtered[['sample_id', 'treatment', 'tissue']].copy()
             del design_filtered
-            metadata.rename(columns={'TISSUE': 'Tissue'}, inplace=True) # Rename TISSUE
+            metadata.rename(columns={'tissue': 'tissue'}, inplace=True) # Rename tissue
             
-            # Explicitly create 'Control' and 'Treatment' labels.
+            # Explicitly create 'Control' and 'treatment' labels.
             # This ensures 'Control' will be the first level alphabetically.
             
             # Find the rows that are 'No stress'
-            is_control_mask = metadata['TREATMENT'].str.contains("No stress", na=False)
+            is_control_mask = metadata['treatment'].str.contains("No stress", na=False)
             
-            # Default everything to 'Treatment'
-            metadata['Target'] = 'Treatment'
+            # Default everything to 'treatment'
+            metadata['Target'] = 'treatment'
             # Then, use the mask to label the 'Control' rows
             metadata.loc[is_control_mask, 'Target'] = 'Control'
             
-            # Now we can drop the original TREATMENT column if we want
-            del metadata['TREATMENT']
+            # Now we can drop the original treatment column if we want
+            del metadata['treatment']
             
             single_tissue = False
-            if len(set(metadata['Tissue'])) == 1:
+            if len(set(metadata['tissue'])) == 1:
                 single_tissue = True
-                del metadata['Tissue']
+                del metadata['tissue']
 
             if len(set(metadata['Target']))==1:
                 print(f"+++ No enogh samples for this treatment need at least {filter_low_combination}, skiping it  +++")
@@ -128,11 +128,11 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
             if single_tissue:
                 r_formula = Formula('~0 + Target')
             else:
-                r_formula = Formula('~0 + Target + Tissue')
+                r_formula = Formula('~0 + Target + tissue')
             r_design = stats.model_matrix(r_formula, data=r_metadata)
 
             # 8. Fit the linear model — This should now work without errorssample_id
-            print("Fitting linear model with Tissue as a covariate...")
+            print("Fitting linear model with tissue as a covariate...")
             fit = limma.lmFit(r_data, r_design)
             
             # 9. Define the contrast

@@ -408,7 +408,7 @@ if __name__ == "__main__":
     labels_map = labels_df.to_dict() # Structure: {'category': {'sample': 'value'}}
     
     del labels,labels_df
-    for file in ['filter','imputed','study_corrected']:
+    for file in ['filter','imputed','study_corrected','rankin']:
         # 1. Load Labels
 
         # 2. Load Data

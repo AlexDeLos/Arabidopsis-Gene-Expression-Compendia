@@ -140,7 +140,7 @@ def get_spider_plots(path, results_path, data_types, Fulls, tissues, pure_val, f
 
 
 def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
-                                data_types = ['tissue_normalized','study_corrected','imputed','2_way_norm','tissue_normalized_2'],
+                                data_types = ['study_corrected','imputed','filter'],
                                 pures = [True, False],
                                 Fulls = [True, False],
                                 filter_low_combination = [0, 15],
