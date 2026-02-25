@@ -1,7 +1,29 @@
 import os
 import subprocess
 import sys
-
+import gzip
+def create_dummy_input():
+    """
+    Creates a fake FASTQ and samplesheet just to bypass nf-core's 
+    strict parameter schema validation.
+    """
+    print("Creating dummy input files to bypass validation...")
+    fq1 = "dummy_1.fastq.gz"
+    fq2 = "dummy_2.fastq.gz"
+    samplesheet = "dummy_samplesheet.csv"
+    
+    # Write a single fake read (4 base pairs)
+    for fq in [fq1, fq2]:
+        with gzip.open(fq, "wt") as f:
+            f.write("@dummy_read\nACGT\n+\nIIII\n")
+            
+    # Write the standard nf-core samplesheet
+    with open(samplesheet, "w") as f:
+        f.write("sample,fastq_1,fastq_2,strandedness\n")
+        # Ensure we use absolute paths for Nextflow
+        f.write(f"dummy_sample,{os.path.abspath(fq1)},{os.path.abspath(fq2)},unstranded\n")
+        
+    return samplesheet, [fq1, fq2, samplesheet]
 def build_genome_indices(fasta_path, gff_path, out_dir):
     print("===================================================")
     print("Starting Nextflow Reference Genome Index Build")
@@ -9,6 +31,7 @@ def build_genome_indices(fasta_path, gff_path, out_dir):
     
     # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
+    dummy_csv, files_to_cleanup = create_dummy_input()
     
     # Construct the Nextflow command
     cmd = [
@@ -18,6 +41,7 @@ def build_genome_indices(fasta_path, gff_path, out_dir):
         "--fasta", fasta_path,
         "--gff", gff_path,
         "--save_reference",
+        "--input", dummy_csv,
         "--outdir", out_dir,
         "--skip_alignment",
         "--skip_pseudo_alignment",
