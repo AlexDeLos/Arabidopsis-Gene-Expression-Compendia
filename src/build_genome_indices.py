@@ -75,11 +75,13 @@ def build_genome_indices(fasta_path, original_gff_path, out_dir):
         "--input", dummy_csv,          
         "--fasta", fasta_path,
         "--gff", patched_gff_path,     
+        "--pseudo_aligner", "salmon",
         "--save_reference",
         "--outdir", out_dir,
+        "--skip_alignment",
+        "--skip_trimming",
         "--skip_qc",
-        "--skip_multiqc"       # <-- Bypasses the HTML report crash entirely!
-        # Removed the skip alignment flags so STAR and Salmon indices actually get built!
+        "--skip_multiqc"       
     ]
     
     print(f"Running command:\n{' '.join(cmd)}\n")
