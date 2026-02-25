@@ -14,6 +14,7 @@ def build_genome_indices(fasta_path, gff_path, out_dir):
     cmd = [
         "nextflow", "run", "nf-core/rnaseq",
         "-profile", "singularity", 
+        "-revision", "3.14.0",
         "--fasta", fasta_path,
         "--gff", gff_path,
         "--save_reference",
