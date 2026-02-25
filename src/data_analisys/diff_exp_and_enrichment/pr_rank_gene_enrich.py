@@ -39,47 +39,6 @@ def parse_gaf(annotation_file: str) -> Dict[str, Set[str]]:
     return geneid2gos
 
 
-def get_go_data_old(go_obo_file: str, annotation_file: str,namespaces: Optional[Set[str]] = None,stress_root_go_ids: Optional[Set[str]] = None):
-    """
-    Downloads and parses GO and annotation files.
-    This helper function separates the data loading from the analysis.
-    """
-    # Download GO OBO file if it doesn't exist
-    if not os.path.exists(go_obo_file):
-        print(f"GO OBO file not found. Downloading to '{go_obo_file}'...")
-        download_go_basic_obo(go_obo_file)
-
-    print("Parsing GO OBO file...")
-    obodag = GODag(go_obo_file)
-    # Download and parse Arabidopsis annotation file (GAF format)
-    if not os.path.exists(annotation_file):
-        print(f"Annotation file not found. Downloading to '{annotation_file}'...")
-        # GSEApy has a utility for this, but let's be explicit
-        import requests
-        url = "http://current.geneontology.org/annotations/tair.gaf.gz"
-        r = requests.get(url)
-        with open(annotation_file, 'wb') as f:
-            f.write(r.content)
-
-    print("Parsing Arabidopsis annotation file...")
-    # This returns a dictionary mapping gene ID -> set of GO IDs
-    geneid2gos = parse_gaf(annotation_file)
-    if namespaces:
-        print(f"Filtering annotations for namespaces: {namespaces}")
-        filtered_geneid2gos = {}
-        for gene_id, go_ids in geneid2gos.items():
-            # Create a new set containing only the GO IDs that belong to the desired namespaces
-            filtered_go_ids = {
-                go_id for go_id in go_ids 
-                if go_id in obodag and obodag[go_id].namespace in namespaces
-            }            
-            # If the gene still has annotations after filtering, add it to the results
-            # if filtered_go_ids:
-            filtered_geneid2gos[gene_id] = filtered_go_ids
-        
-        print(f"Filtering complete. {len(filtered_geneid2gos)} genes have annotations in the specified namespaces.")
-        return obodag, filtered_geneid2gos
-    return obodag, geneid2gos
 def get_go_data(
     go_obo_file: str, 
     annotation_file: str,

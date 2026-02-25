@@ -154,11 +154,12 @@ class RNASeq_processor:
             "--input", samplesheet_path,
             "--outdir", batch_out_dir,
             "--pseudo_aligner", "salmon",
+            "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/GCA_000001735.2_TAIR10.1_genomic_renamed.fna"
+            "--gff", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/Araport11_GFF3_genes_transposons.20250813.gff"
             "--skip_alignment",
             "--skip_biotype_qc",
             "--skip_stringtie",
             "--skip_bigwig",
-            "--genome", "TAIR10",
             "--skip_fastqc",
             "--skip_multiqc",
             "--skip_dupradar",

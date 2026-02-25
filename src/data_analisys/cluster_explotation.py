@@ -314,7 +314,6 @@ def plot_metrics_comparison(metrics_dict: dict,
     axes[0, 0].set_title('A. Variance Explained (Higher = More Influence)')
     axes[0, 0].set_ylabel('R² Score')
     if not plot_df['Variance_Explained'].dropna().empty:
-        # axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
         axes[0, 0].set_ylim(0, max(plot_df['Variance_Explained'].dropna()) * 1.2)
 
     # --- Plot B: KNN Purity ---
@@ -398,6 +397,8 @@ def plot_metrics_comparison(metrics_dict: dict,
 from src.data_analisys.utils.cluster_exploration_utils import *
 # --- Example Usage / Main Block ---
 if __name__ == "__main__":
+    #TODO: remove unkowns and unpecified from graph metrics
+    #TODO: make the plots interactive
     all_metrics = {}
     print(f"Loading labels from: {LABELS_PATH}")
     labels = load_labels_study(LABELS_PATH)

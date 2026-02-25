@@ -9,6 +9,7 @@ from src.constants import *
 from src.data_analisys.diff_exp_and_enrichment.pr_rank_gene_enrich import get_go_data, perform_gsea_enrichment
 from src.data_analisys.diff_exp_and_enrichment.plot_enrichment_new import plot_enrichment_scatter_interactive, create_gsea_spider_plot
 from src.data_analisys.diff_exp_and_enrichment.diff_expr import diff_exp_combine_tissues
+from src.data_analisys.utils.utils import generate_labels_csv
 
 
 ITERATIONS = 1000
@@ -141,12 +142,14 @@ def get_spider_plots(path, results_path, data_types, Fulls, tissues, pure_val, f
 
 def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
                                 data_types = ['study_corrected','imputed','filter'],
-                                pures = [True, False],
+                                pures =[False],
                                 Fulls = [True, False],
                                 filter_low_combination = [0, 15],
                                 tissues = [None, 'leaf'],
                                 just_plot=False):    
-                                
+    
+
+    labels = generate_labels_csv(LABELS_PATH,LABELS_PATH)
     for fil in filter_low_combination:
         for pure in pures:
             for data_type in data_types:
@@ -168,7 +171,8 @@ def run_diff_exp_and_enrichment(save_dir:str=PROCESSED_DATA_FOLDER,
                                 
                                 diff_exp_combine_tissues(
                                     TREATMENTS, save_dir, data_type, 
-                                    out_dir=diff_exp_out_dir, 
+                                    out_dir=diff_exp_out_dir,
+                                    design=labels,
                                     samples=target_samples, 
                                     pure=pure, 
                                     tissue=tissue, 

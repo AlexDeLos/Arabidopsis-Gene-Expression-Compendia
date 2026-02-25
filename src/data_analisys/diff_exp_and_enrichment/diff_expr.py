@@ -10,7 +10,7 @@ module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
 
-def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None, pure=False,tissue=None,filter_low_combination:int = 10):
+def diff_exp_combine_tissues(treatments,save_dir,data_type,design,out_dir,samples=None, pure=False,tissue=None,filter_low_combination:int = 10):
     output_dir: str = f'{out_dir}'
     os.makedirs(output_dir,exist_ok=True)
     for treatment in treatments:
@@ -24,23 +24,16 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
 
             # 1. Load and prepare data and design files
             data = pd.read_csv(f'{save_dir}/{data_type}.csv', index_col=0)
-            if data_type == '2_way_norm_og':
-                data.columns = [col.split('_')[0] for col in data.columns]
-            else:
-                data.columns = [col.split('_')[-1] for col in data.columns]
-
-            design = pd.read_csv(f'{CLUSTER_EXPLORATION_FIGURES_DIR}{EXPERIMENT_NAME}/labels.csv')
-
             # 2. Create masks for the target treatment and control samples
             if tissue:
                 is_tissue = design['tissue'].str.contains(tissue, na=False)
             else:
                 is_tissue = design['tissue'].str.contains('', na=False)
             is_treatment = design['treatment'].str.contains(treatment, na=False)
-            is_only_treatment = design['treatment'].apply(lambda x: len(x) == len(treatment)+4 and treatment in x)
+            is_only_treatment = design['treatment'].apply(lambda x: len(x) == len(treatment) and treatment in x)
             if pure:
                 is_treatment = is_only_treatment
-            is_control = design['treatment'].str.contains("No stress", na=False)
+            is_control = design['treatment'].str.contains(TreatmentEnum.CONTROL, na=False)
             
             if samples is not None:
                 is_study = design['sample_id'].apply(lambda x: x in samples)
@@ -50,27 +43,27 @@ def diff_exp_combine_tissues(treatments,save_dir,data_type,out_dir,samples=None,
 
             # 3. Synchronize samples between expression data and design metadata
             # Find the common set of sample IDs present in both dataframes
-            common_samples = list(set(design_filtered['sample_id']) & set(data.columns))
+            common_samples = list(set(design_filtered.index) & set(data.columns))
             
             # Filter both dataframes to keep only the common samples
-            design_filtered = design_filtered[design_filtered['sample_id'].isin(common_samples)]
+            design_filtered = design_filtered[design_filtered.index.isin(common_samples)]
             data_filtered = data[common_samples]
             
             # drop duplicate columns
             data_filtered= data_filtered.T.drop_duplicates().T
             design_filtered = design_filtered.drop_duplicates()
 
-            design_filtered = design_filtered.sort_values(by='sample_id').reset_index(drop=True)
+            design_filtered = design_filtered.sort_values(by='sample_id').reset_index(drop=False)
             design_filtered = design_filtered.groupby(['treatment','tissue']).filter(lambda x: len(x) >= filter_low_combination)
             data_filtered = data_filtered[design_filtered['sample_id']]
             
 
-            print(f"Found and aligned {len(design_filtered)} samples for '{treatment}' vs. 'No stress'.")
+            print(f"Found and aligned {len(design_filtered)} samples for '{treatment}' vs. {TreatmentEnum.CONTROL}.")
             
             # 4. Create the final metadata DataFrame for the model
             metadata = design_filtered[['sample_id', 'treatment', 'tissue']].copy()
             del design_filtered
-            metadata.rename(columns={'tissue': 'tissue'}, inplace=True) # Rename tissue
+            metadata.rename(columns={'tissue': 'tissue'}, inplace=True) #? Rename tissue
             
             # Explicitly create 'Control' and 'treatment' labels.
             # This ensures 'Control' will be the first level alphabetically.
