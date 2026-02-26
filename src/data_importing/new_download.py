@@ -1,6 +1,11 @@
 from Bio import Entrez
 import sys
 import argparse
+import dotenv
+import GEOparse
+import os
+import requests
+import re
 # Ensure we can import the local modules
 module_dir = './'
 sys.path.append(module_dir)
@@ -16,7 +21,8 @@ from src.data_importing.helpers.file_tracker import FileTracker
 # from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
 # --- CONFIGURATION ---
-Entrez.email = "your.email@example.com" 
+Entrez.email = os.getenv('email')
+Entrez.api_key = os.getenv('NCBI_APY_KEY')
 
 def save_list_to_txt(data_list, filename):
     """Saves a list to a text file, one item per line."""
@@ -38,14 +44,6 @@ MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling b
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
 STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
 FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
-import GEOparse
-import os
-import requests
-import re
-
-
-
-
 
 def download_processed_counts(gse_id, output_dir):
     print(f"Checking metadata for {gse_id}...")
@@ -104,7 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", help="output_dir", default=2,type=int)
     parser.add_argument("--array_index", type=int, default=0, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=False)
+    parser.add_argument("--rna", action="store_true", default=True)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir

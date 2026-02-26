@@ -6,7 +6,7 @@ import pandas as pd
 from Bio import Entrez
 from tqdm import tqdm
 import GEOparse
-from GEOparse.GEOTypes import GSE, GSM, GPL, GDS
+from urllib.error import HTTPError
 import sys
 import time
 from Bio import Entrez
@@ -32,22 +32,44 @@ class RNASeq_processor:
             if not shutil.which(tool):
                 print(f"WARNING: {tool} not found in PATH. Pipeline may fail.")
 
-    def get_srr_ids(self, gsm_id):
-        """Fetches SRR IDs for a GSM from NCBI."""
-        handle = Entrez.esearch(db="sra", term=gsm_id)
-        record = Entrez.read(handle)
-        handle.close()
-        if not record['IdList']: return []
+    def get_srr_ids(self, gsm_id, max_retries=5):
+        for attempt in range(max_retries):
+            try:
+                # 1. Proactive Rate Limiting (ensures < 3 requests per second)
+                time.sleep(0.4) 
+                
+                handle = Entrez.esearch(db="sra", term=gsm_id)
+                record = Entrez.read(handle)
+                handle.close()
+                
+                if not record['IdList']:
+                    return []
         
-        handle = Entrez.esummary(db="sra", id=",".join(record['IdList']))
-        summaries = Entrez.read(handle)
-        handle.close()
-        
-        run_ids = []
-        import re
-        for summary in summaries:
-            run_ids.extend(re.findall(r'acc="([A-Z0-9]+)"', summary.get('Runs', '')))
-        return list(set(run_ids))
+                handle = Entrez.esummary(db="sra", id=",".join(record['IdList']))
+                summaries = Entrez.read(handle)
+                handle.close()
+                
+                run_ids = []
+                import re
+                for summary in summaries:
+                    run_ids.extend(re.findall(r'acc="([A-Z0-9]+)"', summary.get('Runs', '')))
+                return list(set(run_ids))
+            
+            except HTTPError as e:
+                # 2. Reactive Backoff: If we still hit the limit, wait and retry
+                if e.code == 429:
+                    wait_time = 2 ** attempt  # Waits 1s, 2s, 4s, 8s, 16s...
+                    print(f"    [!] HTTP 429 (Too Many Requests) for {gsm_id}. Waiting {wait_time}s before retry {attempt+1}/{max_retries}...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"    [!] HTTP Error {e.code} for {gsm_id}. Skipping.")
+                    return []
+            except Exception as e:
+                print(f"    [!] Connection error for {gsm_id}: {e}. Retrying in 5s...")
+                time.sleep(5)
+                
+        print(f"    [!] Failed to retrieve SRR for {gsm_id} after {max_retries} retries.")
+        return []
 
                 
     def download_fastq(self, gse, output_folder, temp_files):
