@@ -267,7 +267,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         
         # --- PHASE 1: DOWNLOAD & PREPARE ---
         for gse_id in batch:
-            # gse_id = 'GSE277725'
+            print(f"\n=== Processing study: {gse_id} ===")
             try:
                 # 1. Setup Folders
                 fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
@@ -353,7 +353,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         # Run Nextflow
         success = processor.run_pipeline_batch(samplesheet_path, batch_dir)
 
-        # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
+# --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
         if success:
             # Split the big results file back into study folders
             split_success = split_merged_counts(batch_dir, batch_study_map, output_dir)
@@ -364,18 +364,56 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                     valid_gse_ids.append(gse_id)
                     
                     if run_and_delete:
+                        # 1. Clean FASTQ storage for this study
                         fq_dir = os.path.join(output_dir, "fastq_storage", gse_id)
                         if os.path.exists(fq_dir):
                             print(f"Cleaning FASTQs for {gse_id}")
                             shutil.rmtree(fq_dir)
+                            
+                        # 2. Clean up the downloaded GEO .soft.gz file
+                        soft_file = os.path.join(output_dir, f"{gse_id}_family.soft.gz")
+                        if os.path.exists(soft_file):
+                            print(f"Cleaning SOFT file for {gse_id}")
+                            os.remove(soft_file)
             
             tracker.save_to_json(tracker_save_path)
             
-            # Optional: Cleanup batch folder to save space
-            # shutil.rmtree(batch_dir) 
+            # 3. Trim the batch folder to keep only essential QC logs
+            if split_success and run_and_delete:
+                print(f"Trimming batch directory {batch_dir} to save space (Keeping only QC logs)...")
+                
+                # Walk bottom-up so we can delete files, then safely remove empty directories
+                for root, dirs, files in os.walk(batch_dir, topdown=False):
+                    for name in files:
+                        filepath = os.path.join(root, name)
+                        
+                        # Define what we want to KEEP
+                        keep = False
+                        if name == "deseq2.plots.pdf" and "deseq2_qc" in root:
+                            keep = True
+                        elif name == "meta_info.json" and "aux_info" in root:
+                            keep = True
+                            
+                        # Delete everything else
+                        if not keep:
+                            try:
+                                os.remove(filepath)
+                            except OSError:
+                                pass
+                                
+                    # Try to remove directories. This will cleanly fail if the directory 
+                    # still contains our kept files, leaving the folder structure perfectly intact!
+                    for name in dirs:
+                        dirpath = os.path.join(root, name)
+                        try:
+                            os.rmdir(dirpath)
+                        except OSError:
+                            pass 
         else:
             print("Batch execution failed. Marking studies for review.")
+
+            for gse_id in batch_study_map.keys():
+                tracker.mark_error(gse_id)
             # Logic: You might want to retry individually or mark all as ignored.
             # Currently leaving them as downloaded but not processed.
-
     return valid_gse_ids

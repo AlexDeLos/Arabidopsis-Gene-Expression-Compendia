@@ -64,6 +64,7 @@ class FileTracker:
         self.set_status(gse_id, STATUS_IGNORE)
 
     def mark_error(self, gse_id):
+        print(f'Marking {gse_id} as error')
         self.set_status(gse_id, STATUS_ERROR)
 
 
