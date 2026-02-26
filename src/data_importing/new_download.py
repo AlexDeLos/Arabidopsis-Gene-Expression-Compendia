@@ -21,6 +21,7 @@ from src.data_importing.helpers.file_tracker import FileTracker
 # from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
 # --- CONFIGURATION ---
+dotenv.load_dotenv()
 Entrez.email = os.getenv('email')
 Entrez.api_key = os.getenv('NCBI_APY_KEY')
 
