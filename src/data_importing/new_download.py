@@ -15,7 +15,7 @@ from src.constants import *
 # Import the processing function from your other file
 from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
 from src.data_importing.RNA_seq_processing_batch import download_experiments_RNA_seq_nf_core
-from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray,plot_study_distributions_incremental,plot_study_distributions_seaborn
+from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray
 from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.data_importing.helpers.file_tracker import FileTracker
 # from src.data_importing.helpers.scan_tracker import RNASeq_tracker
