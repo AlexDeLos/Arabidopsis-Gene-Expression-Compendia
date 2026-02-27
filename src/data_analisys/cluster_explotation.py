@@ -16,6 +16,8 @@ from sklearn.model_selection import cross_val_score
 from scipy.stats import chi2_contingency
 from sklearn.linear_model import LinearRegression
 
+from src.data_analisys.bulk_transformer import get_bulkformer_embeddings
+
 module_dir = './'
 sys.path.append(module_dir)
 
@@ -302,7 +304,7 @@ def run_exploration_on_dataframe(
                 print("  -> Skipping Metrics: Not enough valid samples/classes after removing unknowns.")
                 sil_score, ari_score, knn_purity, var_explained, batch_asw = np.nan, np.nan, np.nan, np.nan, np.nan
             else:
-                X_pca_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
+                X_pca_metric, _ = get_bulkformer_embeddings(data_df)#run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
                 
                 try:
                     sil_score = silhouette_score(X_pca_metric, num_labels_metric, metric='euclidean', sample_size=min(5000, X_metric.shape[0]))
@@ -341,7 +343,7 @@ def run_exploration_on_dataframe(
 
     # TASK 2: Output ONLY 2 interactive HTML files per experiment
     print(f"\n[Generating Global Interactive Plots for {experiment_name}]")
-    X_pca_full, _ = run_pca(X_base, n_components=min(50, X_base.shape[0]-1))
+    X_pca_full, _ = get_bulkformer_embeddings(data_df)#run_pca(X_base, n_components=min(50, X_base.shape[0]-1))
     
     print("  -> Running UMAP...")
     umap_emb = run_umap(X_pca_full)
