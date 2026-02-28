@@ -2,10 +2,10 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=12:00:00         # 12 hours is plenty for index building
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16      # <-- INCREASED TO 16 CORES
-#SBATCH --mem=72G               # <-- INCREASED TO 64GB RAM
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=72G
 #SBATCH --job-name=build_rna_indices
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 #SBATCH --export=NONE
