@@ -9,7 +9,7 @@
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=0-10%5
+#SBATCH --array=0-10
 #SBATCH --export=NONE
 
 # Print job information
@@ -62,7 +62,7 @@ export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/us
 export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Define Batch Size
-BATCH_SIZE=5
+BATCH_SIZE=10
 echo "Environment activated: $CONDA_DEFAULT_ENV"
 echo "Python being used: $(which python3)"
 echo "Work Directory is set to: $NXF_WORK"
