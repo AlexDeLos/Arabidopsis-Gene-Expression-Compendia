@@ -6,9 +6,19 @@
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=ewi-insy-prb,prb,ewi-insy,insy
 
-# Properly initialize Conda for non-interactive scripts
 eval "$(conda shell.bash hook)"
 conda activate download_env
+# Print job information
+echo "=================================================="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "Environment activated: $CONDA_DEFAULT_ENV"
+echo "Python being used: $(which python3)"
+echo "=================================================="
+
+# Properly initialize Conda for non-interactive scripts
 # Arguments passed by the Python script
 SRR_LIST=$1
 OUT_DIR=$2

@@ -12,18 +12,19 @@
 #SBATCH --array=0-10
 #SBATCH --export=NONE
 
+# 2. Properly initialize Conda for non-interactive scripts
+eval "$(conda shell.bash hook)"
+conda activate download_env
+
 # Print job information
 echo "=================================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
 echo "Node: $(hostname)"
 echo "Date: $(date)"
+echo "Environment activated: $CONDA_DEFAULT_ENV"
+echo "Python being used: $(which python3)"
 echo "=================================================="
-
-
-# 2. Properly initialize Conda for non-interactive scripts
-eval "$(conda shell.bash hook)"
-conda activate download_env
 
 # Ensure clean Java environment
 unset JAVA_HOME
@@ -62,8 +63,6 @@ export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/
 
 # Define Batch Size
 BATCH_SIZE=10
-echo "Environment activated: $CONDA_DEFAULT_ENV"
-echo "Python being used: $(which python3)"
 echo "Work Directory is set to: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
