@@ -35,6 +35,8 @@ unset NXF_JAVA_HOME
 
 # Define your base storage paths
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+export BIG_STORAGE_temp='/tmp/alexdelossanto/'
+mkdir -p $BIG_STORAGE_temp
 export NXF_WORK="$BIG_STORAGE/work"
 mkdir -p "$NXF_WORK"
 
@@ -42,7 +44,8 @@ mkdir -p "$NXF_WORK"
 # --- THE FINAL SINGULARITY CACHE FIX ---
 # ==========================================
 # Define your new home-based cache directory
-export MY_LOCAL_CACHE="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
+# "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
+export MY_LOCAL_CACHE='/tmp/alexdelossanto/'
 mkdir -p "$MY_LOCAL_CACHE"
 
 # 1. Tell Nextflow where to store the finalized images (Shared Network Drive, no chmod issues)
@@ -76,4 +79,5 @@ python3 -u src/data_importing/new_download.py \
     --batch_size $BATCH_SIZE \
     --rna
 
-echo "Job finished successfully."
+echo "Job finished"
+echo "Date: $(date)"

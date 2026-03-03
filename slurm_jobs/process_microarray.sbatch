@@ -43,3 +43,4 @@ echo "Starting analysis..."
 python3 -u src/data_importing/data_norm_and_analisys.py
 
 echo "Job finished successfully."
+echo "Date: $(date)"

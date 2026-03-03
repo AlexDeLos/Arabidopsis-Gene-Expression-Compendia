@@ -73,9 +73,13 @@ class RNASeq_processor:
 
                 
     def download_fastq(self, gse, output_folder, temp_files):
-        """Downloads using fastq-dump with built-in compression."""
+        """Downloads using fastq-dump via parallel SLURM array jobs."""
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
+        
+        # Directory for the SLURM out/err logs
+        logs_folder = os.path.join('./logs_slurm/', "download_logs")
+        if not os.path.exists(logs_folder): os.makedirs(logs_folder)
 
         print(f"Fetching SRR IDs for {len(gse.gsms)} samples...")
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
@@ -88,38 +92,59 @@ class RNASeq_processor:
         # DEBUG 3: Print the map after filtering
         if not sra_map:
             print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
-        if CLUSTER_RUN:
-            fastq_dump_cmd = '/home/nfs/alexdelossanto/sratoolkit.3.0.0-ubuntu64/bin/fastq-dump'
-        else:
-            fastq_dump_cmd = "fastq-dump"
-        for gsm, srrs in tqdm(sra_map.items(), desc="Downloading SRRs", leave=False):
+            return
+
+        # 1. Collect all SRRs that need downloading
+        srrs_to_download = []
+        for gsm, srrs in sra_map.items():
             for srr in srrs:
                 existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-                if existing_gz: continue
+                if not existing_gz:
+                    srrs_to_download.append(srr)
 
-                cmd = [fastq_dump_cmd, "--gzip", "--split-files", "--outdir", output_folder, srr]
-                max_retries = 3
-                success = False
+        if not srrs_to_download:
+            print(f"All SRRs for {gse} are already downloaded.")
+            return
 
-                for attempt in range(max_retries):
-                    try:
-                        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-                        print(f'Subprocess for sample {gsm} completed: {str(cmd)}')
-                        if any(f.startswith(srr) and f.endswith('.gz') for f in os.listdir(output_folder)):
-                            success = True
-                            print(f'Subprocess genrated files for sample {gsm}')
-                            break
-                    except subprocess.CalledProcessError:
-                        print(f"Retrying {srr} ({attempt+1}/{max_retries})...")
-                        # Cleanup partials
-                        for pf in [f for f in os.listdir(output_folder) if f.startswith(srr)]:
-                            try: os.remove(os.path.join(output_folder, pf))
-                            except: pass
-                        time.sleep(10)
+        # 2. Write missing SRRs to a text file for the SLURM array to read
+        srr_list_path = os.path.join(output_folder, "srr_list.txt")
+        with open(srr_list_path, 'w') as f:
+            for srr in srrs_to_download:
+                f.write(f"{srr}\n")
 
-                if not success:
-                    print(f"\nFailed to download {srr} after retries.")
+        print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
+        sbatch_script = os.path.abspath(os.path.join(module_dir, "download_srr.sbatch"))
+        
+        if not os.path.exists(sbatch_script):
+            print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
+            return
+
+        # 3. Call sbatch and WAIT for all array jobs to finish
+        cmd = [
+            "sbatch", 
+            "--wait", # Blocks the python script until the downloads finish
+            f"--array=1-{len(srrs_to_download)}",
+            f"--output={logs_folder}/fastq_dump_%A_%a.out",
+            f"--error={logs_folder}/fastq_dump_%A_%a.err",
+            sbatch_script,
+            srr_list_path,
+            output_folder
+        ]
+
+        try:
+            subprocess.run(cmd, check=True)
+            print("All SLURM download array jobs completed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error executing sbatch job array: {e}")
+
+        # 4. Verify post-download
+        for srr in srrs_to_download:
+            existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+            if not existing_gz:
+                print(f"Failed to download {srr} after sbatch completion.")
+                
         print(f'Done downloading for {gse}')
+            
     def get_samplesheet_rows(self, gse_id, fastq_folder):
         """
         Generates samplesheet rows for a single study.
@@ -375,7 +400,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         # Run Nextflow
         success = processor.run_pipeline_batch(samplesheet_path, batch_dir)
 
-# --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
+        # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
         if success:
             # Split the big results file back into study folders
             split_success = split_merged_counts(batch_dir, batch_study_map, output_dir)
