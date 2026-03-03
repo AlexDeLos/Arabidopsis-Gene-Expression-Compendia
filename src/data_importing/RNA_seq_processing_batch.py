@@ -113,7 +113,7 @@ class RNASeq_processor:
                 f.write(f"{srr}\n")
 
         print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
-        sbatch_script = os.path.abspath(os.path.join(module_dir, "download_srr.sbatch"))
+        sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
         
         if not os.path.exists(sbatch_script):
             print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
