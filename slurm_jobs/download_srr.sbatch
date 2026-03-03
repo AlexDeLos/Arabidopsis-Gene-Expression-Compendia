@@ -6,6 +6,11 @@
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=ewi-insy-prb,prb,ewi-insy,insy
 
+module purge
+module use /opt/insy/modulefiles
+module load miniconda/3.9
+
+
 eval "$(conda shell.bash hook)"
 conda activate download_env
 # Print job information

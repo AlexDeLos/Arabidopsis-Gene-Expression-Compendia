@@ -12,6 +12,10 @@
 #SBATCH --array=0-10
 #SBATCH --export=NONE
 
+module purge
+module use /opt/insy/modulefiles
+module load miniconda/3.9
+
 # 2. Properly initialize Conda for non-interactive scripts
 eval "$(conda shell.bash hook)"
 conda activate download_env
