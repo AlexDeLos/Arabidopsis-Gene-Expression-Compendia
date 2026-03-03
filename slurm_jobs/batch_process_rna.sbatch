@@ -20,10 +20,6 @@ echo "Node: $(hostname)"
 echo "Date: $(date)"
 echo "=================================================="
 
-# 1. Clean environment and load modules
-module purge
-module use /opt/insy/modulefiles
-module load miniconda/3.9
 
 # 2. Properly initialize Conda for non-interactive scripts
 eval "$(conda shell.bash hook)"

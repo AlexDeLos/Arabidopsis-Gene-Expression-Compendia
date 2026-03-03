@@ -6,6 +6,9 @@
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=ewi-insy-prb,prb,ewi-insy,insy
 
+# Properly initialize Conda for non-interactive scripts
+eval "$(conda shell.bash hook)"
+conda activate download_env
 # Arguments passed by the Python script
 SRR_LIST=$1
 OUT_DIR=$2
