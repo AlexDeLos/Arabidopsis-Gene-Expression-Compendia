@@ -4,8 +4,8 @@
 #SBATCH --qos=long
 #SBATCH --time=168:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=6G
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
