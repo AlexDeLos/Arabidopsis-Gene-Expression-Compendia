@@ -48,13 +48,14 @@ mkdir -p "$NXF_WORK"
 # "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
 # 1. FINAL IMAGES -> Shared Umbrella Storage
 # Nextflow will put the compiled .img files here so all nodes can use them.
-export MY_SHARED_IMAGES='/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache'
+export MY_SHARED_IMAGES='/home/nfs/alexdelossanto/singularity_cache'
 mkdir -p "$MY_SHARED_IMAGES"
 export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_IMAGES"
 
-# 2. TEMPORARY LAYERS -> Local Compute Node Storage
-# Singularity will do its downloads here, bypassing the umbrella storage's 
-# strict chmod/ACL rules entirely.
+# Increase timeout so the 10 waiting jobs don't crash while the 1st job downloads
+export NXF_SINGULARITY_PULLTIMEOUT="120m"
+
+# 2. TEMPORARY LAYERS -> Local Compute Node Storage (/tmp)
 export LOCAL_TEMP_CACHE="/tmp/apptainer_cache_$USER"
 mkdir -p "$LOCAL_TEMP_CACHE"
 
@@ -66,6 +67,8 @@ export APPTAINER_TMPDIR="$LOCAL_TEMP_CACHE"
 # Prevent host Conda paths from bleeding into the container
 export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
 # Define Batch Size
 BATCH_SIZE=10
 echo "Work Directory is set to: $NXF_WORK"
