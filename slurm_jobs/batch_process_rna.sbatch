@@ -36,8 +36,8 @@ unset NXF_JAVA_HOME
 
 # Define your base storage paths
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-export BIG_STORAGE_temp='/tmp/alexdelossanto/'
-mkdir -p $BIG_STORAGE_temp
+# export BIG_STORAGE_temp='/tmp/alexdelossanto/'
+# mkdir -p $BIG_STORAGE_temp
 export NXF_WORK="$BIG_STORAGE/work"
 mkdir -p "$NXF_WORK"
 
@@ -46,15 +46,12 @@ mkdir -p "$NXF_WORK"
 # ==========================================
 # Define your new home-based cache directory
 # "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
-export MY_LOCAL_CACHE='/tmp/alexdelossanto/'
-mkdir -p "$MY_LOCAL_CACHE"
+export MY_SHARED_CACHE='/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache'
+mkdir -p "$MY_SHARED_CACHE"
 
-# 1. Tell Nextflow where to store the finalized images (Shared Network Drive, no chmod issues)
-export NXF_SINGULARITY_CACHEDIR="$MY_LOCAL_CACHE"
-
-# 2. Tell Singularity/Apptainer where to build the layers (Shared Network Drive)
-export SINGULARITY_CACHEDIR="$MY_LOCAL_CACHE"
-export APPTAINER_CACHEDIR="$MY_LOCAL_CACHE"
+export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
+export SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
+export APPTAINER_CACHEDIR="$MY_SHARED_CACHE"
 
 # 3. Keep temporary Apptainer extractions strictly in /tmp to prevent network permission crashes
 export APPTAINER_TMPDIR="/tmp/apptainer_tmp_$USER"
