@@ -233,7 +233,7 @@ class RNASeq_processor:
             for key in list(clean_env.keys()):
                 if 'CONDA' in key:
                     del clean_env[key]
-            subprocess.run(cmd, check=True, env=clean_env)
+            subprocess.run(cmd, check=True, env=clean_env, cwd=batch_out_dir)
             return True
         except subprocess.CalledProcessError as e:
             print(f"Nextflow Batch Error: {e}")
