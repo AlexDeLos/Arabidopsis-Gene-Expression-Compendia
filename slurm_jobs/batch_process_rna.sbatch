@@ -46,7 +46,7 @@ mkdir -p "$NXF_WORK"
 # ==========================================
 # Define your new home-based cache directory
 # "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
-export MY_SHARED_CACHE='/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache'
+export MY_SHARED_CACHE="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
 mkdir -p "$MY_SHARED_CACHE"
 
 export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
