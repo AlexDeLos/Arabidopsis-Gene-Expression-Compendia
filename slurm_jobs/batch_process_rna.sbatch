@@ -53,6 +53,9 @@ export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
 export SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
 export APPTAINER_CACHEDIR="$MY_SHARED_CACHE"
 
+export APPTAINER_DISABLE_CACHE_PERMS="true"
+export SINGULARITY_DISABLE_CACHE_PERMS="true"
+
 # 3. Keep temporary Apptainer extractions strictly in /tmp to prevent network permission crashes
 export APPTAINER_TMPDIR="/tmp/apptainer_tmp_$USER"
 export SINGULARITY_TMPDIR="/tmp/apptainer_tmp_$USER"
