@@ -46,25 +46,26 @@ mkdir -p "$NXF_WORK"
 # ==========================================
 # Define your new home-based cache directory
 # "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
-export MY_SHARED_CACHE='/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache'
-mkdir -p "$MY_SHARED_CACHE"
+# 1. FINAL IMAGES -> Shared Umbrella Storage
+# Nextflow will put the compiled .img files here so all nodes can use them.
+export MY_SHARED_IMAGES='/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache'
+mkdir -p "$MY_SHARED_IMAGES"
+export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_IMAGES"
 
-export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
-export SINGULARITY_CACHEDIR="$MY_SHARED_CACHE"
-export APPTAINER_CACHEDIR="$MY_SHARED_CACHE"
+# 2. TEMPORARY LAYERS -> Local Compute Node Storage
+# Singularity will do its downloads here, bypassing the umbrella storage's 
+# strict chmod/ACL rules entirely.
+export LOCAL_TEMP_CACHE="/tmp/apptainer_cache_$USER"
+mkdir -p "$LOCAL_TEMP_CACHE"
 
-export APPTAINER_DISABLE_CACHE_PERMS="true"
-export SINGULARITY_DISABLE_CACHE_PERMS="true"
-
-# 3. Keep temporary Apptainer extractions strictly in /tmp to prevent network permission crashes
-export APPTAINER_TMPDIR="/tmp/apptainer_tmp_$USER"
-export SINGULARITY_TMPDIR="/tmp/apptainer_tmp_$USER"
-mkdir -p "$APPTAINER_TMPDIR"
+export SINGULARITY_CACHEDIR="$LOCAL_TEMP_CACHE"
+export APPTAINER_CACHEDIR="$LOCAL_TEMP_CACHE"
+export SINGULARITY_TMPDIR="$LOCAL_TEMP_CACHE"
+export APPTAINER_TMPDIR="$LOCAL_TEMP_CACHE"
 
 # Prevent host Conda paths from bleeding into the container
 export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
 # Define Batch Size
 BATCH_SIZE=10
 echo "Work Directory is set to: $NXF_WORK"
