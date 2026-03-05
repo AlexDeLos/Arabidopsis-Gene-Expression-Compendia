@@ -194,6 +194,8 @@ class RNASeq_processor:
             "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
             "-c", config_path,
+            "-preview",
+            "-with-dag", f'{batch_out_dir}/flow_diagram.png',
             "-revision", "3.14.0",
             "-ansi-log", "false",
             "--slurm_account", "ewi-insy-prb",
