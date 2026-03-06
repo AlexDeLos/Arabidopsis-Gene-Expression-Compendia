@@ -225,7 +225,7 @@ class RNASeq_processor:
             "--skip_qualimap",
             "--skip_rseqc",
             
-            "-resume"
+            # "-resume"
         ]
         
         try:
