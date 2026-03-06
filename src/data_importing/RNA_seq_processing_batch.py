@@ -208,12 +208,11 @@ class RNASeq_processor:
             "--skip_alignment",            
             
             # --- REFERENCE GENOME & ANNOTATIONS ---
-            "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/GCA_000001735.2_TAIR10.1_genomic_renamed.fna",
-            "--gff", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/genome_indices/Araport11_patched_for_Nextflow.gff",
+            "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0.fasta",
+            "--gtf", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0_liftoff_polished_sorted_tbtools_clean.gtf",
             
-            # --- PRE-BUILT INDICES ---
-            "--salmon_index", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/genome_indices/genome/index/salmon",
-            "--transcript_fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/genome_indices/genome/genome.transcripts.fa",
+            # Note: --salmon_index and --transcript_fasta have been intentionally removed.
+            # Nextflow will automatically build a new index from the fasta and gtf above.
             
             # --- SKIP UNNECESSARY HEAVY QC & STEPS ---
             "--skip_biotype_qc",
@@ -225,7 +224,7 @@ class RNASeq_processor:
             "--skip_qualimap",
             "--skip_rseqc",
             
-            # "-resume"
+            # "-resume"  <-- Keep this commented out for the very first run to ensure a clean start
         ]
         
         try:
