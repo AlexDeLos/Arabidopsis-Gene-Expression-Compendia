@@ -285,18 +285,6 @@ class Microarray_data_processing:
             print(f"  - [CRITICAL] Failed to load R packages: {e}")
             raise e
 
-    # def _install_missing_r_package(self, package_name):
-    #     """
-    #     Helper for DYNAMIC annotation packages (e.g. pd.hugene...)
-    #     Only used when a specific chip type is encountered.
-    #     """
-    #     try:
-    #         print(f"    > Attempting to install missing annotation package: {package_name}...")
-    #         self.bioc_manager.install(StrVector([package_name]), update=False, ask=False)
-    #         return True
-    #     except Exception as e:
-    #         print(f"    > Failed to install {package_name}: {e}")
-    #         return False
 
     def _map_symbols_to_locus_ids(self, identifiers):
         """

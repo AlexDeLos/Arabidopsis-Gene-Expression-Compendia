@@ -195,7 +195,7 @@ class RNASeq_processor:
             "-profile", self.profile,
             "-c", config_path,
             "-preview",
-            "-with-dag", f'{batch_out_dir}/flow_diagram.png',
+            "-with-dag", f'{batch_out_dir}/flow_diagram.svg',
             "-revision", "3.14.0",
             "-ansi-log", "false",
             "--slurm_account", "ewi-insy-prb",
@@ -398,6 +398,13 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
             writer = csv.writer(f)
             writer.writerow(['sample', 'fastq_1', 'fastq_2', 'strandedness'])
             writer.writerows(batch_samplesheet_rows)
+            # ---> ADD THESE TWO LINES TO FORCE NETWORK SYNC <---
+            f.flush()
+            os.fsync(f.fileno())
+
+        # ---> ADD THIS DELAY BEFORE RUNNING NEXTFLOW <---
+        print("Waiting 10 seconds for umbrella drive to sync samplesheet...")
+        time.sleep(10)
 
         # Run Nextflow
         success = processor.run_pipeline_batch(samplesheet_path, batch_dir)
@@ -457,7 +464,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         try:
                             os.rmdir(dirpath)
                         except OSError:
-                            pass 
+                            pass
         else:
             print("Batch execution failed. Marking studies for review.")
 
