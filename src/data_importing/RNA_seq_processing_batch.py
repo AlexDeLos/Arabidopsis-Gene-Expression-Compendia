@@ -465,6 +465,10 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                             os.rmdir(dirpath)
                         except OSError:
                             pass
+            else:
+                #not success
+                print('Count matrices for studies where not generated')
+                print('Nothing was deleted and study tracker states where not changed after the pipeline')
         else:
             print("Batch execution failed. Marking studies for review.")
 
