@@ -2,7 +2,7 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=5:00:00
+#SBATCH --time=32:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
