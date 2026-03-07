@@ -20,6 +20,10 @@ rm -rf /tudelft.net/staff-umbrella/GeneExpressionStorage/work/*
 echo "-> Clearing local batch folders..."
 rm -rf /tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/batch_processing/batch_GSE*
 
+
+echo "-> Clearing local singularity cache..."
+rm -rf /home/nfs/alexdelossanto/singularity_cache
+
 # 3. Reset Tracker Files
 echo "-> Resetting file tracker status (4 -> 1)..."
 
