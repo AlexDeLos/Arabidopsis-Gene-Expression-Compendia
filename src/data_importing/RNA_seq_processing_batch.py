@@ -130,18 +130,32 @@ class RNASeq_processor:
             srr_list_path,
             output_folder
         ]
-
+        
         try:
             subprocess.run(cmd, check=True)
             print("All SLURM download array jobs completed.")
         except subprocess.CalledProcessError as e:
             print(f"Error executing sbatch job array: {e}")
 
-        # 4. Verify post-download
+        # 4. Verify post-download and check data integrity
         for srr in srrs_to_download:
             existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-            if not existing_gz:
-                print(f"Failed to download {srr} after sbatch completion.")
+            
+            valid_gz = []
+            for gz_file in existing_gz:
+                gz_path = os.path.join(output_folder, gz_file)
+                try:
+                    # Run a quiet integrity check on the gzip archive
+                    subprocess.run(['gzip', '-t', '-q', gz_path], check=True, stderr=subprocess.PIPE)
+                    valid_gz.append(gz_file)
+                except subprocess.CalledProcessError:
+                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting to prevent pipeline crash.")
+                    os.remove(gz_path)
+            
+            if not valid_gz:
+                print(f"    [!] Failed to download valid files for {srr} after sbatch completion.")
+                
+        print(f'Done downloading for {gse.name}')
                 
         print(f'Done downloading for {gse}')
             
