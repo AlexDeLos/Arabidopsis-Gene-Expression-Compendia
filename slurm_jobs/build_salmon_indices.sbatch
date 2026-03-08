@@ -8,7 +8,7 @@
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/build_indices_%j.out
 #SBATCH --error=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/build_indices_%j.err
 
-set -euo pipefail
+set -eo pipefail
 
 # --- Environment: use conda tools directly, no Singularity needed ---
 module purge
