@@ -136,10 +136,29 @@ echo "=== SECTION 2: Downloading Ler-0 reference genome ==="
 LER_DIR="$REF_BASE/ler"
 mkdir -p "$LER_DIR"
 
-# Ler-0 assembly: Weigel lab / 1001 Genomes (GCA_001651475.1)
-# Using the TAIR-formatted annotation from Ensembl Plants (release 57)
-# These URLs are stable FTP links; verify at https://plants.ensembl.org if needed.
-LER_FASTA_URL="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/651/475/GCA_001651475.1_Ler_Assembly/GCA_001651475.1_Ler_Assembly_genomic.fna.gz"
+# Ler-0 assembly: chromosome-level Weigel lab assembly (GCA_001651475.1).
+# We resolve the FTP path dynamically via NCBI Entrez Direct so the URL never
+# breaks if NCBI reorganises their FTP tree.
+#
+# MANUAL FALLBACK: If Entrez resolution fails, you can verify and paste the URL
+# by browsing: https://www.ncbi.nlm.nih.gov/assembly/GCA_001651475.1
+# and copying the FTP link shown under "Download" -> "GenBank".
+
+echo "Resolving Ler-0 FTP path from NCBI Entrez Direct..."
+LER_FTP_DIR=$(esearch -db assembly -query "GCA_001651475.1" \
+    | esummary \
+    | xtract -pattern DocumentSummary -element FtpPath_GenBank)
+
+if [ -z "$LER_FTP_DIR" ] || [ "$LER_FTP_DIR" = "na" ]; then
+    echo "ERROR: Could not resolve FTP path for GCA_001651475.1."
+    echo "       Ensure 'esearch'/'xtract' (NCBI EDirect) are available on this node."
+    echo "       Alternatively, set LER_FASTA_URL manually and re-run."
+    exit 1
+fi
+
+LER_ASSEMBLY_NAME=$(basename "$LER_FTP_DIR")
+LER_FASTA_URL="${LER_FTP_DIR}/${LER_ASSEMBLY_NAME}_genomic.fna.gz"
+echo "Resolved Ler-0 FASTA URL: $LER_FASTA_URL"
 
 # NOTE: A dedicated Ler GTF is not yet in Ensembl Plants.
 # Best current practice: use the Col-0 GTF coordinates are lifted-over to Ler.
