@@ -27,7 +27,7 @@ OLD_REF="$REF_BASE"   # Where your current col-0 files live (flat layout)
 
 # Singularity images used by nf-core — reuse the cache already on disk
 SING_CACHE="/home/nfs/alexdelossanto/singularity_cache"
-
+mkdir -p "$SING_CACHE"
 # EDirect is installed in ~/edirect (not a system module on DAIC).
 # ~/.bashrc is not sourced in non-interactive SLURM jobs, so we add it explicitly.
 export PATH="${HOME}/edirect:${PATH}"
