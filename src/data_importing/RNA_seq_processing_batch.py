@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import csv
+import re
 import pandas as pd
 from Bio import Entrez
 from tqdm import tqdm
@@ -195,7 +196,7 @@ class RNASeq_processor:
         
         return rows
 
-    def run_pipeline_batch(self, samplesheet_path, batch_out_dir):
+    def run_pipeline_batch(self, samplesheet_path, batch_out_dir,refs:dict):
         """
         Runs nf-core/rnaseq on a combined samplesheet.
         """
@@ -222,8 +223,11 @@ class RNASeq_processor:
             "--skip_alignment",            
             
             # --- REFERENCE GENOME & ANNOTATIONS ---
-            "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0.fasta",
-            "--gtf", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0_liftoff_polished_sorted_tbtools_clean.gtf",
+            "--fasta",        refs['fasta'],
+            "--gtf",          refs['gtf'],
+            "--salmon_index", refs['salmon_index'],
+            # "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0.fasta",
+            # "--gtf", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0_liftoff_polished_sorted_tbtools_clean.gtf",
             
             # Note: --salmon_index and --transcript_fasta have been intentionally removed.
             # Nextflow will automatically build a new index from the fasta and gtf above.
@@ -303,190 +307,245 @@ def chunk_list(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
+def get_ecotype_from_gse(gse) -> str:
+    """
+    Extracts the reference genome/ecotype from GEO metadata.
+    Returns a string key like 'col-0', 'ler', 'ws', or 'unknown'.
+    """
+    # Check study-level characteristics
+    sources_to_check = []
+    
+    # 1. Check overall study metadata
+    for field in ['overall_design', 'summary', 'title']:
+        sources_to_check.extend(gse.metadata.get(field, []))
+    
+    # 2. Check per-sample characteristics (more reliable)
+    for gsm in list(gse.gsms.values())[:3]:  # Check first 3 samples
+        for key, val_list in gsm.metadata.items():
+            if 'characteristics' in key or 'source' in key:
+                sources_to_check.extend(val_list)
+    
+    text = ' '.join(sources_to_check).lower()
+    
+    # Order matters: check specific ecotypes before generic 'col'
+    ECOTYPE_PATTERNS = {
+        'col-0':  [r'col-0', r'columbia-0', r'columbia\b', r'col\b'],
+        'ler':    [r'landsberg', r'\bler\b', r'ler-0'],
+        'ws':     [r'\bws\b', r'wassilewskija'],
+        'c24':    [r'\bc24\b'],
+        'cvi':    [r'\bcvi\b', r'cape verde'],
+    }
+    
+    for ecotype, patterns in ECOTYPE_PATTERNS.items():
+        if any(re.search(p, text) for p in patterns):
+            return ecotype
+    
+    return 'col-0'  # Default to Col-0 — safe assumption for most studies
+
 def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
     """
     PATH_TO_INDEX = f"{root_storage_dir}genome_index/tair10"
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
-    
+    REFERENCE_MAP = {
+    'col-0': {
+        'fasta':         f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
+        'gtf':           f"{root_storage_dir}files_for_rna_seq/col-0/col-0.gtf",
+        'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
+    },
+    'ler': {
+        'fasta':         f"{root_storage_dir}files_for_rna_seq/ler/ler.fasta",
+        'gtf':           f"{root_storage_dir}files_for_rna_seq/ler/ler.gtf",
+        'salmon_index':  f"{root_storage_dir}files_for_rna_seq/ler/salmon_index",
+    },
+    # Default fallback
+    'unknown': {
+        'fasta':         f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
+        'gtf':           f"{root_storage_dir}files_for_rna_seq/col-0/col-0.gtf",
+        'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
+    },
+    }
     processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='singularity,slurm')
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
     valid_gse_ids = []
 
     # Filter list for things already processed
     todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g)]
+        # --- PHASE 0: DETECT AND GROUP BY ECOTYPE ---
+    # Group studies by their ecotype so each batch shares one reference genome
+    from collections import defaultdict
+    ecotype_groups: dict[str, list[str]] = defaultdict(list)
     
-    print(f"Found {len(todos)} studies to process. Running in batches of {batch_size}.")
+    print("Detecting ecotypes for all studies...")
+    for gse_id in todos:
+        try:
+            gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
+            ecotype = get_ecotype_from_gse(gse)
+        except Exception:
+            ecotype = 'col-0'  # Safe default
+        
+        ecotype_groups[ecotype].append(gse_id)
+        print(f"  {gse_id} -> {ecotype}")
 
-    for batch in chunk_list(todos, batch_size):
-        
-        batch_samplesheet_rows = []
-        batch_study_map = {} # {gse_id: [sample_names]}
-        batch_fastq_dirs = []
-        
-        print(f"\n=== Processing Batch: {batch} ===")
-        
-        # --- PHASE 1: DOWNLOAD & PREPARE ---
-        for gse_id in batch:
-            print(f"\n=== Processing study: {gse_id} ===")
-            try:
-                # 1. Setup Folders
-                fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
-                cluster_temp = os.environ.get('TMPDIR', '/tmp')
-                
-                # 2. Metadata Check
+    # Log ecotype summary before processing
+    for ecotype, ids in ecotype_groups.items():
+        print(f"  Ecotype '{ecotype}': {len(ids)} studies -> {ids}")
+
+    # Iterate over each ecotype group, then chunk within that group.
+    # This guarantees every batch is homogeneous and uses the correct reference.
+    for ecotype, gse_ids_for_ecotype in ecotype_groups.items():
+        refs = REFERENCE_MAP.get(ecotype, REFERENCE_MAP['col-0'])
+        print(f"\n{'='*60}")
+        print(f"  ECOTYPE GROUP: {ecotype} ({len(gse_ids_for_ecotype)} studies)")
+        print(f"  Reference FASTA:  {refs['fasta']}")
+        print(f"  Salmon Index:     {refs['salmon_index']}")
+        print(f"{'='*60}")
+
+        for batch in chunk_list(gse_ids_for_ecotype, batch_size):
+            
+            batch_samplesheet_rows = []
+            batch_study_map = {} # {gse_id: [sample_names]}
+            batch_fastq_dirs = []
+            
+            print(f"\n=== Processing Batch [{ecotype}]: {batch} ===")
+            
+            # --- PHASE 1: DOWNLOAD & PREPARE ---
+            for gse_id in batch:
+                print(f"\n=== Processing study: {gse_id} ===")
                 try:
-                    gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
-                except:
-                    print(f"Metadata error for {gse_id}")
-                    tracker.mark_ignore(gse_id); continue
-
-                if not check_metadata_for_sra_boolean(gse):
-                    print(f"No SRA data for {gse_id}")
-                    tracker.mark_ignore(gse_id); continue
-                if len(gse.gsms) < 5:
-                    tracker.mark_ignore(gse_id); continue
-
-                if debug:
-                    # --- DEBUG: KEEP ONLY 1 SAMPLE ---
-                    if len(gse.gsms) > 1:
-                        # 1. Pick the first sample ID
-                        first_sample_id = list(gse.gsms.keys())[0]
-                        
-                        # 2. Overwrite the dictionary to contain only that sample
-                        # The download loop iterates over gse.gsms, so this effectively filters the job
-                        gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
-                        
-                        print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
-                    # ---------------------------------
-                # 3. Download
-                if download_raw:
-                    if not tracker.is_downloaded(gse_id):
-                        try:
-                            processor.download_fastq(gse, fastq_folder, cluster_temp)
-                            tracker.mark_downloaded(gse_id)
-                            print(f"Download completed for {gse_id}")
-                        except Exception as e:
-                            print(f"Download failed for {gse_id}: {e}")
-                            tracker.mark_ignore(gse_id)
-                            shutil.rmtree(fastq_folder, ignore_errors=True)
-                            continue
-
-                # 4. Generate Samplesheet Rows
-                if os.path.exists(fastq_folder) and os.listdir(fastq_folder):
-                    print(f'Generating sample sheet rows for: {gse_id}')
-                    rows = processor.get_samplesheet_rows(gse_id, fastq_folder)
-                    if rows:
-                        batch_samplesheet_rows.extend(rows)
-                        batch_study_map[gse_id] = [r[0] for r in rows] # Store sample names (col 0)
-                        batch_fastq_dirs.append(fastq_folder)
-
-                        print(f'DONE generating sample sheet for: {gse_id}')
-                    else:
-                        print(f"No valid FASTQ pairs found for {gse_id}")
-                        tracker.mark_ignore(gse_id)
-                else:
-                    print(f'for fastq_folder = {fastq_folder}')
-                    print(f'os.path.exists(fastq_folder) {os.path.exists(fastq_folder)}')
-                    print(f'os.listdir(fastq_folder) {os.listdir(fastq_folder)}')
-                    tracker.mark_ignore(gse_id)
-            
-            except Exception as e:
-                print(f"Error preparing {gse_id}: {e}")
-                tracker.mark_ignore(gse_id)
-
-        # --- PHASE 2: EXECUTE BATCH ---
-        if not batch_samplesheet_rows:
-            print("Skipping batch execution (no valid samples).")
-            continue
-
-        # Write Combined Samplesheet
-        batch_id = f"batch_{batch[0]}_{len(batch)}"
-        batch_dir = os.path.join(output_dir, "batch_processing", batch_id)
-        os.makedirs(batch_dir, exist_ok=True)
-        
-        samplesheet_path = os.path.join(batch_dir, "samplesheet.csv")
-        with open(samplesheet_path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['sample', 'fastq_1', 'fastq_2', 'strandedness'])
-            writer.writerows(batch_samplesheet_rows)
-            # ---> ADD THESE TWO LINES TO FORCE NETWORK SYNC <---
-            f.flush()
-            os.fsync(f.fileno())
-
-        # ---> ADD THIS DELAY BEFORE RUNNING NEXTFLOW <---
-        print("Waiting 10 seconds for umbrella drive to sync samplesheet...")
-        time.sleep(10)
-
-        # Run Nextflow
-        success = processor.run_pipeline_batch(samplesheet_path, batch_dir)
-
-        # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
-        if success:
-            # Split the big results file back into study folders
-            split_success = split_merged_counts(batch_dir, batch_study_map, output_dir)
-            
-            if split_success:
-                for gse_id in batch_study_map.keys():
-                    tracker.mark_processed(gse_id)
-                    valid_gse_ids.append(gse_id)
+                    # 1. Setup Folders
+                    fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
+                    cluster_temp = os.environ.get('TMPDIR', '/tmp')
                     
-                    if run_and_delete:
-                        # 1. Clean FASTQ storage for this study
-                        fq_dir = os.path.join(output_dir, "fastq_storage", gse_id)
-                        if os.path.exists(fq_dir):
-                            print(f"Cleaning FASTQs for {gse_id}")
-                            shutil.rmtree(fq_dir)
-                            
-                        # 2. Clean up the downloaded GEO .soft.gz file
-                        soft_file = os.path.join(output_dir, f"{gse_id}_family.soft.gz")
-                        if os.path.exists(soft_file):
-                            print(f"Cleaning SOFT file for {gse_id}")
-                            os.remove(soft_file)
-            
-            tracker.save_to_json(tracker_save_path)
-            
-            # 3. Trim the batch folder to keep only essential QC logs
-            if split_success and run_and_delete:
-                print(f"Trimming batch directory {batch_dir} to save space (Keeping only QC logs)...")
-                
-                # Walk bottom-up so we can delete files, then safely remove empty directories
-                for root, dirs, files in os.walk(batch_dir, topdown=False):
-                    for name in files:
-                        filepath = os.path.join(root, name)
-                        
-                        # Define what we want to KEEP
-                        keep = False
-                        if name == "deseq2.plots.pdf" and "deseq2_qc" in root:
-                            keep = True
-                        elif name == "meta_info.json" and "aux_info" in root:
-                            keep = True
-                            
-                        # Delete everything else
-                        if not keep:
+                    # 2. Metadata Check
+                    try:
+                        gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
+                    except:
+                        print(f"Metadata error for {gse_id}")
+                        tracker.mark_ignore(gse_id); continue
+
+                    if not check_metadata_for_sra_boolean(gse):
+                        print(f"No SRA data for {gse_id}")
+                        tracker.mark_ignore(gse_id); continue
+                    if len(gse.gsms) < 5:
+                        tracker.mark_ignore(gse_id); continue
+
+                    if debug:
+                        # --- DEBUG: KEEP ONLY 1 SAMPLE ---
+                        if len(gse.gsms) > 1:
+                            first_sample_id = list(gse.gsms.keys())[0]
+                            gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
+                            print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
+                        # ---------------------------------
+
+                    # 3. Download
+                    if download_raw:
+                        if not tracker.is_downloaded(gse_id):
                             try:
-                                os.remove(filepath)
+                                processor.download_fastq(gse, fastq_folder, cluster_temp)
+                                tracker.mark_downloaded(gse_id)
+                                print(f"Download completed for {gse_id}")
+                            except Exception as e:
+                                print(f"Download failed for {gse_id}: {e}")
+                                tracker.mark_ignore(gse_id)
+                                shutil.rmtree(fastq_folder, ignore_errors=True)
+                                continue
+
+                    # 4. Generate Samplesheet Rows
+                    if os.path.exists(fastq_folder) and os.listdir(fastq_folder):
+                        print(f'Generating sample sheet rows for: {gse_id}')
+                        rows = processor.get_samplesheet_rows(gse_id, fastq_folder)
+                        if rows:
+                            batch_samplesheet_rows.extend(rows)
+                            batch_study_map[gse_id] = [r[0] for r in rows]
+                            batch_fastq_dirs.append(fastq_folder)
+                            print(f'DONE generating sample sheet for: {gse_id}')
+                        else:
+                            print(f"No valid FASTQ pairs found for {gse_id}")
+                            tracker.mark_ignore(gse_id)
+                    else:
+                        print(f'fastq_folder={fastq_folder} | exists={os.path.exists(fastq_folder)}')
+                        tracker.mark_ignore(gse_id)
+                
+                except Exception as e:
+                    print(f"Error preparing {gse_id}: {e}")
+                    tracker.mark_ignore(gse_id)
+
+            # --- PHASE 2: EXECUTE BATCH ---
+            if not batch_samplesheet_rows:
+                print("Skipping batch execution (no valid samples).")
+                continue
+
+            # Write Combined Samplesheet
+            # Batch ID encodes ecotype so dirs are never shared across ecotype runs
+            batch_id = f"batch_{ecotype}_{batch[0]}_{len(batch)}"
+            batch_dir = os.path.join(output_dir, "batch_processing", batch_id)
+            os.makedirs(batch_dir, exist_ok=True)
+            
+            samplesheet_path = os.path.join(batch_dir, "samplesheet.csv")
+            with open(samplesheet_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['sample', 'fastq_1', 'fastq_2', 'strandedness'])
+                writer.writerows(batch_samplesheet_rows)
+                f.flush()
+                os.fsync(f.fileno())
+
+            print("Waiting 10 seconds for umbrella drive to sync samplesheet...")
+            time.sleep(10)
+
+            # BUG FIX: pass `refs` (single ecotype dict), not the entire REFERENCE_MAP
+            success = processor.run_pipeline_batch(samplesheet_path, batch_dir, refs)
+
+            # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
+            if success:
+                split_success = split_merged_counts(batch_dir, batch_study_map, output_dir)
+                
+                if split_success:
+                    for gse_id in batch_study_map.keys():
+                        tracker.mark_processed(gse_id)
+                        valid_gse_ids.append(gse_id)
+                        
+                        if run_and_delete:
+                            fq_dir = os.path.join(output_dir, "fastq_storage", gse_id)
+                            if os.path.exists(fq_dir):
+                                print(f"Cleaning FASTQs for {gse_id}")
+                                shutil.rmtree(fq_dir)
+                                
+                            soft_file = os.path.join(output_dir, f"{gse_id}_family.soft.gz")
+                            if os.path.exists(soft_file):
+                                print(f"Cleaning SOFT file for {gse_id}")
+                                os.remove(soft_file)
+                
+                tracker.save_to_json(tracker_save_path)
+                
+                if split_success and run_and_delete:
+                    print(f"Trimming batch directory {batch_dir} to save space (Keeping only QC logs)...")
+                    for root, dirs, files in os.walk(batch_dir, topdown=False):
+                        for name in files:
+                            filepath = os.path.join(root, name)
+                            keep = False
+                            if name == "deseq2.plots.pdf" and "deseq2_qc" in root:
+                                keep = True
+                            elif name == "meta_info.json" and "aux_info" in root:
+                                keep = True
+                            if not keep:
+                                try:
+                                    os.remove(filepath)
+                                except OSError:
+                                    pass
+                        for name in dirs:
+                            dirpath = os.path.join(root, name)
+                            try:
+                                os.rmdir(dirpath)
                             except OSError:
                                 pass
-                                
-                    # Try to remove directories. This will cleanly fail if the directory 
-                    # still contains our kept files, leaving the folder structure perfectly intact!
-                    for name in dirs:
-                        dirpath = os.path.join(root, name)
-                        try:
-                            os.rmdir(dirpath)
-                        except OSError:
-                            pass
+                else:
+                    print('Count matrices for studies were not generated.')
+                    print('Nothing was deleted and study tracker states were not changed.')
             else:
-                #not success
-                print('Count matrices for studies where not generated')
-                print('Nothing was deleted and study tracker states where not changed after the pipeline')
-        else:
-            print("Batch execution failed. Marking studies for review.")
+                print("Batch execution failed. Marking studies for review.")
+                for gse_id in batch_study_map.keys():
+                    tracker.mark_error(gse_id)
 
-            for gse_id in batch_study_map.keys():
-                tracker.mark_error(gse_id)
-            # Logic: You might want to retry individually or mark all as ignored.
-            # Currently leaving them as downloaded but not processed.
     return valid_gse_ids
