@@ -67,6 +67,33 @@ class FileTracker:
         print(f'Marking {gse_id} as error')
         self.set_status(gse_id, STATUS_ERROR)
 
+    # --- ECOTYPE TRACKING ---
+    def mark_ecotype(self, gse_id, ecotype: str):
+        """
+        Persists the detected ecotype for a study so GEO metadata never needs
+        re-fetching on subsequent runs. Writes to: tracker_dir/GSE123_ecotype.txt
+        """
+        path = self._get_file_path(gse_id, ext="_ecotype.txt")
+        with open(path, 'w') as f:
+            f.write(ecotype.strip())
+
+    def get_ecotype(self, gse_id) -> str | None:
+        """
+        Returns the previously stored ecotype, or None if not yet detected.
+        None means the caller should fetch from GEO and then call mark_ecotype().
+        """
+        path = self._get_file_path(gse_id, ext="_ecotype.txt")
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, 'r') as f:
+                return f.read().strip()
+        except Exception:
+            return None
+
+    def has_ecotype(self, gse_id) -> bool:
+        """Returns True if an ecotype has already been detected and stored."""
+        return os.path.exists(self._get_file_path(gse_id, ext="_ecotype.txt"))
 
     def save_study_metadata(self, gse_id, platform, num_samples, has_raw):
         """
