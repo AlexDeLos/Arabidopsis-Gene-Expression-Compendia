@@ -354,10 +354,12 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         'gtf':           f"{root_storage_dir}files_for_rna_seq/col-0/col-0.gtf",
         'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
     },
+
+    #TODO: for now it is pointing to col-0 ecotype
     'ler': {
-        'fasta':         f"{root_storage_dir}files_for_rna_seq/ler/ler.fasta",
-        'gtf':           f"{root_storage_dir}files_for_rna_seq/ler/ler.gtf",
-        'salmon_index':  f"{root_storage_dir}files_for_rna_seq/ler/salmon_index",
+        'fasta':        f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
+        'gtf':          f"{root_storage_dir}files_for_rna_seq/col-0/col-0.gtf",
+        'salmon_index': f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
     },
     # Default fallback
     'unknown': {
