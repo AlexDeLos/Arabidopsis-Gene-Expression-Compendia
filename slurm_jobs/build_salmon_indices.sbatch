@@ -41,8 +41,9 @@ echo " Start: $(date)"
 echo "============================================="
 
 # =============================================================================
-# HELPER: build a decoy-aware Salmon index for one ecotype
+# HELPER: build a Salmon index for one ecotype
 # Args: $1=ecotype  $2=genome_fasta  $3=gtf  $4=index_output_dir
+# Note: Salmon 0.8.1 — transcript-only index (decoy support requires >= 1.0)
 # =============================================================================
 build_index() {
     local ECOTYPE="$1"
@@ -53,8 +54,6 @@ build_index() {
     WORK_DIR="$(dirname "$INDEX_DIR")"
 
     local TRANSCRIPT_FA="${WORK_DIR}/${ECOTYPE}_transcripts.fasta"
-    local DECOY_TXT="${WORK_DIR}/${ECOTYPE}_decoys.txt"
-    local GENTROME="${WORK_DIR}/${ECOTYPE}_gentrome.fasta"
 
     echo ""
     echo "--- Building index for: $ECOTYPE ---"
@@ -70,7 +69,7 @@ build_index() {
     mkdir -p "$INDEX_DIR"
 
     # Step 1: Extract transcripts
-    echo "[1/4] Extracting transcripts with gffread..."
+    echo "[1/2] Extracting transcripts with gffread..."
     gffread "$GTF" -g "$GENOME_FA" -w "$TRANSCRIPT_FA"
     if [ ! -s "$TRANSCRIPT_FA" ]; then
         echo "ERROR: gffread produced an empty transcript FASTA. Check GTF/FASTA compatibility."
@@ -78,26 +77,17 @@ build_index() {
     fi
     echo "      $(grep -c '^>' "$TRANSCRIPT_FA") transcripts extracted."
 
-    # Step 2: Build decoy list from genome chromosome names
-    echo "[2/4] Building decoy list..."
-    grep "^>" "$GENOME_FA" | cut -d " " -f 1 | tr -d ">" > "$DECOY_TXT"
-    echo "      $(wc -l < "$DECOY_TXT") decoy sequences."
-
-    # Step 3: Concatenate transcripts + genome into gentrome
-    echo "[3/4] Concatenating gentrome..."
-    cat "$TRANSCRIPT_FA" "$GENOME_FA" > "$GENTROME"
-
-    # Step 4: Build index
-    # --gencode intentionally omitted: TAIR/custom GTF format, not GENCODE
-    echo "[4/4] Running salmon index (8 threads)..."
+    # Step 2: Build index directly from transcript FASTA
+    # Note: Salmon 0.8.1 does not support --decoys (added in 1.0).
+    # Indexing transcripts only is correct and fully supported in this version.
+    echo "[2/2] Running salmon index (8 threads)..."
     salmon index \
         --threads 8 \
-        --transcripts "$GENTROME" \
-        --decoys "$DECOY_TXT" \
+        --transcripts "$TRANSCRIPT_FA" \
         --index "$INDEX_DIR"
 
-    # Clean up large intermediates, keep decoy list for reference
-    rm -f "$GENTROME" "$TRANSCRIPT_FA"
+    # Clean up transcript FASTA — large and reproducible from gffread if needed again
+    rm -f "$TRANSCRIPT_FA"
 
     echo "Index for '$ECOTYPE' complete."
     echo "Contents of $INDEX_DIR:"
