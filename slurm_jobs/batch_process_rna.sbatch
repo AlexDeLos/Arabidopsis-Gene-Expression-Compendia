@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #SBATCH --partition=general
+#SBATCH --account=ewi-insy-prb
 #SBATCH --qos=long
 #SBATCH --time=168:00:00
 #SBATCH --ntasks=1
@@ -9,7 +10,7 @@
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=0-10
+#SBATCH --array=0-0
 #SBATCH --export=NONE
 
 module purge
