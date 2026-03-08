@@ -28,6 +28,10 @@ OLD_REF="$REF_BASE"   # Where your current col-0 files live (flat layout)
 # Singularity images used by nf-core — reuse the cache already on disk
 SING_CACHE="/home/nfs/alexdelossanto/singularity_cache"
 
+# EDirect is installed in ~/edirect (not a system module on DAIC).
+# ~/.bashrc is not sourced in non-interactive SLURM jobs, so we add it explicitly.
+export PATH="${HOME}/edirect:${PATH}"
+
 # Tool images (nf-core pulls these; we reuse them directly)
 # If these exact paths don't exist, run `singularity pull` as shown at the bottom.
 GFFREAD_IMG="$SING_CACHE/depot.galaxyproject.org-singularity-gffread-0.12.7.sif"
