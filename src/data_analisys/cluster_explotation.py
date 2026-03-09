@@ -22,7 +22,6 @@ sys.path.append(module_dir)
 
 from src.constants import *
 #TODO: add this
-from src.data_analisys.bulk_transformer import get_bulkformer_embeddings
 from src.data_analisys.utils.cluster_exploration_utils_2 import (
     prepare_data_structure, align_labels_to_data, 
     run_pca, run_umap, run_tsne
