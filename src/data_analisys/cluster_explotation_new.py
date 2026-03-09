@@ -16,7 +16,6 @@ module_dir = './'
 sys.path.append(module_dir)
 
 from src.constants import *
-from src.data_analisys.bulk_transformer import get_bulkformer_embeddings
 from src.data_analisys.utils.cluster_exploration_utils_2 import (
     prepare_data_structure, align_labels_to_data, 
     run_pca, run_umap, run_tsne
@@ -666,7 +665,6 @@ def run_exploration_on_dataframe(
     labels_dict: dict, 
     experiment_name: str,
     output_folder: str,
-    use_bulkformer: bool = False,
     gene_length_dict: dict = None,
     target_vocab: list = None,
     ortholog_map: dict = None
@@ -674,18 +672,8 @@ def run_exploration_on_dataframe(
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    if use_bulkformer:
-        print(f"  >>> Extracting BulkFormer Embeddings for {experiment_name}...")
-        embeddings_df = get_bulkformer_embeddings(
-            count_df=data_df.T, 
-            gene_length_dict=gene_length_dict,
-            target_vocab=target_vocab,
-            ortholog_map=ortholog_map
-        )
-        df_aligned = embeddings_df.T 
-    else:
-        print(f"  >>> Using standard PCA preprocessing for {experiment_name}...")
-        df_aligned = prepare_data_structure(data_df)
+    print(f"  >>> Using standard PCA preprocessing for {experiment_name}...")
+    df_aligned = prepare_data_structure(data_df)
 
     categories = ['treatment', 'tissue', 'medium','study_id']
     
@@ -713,10 +701,7 @@ def run_exploration_on_dataframe(
             print(f"  Not enough valid samples/classes for {cat}.")
             sil_score, ari_score, knn_purity, var_explained, batch_asw = [np.nan] * 5
         else:
-            if use_bulkformer:
-                X_rep_metric = X_metric
-            else:
-                X_rep_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
+            X_rep_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
 
             sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
             
@@ -739,10 +724,7 @@ def run_exploration_on_dataframe(
 
     print(f"\nGenerating standard UMAP & TSNE for {experiment_name}...")
     
-    if use_bulkformer:
-        X_rep_full = X_base 
-    else:
-        X_rep_full, _ = run_pca(X_base, n_components=min(50, X_base.shape[0]-1))
+    X_rep_full, _ = run_pca(X_base, n_components=min(50, X_base.shape[0]-1))
         
     embeddings_out = {}
     
@@ -799,8 +781,7 @@ if __name__ == "__main__":
                 data_df=df,
                 labels_dict=labels_map,
                 experiment_name=file,
-                output_folder=output_dir,
-                use_bulkformer=False
+                output_folder=output_dir
             )
             
             all_metrics[file] = metrics_df
