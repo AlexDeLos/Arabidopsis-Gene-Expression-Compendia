@@ -55,7 +55,7 @@ def calculate_asw_batch_within_biology(X_pca, batch_labels, bio_labels):
 def variance_explained_by_label(X_pca, labels):
     labels_encoded = pd.get_dummies(labels).values
     model = LinearRegression()
-    model.fit(labels_encoded, X_pca)
+    model.fit(labels_encoded, X_pca)# X,y
     return model.score(labels_encoded, X_pca)
 
 
