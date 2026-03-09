@@ -226,6 +226,7 @@ class RNASeq_processor:
             "--fasta",        refs['fasta'],
             "--gtf",          refs['gtf'],
             "--salmon_index", refs['salmon_index'],
+            "--gtf_group_features_type", "mRNA",
             # "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0.fasta",
             # "--gtf", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0_liftoff_polished_sorted_tbtools_clean.gtf",
             
