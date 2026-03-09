@@ -208,7 +208,7 @@ def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map
     for i, cat in enumerate(categories):
         active_cls = "active" if i == 0 else ""
         shortcut = str(i + 1) if i < 9 else ""
-        shortcut_badge = f'<span class="shortcut">{shortcut}</span>' if shortcut else ""
+        shortcut_badge = f'<span class="shortcut" title="hover + {shortcut} to highlight by this category">{shortcut}</span>' if shortcut else ""
         cat_buttons += (
             f'<button class="cat-btn {active_cls}" data-cat="{cat}" onclick="selectCategory(\'{cat}\')">'
             f'{shortcut_badge}<span class="cat-label">{cat.replace("_", " ").title()}</span>'
@@ -247,8 +247,7 @@ def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map
   </div>
 
   <div id="sidebar-footer">
-    <div class="kbd-hint"><kbd>1</kbd>–<kbd>N</kbd> Color by category</div>
-    <div class="kbd-hint"><kbd>hover</kbd> + <kbd>H</kbd> Highlight group</div>
+    <div class="kbd-hint"><kbd>hover</kbd> + <kbd>1</kbd>–<kbd>N</kbd> Highlight by category</div>
     <div class="kbd-hint"><kbd>Esc</kbd> Reset highlight</div>
   </div>
 </div>
@@ -382,6 +381,18 @@ def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map
     color: #58a6ff;
   }}
 
+  /* Shown when this category is currently used as the highlight dimension
+     (via keyboard 1-N while hovering), independently of the colour category */
+  .cat-btn.highlight-active {{
+    border-color: #ffd43b44;
+    background: #1f1a0e;
+  }}
+  .cat-btn.highlight-active .shortcut {{
+    background: #3d2e00;
+    border-color: #ffd43b66;
+    color: #ffd43b;
+  }}
+
   .cat-label {{ flex: 1; }}
 
   #legend-scroll {{
@@ -507,6 +518,7 @@ def _build_enhancement_script(js_data, categories):
   var currentCat   = CATEGORIES[0];
   var currentHover = null;
   var highlightedClass = null;
+  var highlightCatIdx  = null;   // which category dimension the current highlight is in
   var graph        = null;
 
   function getGraph() {{
@@ -517,10 +529,12 @@ def _build_enhancement_script(js_data, categories):
   window.selectCategory = function(cat) {{
     currentCat = cat;
     highlightedClass = null;
+    highlightCatIdx  = null;
 
     // Update sidebar active state
     document.querySelectorAll('.cat-btn').forEach(function(btn) {{
       btn.classList.toggle('active', btn.dataset.cat === cat);
+      btn.classList.remove('highlight-active');
     }});
 
     // Rebuild legend
@@ -558,39 +572,50 @@ def _build_enhancement_script(js_data, categories):
     }});
   }}
 
-  // ---- Highlight a class across all traces ----
+  // ---- Highlight a class across all traces (legend click — uses currentCat) ----
   window.highlightClass = function(cls) {{
-    if (highlightedClass === cls) {{
+    var catIdx = CATEGORIES.indexOf(currentCat);
+
+    if (highlightedClass === cls && highlightCatIdx === catIdx) {{
       // Toggle off
       highlightedClass = null;
+      highlightCatIdx  = null;
       resetOpacity();
       document.querySelectorAll('.legend-item').forEach(function(el) {{
         el.classList.remove('highlighted', 'dimmed');
+      }});
+      document.querySelectorAll('.cat-btn').forEach(function(btn) {{
+        btn.classList.remove('highlight-active');
       }});
       return;
     }}
 
     highlightedClass = cls;
-    applyHighlight(cls);
+    highlightCatIdx  = catIdx;
+    applyHighlight(cls, catIdx);
 
     document.querySelectorAll('.legend-item').forEach(function(el) {{
       var isCls = el.dataset.cls === cls;
       el.classList.toggle('highlighted', isCls);
       el.classList.toggle('dimmed', !isCls);
     }});
+    document.querySelectorAll('.cat-btn').forEach(function(btn) {{
+      btn.classList.remove('highlight-active');
+    }});
   }};
 
-  function applyHighlight(cls) {{
+  function applyHighlight(cls, catIdx) {{
+    // catIdx: which category column to check in customdata.
+    // This is independent of currentCat (the colouring category).
     var g = getGraph();
     var opacities = [];
     for (var i = 0; i < g.data.length; i++) {{
       var trace = g.data[i];
       var traceOp = [];
       if (trace.customdata && trace.customdata.length > 0) {{
-        var catIdx = CATEGORIES.indexOf(currentCat);
         for (var j = 0; j < trace.customdata.length; j++) {{
           var val = trace.customdata[j][catIdx];
-          traceOp.push(val === cls ? 1.0 : 0.04);
+          traceOp.push(String(val) === String(cls) ? 1.0 : 0.04);
         }}
       }}
       opacities.push(traceOp);
@@ -603,28 +628,69 @@ def _build_enhancement_script(js_data, categories):
   }}
 
   // ---- Keyboard shortcuts ----
+  // Keys 1–N: while hovering, highlight points sharing the hovered point's
+  //           value in category N — WITHOUT changing the active colour category.
+  // Esc / 0:  reset all highlights.
+  // (H key removed; 1–N now covers that use-case across all categories.)
   document.addEventListener('keydown', function(event) {{
     var key = parseInt(event.key);
     if (!isNaN(key) && key >= 1 && key <= CATEGORIES.length) {{
-      window.selectCategory(CATEGORIES[key - 1]);
-      return;
-    }}
-
-    // H = highlight hovered group
-    if (event.key === 'h' || event.key === 'H') {{
+      // Highlight by category[key-1] using the hovered point's value in that category
       if (currentHover && currentHover.customdata) {{
-        var catIdx = CATEGORIES.indexOf(currentCat);
+        var catIdx = key - 1;
         var val = currentHover.customdata[catIdx];
-        if (val !== undefined) window.highlightClass(String(val));
+        if (val !== undefined) {{
+          var cls = String(val);
+          var cat = CATEGORIES[catIdx];
+
+          if (highlightedClass === cls && highlightCatIdx === catIdx) {{
+            // Toggle off if same class+category pressed again
+            highlightedClass = null;
+            highlightCatIdx = null;
+            resetOpacity();
+            document.querySelectorAll('.legend-item').forEach(function(el) {{
+              el.classList.remove('highlighted', 'dimmed');
+            }});
+          }} else {{
+            highlightedClass = cls;
+            highlightCatIdx = catIdx;
+            applyHighlight(cls, catIdx);
+
+            // Update legend only if the highlight category matches the colour category
+            // (legend always reflects the colour category, so we dim/highlight
+            //  its items only when they share the same dimension)
+            document.querySelectorAll('.legend-item').forEach(function(el) {{
+              if (cat === currentCat) {{
+                var isCls = el.dataset.cls === cls;
+                el.classList.toggle('highlighted', isCls);
+                el.classList.toggle('dimmed', !isCls);
+              }} else {{
+                // Different dimension — show a neutral "highlight active" state
+                // so the user sees feedback without misleading legend dimming
+                el.classList.remove('highlighted', 'dimmed');
+              }}
+            }});
+
+            // Flash the category button to give feedback on which dim is active
+            document.querySelectorAll('.cat-btn').forEach(function(btn) {{
+              btn.classList.toggle('highlight-active', btn.dataset.cat === cat);
+            }});
+          }}
+        }}
       }}
       return;
     }}
 
+
     if (event.key === 'Escape' || event.key === '0') {{
       highlightedClass = null;
+      highlightCatIdx  = null;
       resetOpacity();
       document.querySelectorAll('.legend-item').forEach(function(el) {{
         el.classList.remove('highlighted', 'dimmed');
+      }});
+      document.querySelectorAll('.cat-btn').forEach(function(btn) {{
+        btn.classList.remove('highlight-active');
       }});
     }}
   }});
