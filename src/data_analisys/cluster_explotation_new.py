@@ -10,7 +10,6 @@ from sklearn.metrics import silhouette_score, adjusted_rand_score
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import cross_val_score
-from sklearn.linear_model import LinearRegression
 
 module_dir = './'
 sys.path.append(module_dir)
