@@ -342,6 +342,81 @@ def get_ecotype_from_gse(gse) -> str:
     
     return 'col-0'  # Default to Col-0 — safe assumption for most studies
 
+def save_rnaseq_sample_metadata(gse_id: str, gse, output_dir: str) -> str | None:
+    """
+    Extracts and saves sample-level metadata for an RNA-seq study to a CSV file.
+    Mirrors the structure produced by process_metadata() in the microarray pipeline.
+
+    Saved to: {output_dir}/metadata_rnaseq/{gse_id}/{gse_id}_sample_metadata.csv
+
+    Columns extracted per GSM (when available):
+        geo_accession, title, source_name, organism, platform,
+        library_strategy, library_layout, instrument_model,
+        + all 'characteristics_ch1' fields parsed as individual key:value columns
+
+    Returns the path to the saved CSV, or None on failure.
+    """
+    try:
+        save_dir = os.path.join(output_dir, "metadata_rnaseq", gse_id)
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{gse_id}_sample_metadata.csv")
+
+        # Skip if already saved (idempotent)
+        if os.path.exists(save_path):
+            print(f"  Metadata already saved for {gse_id}, skipping.")
+            return save_path
+
+        study_title    = gse.metadata.get('title', [''])[0]
+        study_platform = gse.metadata.get('platform_id', [''])[0]
+        study_summary  = gse.metadata.get('summary', [''])[0]
+
+        rows = []
+        for gsm_id, gsm in gse.gsms.items():
+            m = gsm.metadata
+
+            # --- Fixed fields (always present in GEO) ---
+            row = {
+                'study_id':        gse_id,
+                'study_title':     study_title,
+                'study_summary':   study_summary,
+                'geo_accession':   gsm_id,
+                'title':           m.get('title',            [''])[0],
+                'source_name':     m.get('source_name_ch1',  [''])[0],
+                'organism':        m.get('organism_ch1',     [''])[0],
+                'platform':        study_platform,
+                'library_strategy':   m.get('library_strategy',   [''])[0],
+                'library_layout':     m.get('library_layout',     [''])[0],
+                'instrument_model':   m.get('instrument_model',   [''])[0],
+            }
+
+            # --- Parse characteristics_ch1 as individual columns ---
+            # GEOparse stores these as a list of "key: value" strings, e.g.:
+            # ["genotype: wild type", "treatment: drought stress", "tissue: leaf"]
+            for char in m.get('characteristics_ch1', []):
+                if ':' in char:
+                    key, _, value = char.partition(':')
+                    col_name = key.strip().lower().replace(' ', '_')
+                    row[col_name] = value.strip()
+                else:
+                    # Unparseable characteristic — store as-is under a generic key
+                    row[f'characteristic_{len(row)}'] = char.strip()
+
+            rows.append(row)
+
+        if not rows:
+            print(f"  No samples found for {gse_id}, skipping metadata save.")
+            return None
+
+        df = pd.DataFrame(rows)
+        df.to_csv(save_path, index=False)
+        print(f"  Sample metadata saved: {save_path} ({len(df)} samples)")
+        return save_path
+
+    except Exception as e:
+        print(f"  WARNING: Could not save metadata for {gse_id}: {e}")
+        return None
+
+
 def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
@@ -438,6 +513,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         tracker.mark_ignore(gse_id); continue
                     if len(gse.gsms) < 5:
                         tracker.mark_ignore(gse_id); continue
+
+                    # 2b. Save sample-level metadata (mirrors microarray process_metadata)
+                    save_rnaseq_sample_metadata(gse_id, gse, output_dir)
 
                     if debug:
                         # --- DEBUG: KEEP ONLY 1 SAMPLE ---
