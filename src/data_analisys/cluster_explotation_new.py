@@ -860,7 +860,7 @@ if __name__ == "__main__":
 
     # Generate the Comparison Plots 
     if len(all_metrics) > 1:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_3/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_3.1/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
