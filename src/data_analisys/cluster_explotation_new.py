@@ -766,8 +766,8 @@ def run_exploration_on_dataframe(
             print(f"  Not enough valid samples/classes for {cat}.")
             sil_score, ari_score, knn_purity, var_explained, batch_asw = [np.nan] * 5
         else:
-            X_rep_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
-
+            # X_rep_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
+            X_rep_metric = X_metric
             sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
             
             kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42).fit(X_rep_metric)
@@ -859,7 +859,7 @@ if __name__ == "__main__":
 
     # Generate the Comparison Plots 
     if len(all_metrics) > 1:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_3.1/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_4/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
