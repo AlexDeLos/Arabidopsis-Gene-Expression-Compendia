@@ -2,10 +2,7 @@ from Bio import Entrez
 import sys
 import argparse
 import dotenv
-import GEOparse
 import os
-import requests
-import re
 # Ensure we can import the local modules
 module_dir = './'
 sys.path.append(module_dir)
@@ -15,10 +12,10 @@ from src.constants import *
 # Import the processing function from your other file
 from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
 from src.data_importing.RNA_seq_processing_batch import download_experiments_RNA_seq_nf_core
+from src.data_importing.get_count_matrices import download_processed_counts
 from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray
 from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.data_importing.helpers.file_tracker import FileTracker
-# from src.data_importing.helpers.scan_tracker import RNASeq_tracker
 
 # --- CONFIGURATION ---
 dotenv.load_dotenv()
@@ -46,51 +43,6 @@ RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by hi
 STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
 FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
 
-def download_processed_counts(gse_id, output_dir):
-    print(f"Checking metadata for {gse_id}...")
-    
-    # 1. Parse the GEO metadata (downloads a small XML/Soft file)
-    try:
-        gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
-    except Exception as e:
-        print(f"Error connecting to GEO: {e}")
-        return False
-
-    # 2. Look for Supplementary Files
-    # The metadata contains links to files uploaded by authors
-    if 'supplementary_files' not in gse.metadata:
-        print(f"No supplementary files found for {gse_id}.")
-        return False
-
-    downloaded = False
-    
-    for url in gse.metadata['supplementary_files']:
-        filename = url.split('/')[-1]
-        
-        # 3. Filter: We only want Count Matrices, not raw tars or READMEs
-        # Common patterns for count matrices: txt, csv, tsv, xls, tab, count
-        if re.search(r'(count|fpkm|tpm|expression|matrix|table)', filename, re.IGNORECASE):
-            if re.search(r'(tar|xml|json)', filename, re.IGNORECASE):
-                continue # Skip archives or metadata
-
-            print(f"  > Found candidate: {filename}")
-            
-            # 4. Download   
-            save_path = os.path.join(output_dir, filename)
-            try:
-                response = requests.get(url, stream=True)
-                if response.status_code == 200:
-                    with open(save_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=1024):
-                            f.write(chunk)
-                    print(f"    Downloaded: {filename}")
-                    downloaded = True
-                else:
-                    print(f"    Failed to download link.")
-            except Exception as e:
-                print(f"    Download Error: {e}")
-
-    return downloaded
 
 # Usage
 # ids = ['GSE77815', 'GSE44053'] # Your list
@@ -168,8 +120,11 @@ if __name__ == "__main__":
             end_idx:int = start_idx + BATCH_SIZE
             
             # Use rnaseq_ids (from file) or query_ids (from search) depending on your goal
-            target_list = rnaseq_ids 
-
+            target_list = rnaseq_ids
+            if False:
+                ret = []
+                for id in target_list:
+                    ret.append(download_processed_counts(id,'./temp/'))
             if start_idx < len(target_list):
                 # Slice the list to get the batch
                 current_batch = target_list[start_idx : end_idx]
