@@ -71,7 +71,7 @@ if __name__ == "__main__":
         processed_folder = f'{root_storage_dir}processed_microarray_data/'
         downloads_folder = f"{root_storage_dir}microarray_data/"
         # microarray_ids = search_geo_accessions(MICROARRAY_QUERY, max_results=ma)
-        filename = './microarray_ids.txt'
+        filename = './study_ids/microarray_ids.txt'
         # save_list_to_txt(microarray_ids,filename)
         microarray_ids = load_list_from_txt(filename)
         
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
         
         # Load your IDs
-        rnaseq_ids: list[str] = eval(read_id('RNA_seq_ids.txt'))
+        rnaseq_ids: list[str] = eval(read_id('./study_ids/RNA_seq_ids.txt'))
         # query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
         # --- BATCH CONFIGURATION ---
