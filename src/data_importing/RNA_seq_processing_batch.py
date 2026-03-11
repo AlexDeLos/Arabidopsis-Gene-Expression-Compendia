@@ -22,6 +22,44 @@ from src.constants import *
 from src.data_importing.helpers.file_tracker import FileTracker
 
 
+# ---------------------------------------------------------------------------
+# FIX 1: Instrument/technology blocklist
+# Studies sequenced on these platforms cannot be processed by this pipeline.
+# SOLiD uses colorspace encoding; CAGE/RAMPAGE are not standard RNA-seq.
+# ---------------------------------------------------------------------------
+INCOMPATIBLE_INSTRUMENT_PATTERNS = [
+    r'solid',       # AB SOLiD System, AB SOLiD 4 System, etc.
+    r'ab solid',
+    r'colorspace',
+]
+
+INCOMPATIBLE_LIBRARY_STRATEGIES = {
+    'CAGE', 'RAMPAGE', 'ChIP-Seq', 'ATAC-seq', 'AMPLICON',
+}
+
+def is_study_compatible(gse) -> tuple[bool, str]:
+    """
+    Check whether a study uses a sequencing technology compatible with
+    this pipeline (standard Illumina short-read RNA-seq).
+
+    Returns (is_compatible: bool, reason: str).
+    The reason is empty when compatible.
+    """
+    for gsm_id, gsm in list(gse.gsms.items())[:5]:   # check first 5 samples
+        m = gsm.metadata
+
+        instrument = m.get('instrument_model', [''])[0].lower()
+        for pattern in INCOMPATIBLE_INSTRUMENT_PATTERNS:
+            if re.search(pattern, instrument):
+                return False, f"Incompatible instrument '{instrument}' detected in {gsm_id}"
+
+        strategy = m.get('library_strategy', [''])[0].strip()
+        if strategy in INCOMPATIBLE_LIBRARY_STRATEGIES:
+            return False, f"Incompatible library strategy '{strategy}' detected in {gsm_id}"
+
+    return True, ""
+
+
 class RNASeq_processor:
     def __init__(self, threads=4, genome_index=None, gtf_annotation=None, profile='docker'):
         self.threads = str(threads)
@@ -73,8 +111,14 @@ class RNASeq_processor:
         return []
 
                 
-    def download_fastq(self, gse, output_folder, temp_files):
-        """Downloads using fastq-dump via parallel SLURM array jobs."""
+    def download_fastq(self, gse, output_folder, temp_files, max_retries=2):
+        """
+        Downloads FASTQs via parallel SLURM array jobs.
+
+        FIX 2: After the first sbatch completes, any SRRs whose files are
+        missing or corrupt are collected and retried up to `max_retries`
+        times before being reported as permanently failed.
+        """
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
         
@@ -85,80 +129,103 @@ class RNASeq_processor:
         print(f"Fetching SRR IDs for {len(gse.gsms)} samples...")
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
         
-        # DEBUG 2: Print the raw map before filtering
         print(f"RAW SRA MAP: {sra_map}")
 
         sra_map = {k:v for k,v in sra_map.items() if v}
         
-        # DEBUG 3: Print the map after filtering
         if not sra_map:
             print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
             return
 
-        # 1. Collect all SRRs that need downloading
-        srrs_to_download = []
-        for gsm, srrs in sra_map.items():
-            for srr in srrs:
-                existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-                if not existing_gz:
-                    srrs_to_download.append(srr)
+        # Collect all SRRs that need downloading
+        all_srrs = [srr for srrs in sra_map.values() for srr in srrs]
 
-        if not srrs_to_download:
-            print(f"All SRRs for {gse} are already downloaded.")
-            return
+        # --- FIX 2: retry loop ---
+        pending = self._get_missing_or_corrupt_srrs(all_srrs, output_folder)
 
-        # 2. Write missing SRRs to a text file for the SLURM array to read
+        for attempt in range(max_retries + 1):
+            if not pending:
+                break
+
+            if attempt > 0:
+                print(f"  [Retry {attempt}/{max_retries}] Re-downloading {len(pending)} failed SRRs: {pending}")
+                time.sleep(5 * attempt)  # brief back-off before retry
+
+            self._run_sbatch_download(pending, output_folder, logs_folder)
+            pending = self._get_missing_or_corrupt_srrs(pending, output_folder)
+
+        if pending:
+            print(f"  [!] {len(pending)} SRR(s) could not be downloaded after {max_retries} retries: {pending}")
+
+        print(f'Done downloading for {gse.name}')
+        print(f'Done downloading for {gse}')
+
+    # ------------------------------------------------------------------
+    # Private helpers for download_fastq
+    # ------------------------------------------------------------------
+
+    def _run_sbatch_download(self, srrs: list, output_folder: str, logs_folder: str):
+        """Write an SRR list file and block until the SLURM array finishes."""
         srr_list_path = os.path.join(output_folder, "srr_list.txt")
         with open(srr_list_path, 'w') as f:
-            for srr in srrs_to_download:
+            for srr in srrs:
                 f.write(f"{srr}\n")
 
-        print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
+        print(f"Submitting SLURM array job for {len(srrs)} SRRs...")
         sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
-        
+
         if not os.path.exists(sbatch_script):
             print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
             return
 
-        # 3. Call sbatch and WAIT for all array jobs to finish
         cmd = [
-            "sbatch", 
-            "--wait", # Blocks the python script until the downloads finish
-            f"--array=1-{len(srrs_to_download)}",
+            "sbatch",
+            "--wait",
+            f"--array=1-{len(srrs)}",
             f"--output={logs_folder}/fastq_dump_%A_%a.out",
             f"--error={logs_folder}/fastq_dump_%A_%a.err",
             sbatch_script,
             srr_list_path,
             output_folder
         ]
-        
+
         try:
             subprocess.run(cmd, check=True)
             print("All SLURM download array jobs completed.")
         except subprocess.CalledProcessError as e:
             print(f"Error executing sbatch job array: {e}")
 
-        # 4. Verify post-download and check data integrity
-        for srr in srrs_to_download:
-            existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
-            
+    def _get_missing_or_corrupt_srrs(self, srrs: list, output_folder: str) -> list:
+        """
+        For each SRR, verify that at least one valid (non-corrupt) gz file
+        exists.  Corrupt files are deleted so they can be re-downloaded.
+        Returns the list of SRRs that still need downloading.
+        """
+        still_needed = []
+        for srr in srrs:
+            existing_gz = [
+                f for f in os.listdir(output_folder)
+                if f.startswith(srr) and f.endswith('.gz')
+            ]
+
             valid_gz = []
             for gz_file in existing_gz:
                 gz_path = os.path.join(output_folder, gz_file)
                 try:
-                    # Run a quiet integrity check on the gzip archive
-                    subprocess.run(['gzip', '-t', '-q', gz_path], check=True, stderr=subprocess.PIPE)
+                    subprocess.run(
+                        ['gzip', '-t', '-q', gz_path],
+                        check=True, stderr=subprocess.PIPE
+                    )
                     valid_gz.append(gz_file)
                 except subprocess.CalledProcessError:
-                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting to prevent pipeline crash.")
+                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting.")
                     os.remove(gz_path)
-            
+
             if not valid_gz:
-                print(f"    [!] Failed to download valid files for {srr} after sbatch completion.")
-                
-        print(f'Done downloading for {gse.name}')
-                
-        print(f'Done downloading for {gse}')
+                still_needed.append(srr)
+
+        return still_needed
+
             
     def get_samplesheet_rows(self, gse_id, fastq_folder):
         """
@@ -196,20 +263,63 @@ class RNASeq_processor:
         
         return rows
 
-    def run_pipeline_batch(self, samplesheet_path, batch_out_dir,refs:dict):
+    def run_pipeline_batch(self, samplesheet_path, batch_out_dir, refs: dict):
         """
         Runs nf-core/rnaseq on a combined samplesheet.
+
+        FIX 3: If the pipeline fails, parse the Nextflow log to identify
+        which *samples* caused the error.  Remove those samples from the
+        samplesheet and retry once.  This prevents a single bad sample
+        (e.g. truncated FASTQ that passed the gzip check, SOLiD sample
+        missed by pre-screening, etc.) from aborting an entire batch.
+
+        Returns (success: bool, bad_samples: set[str]).
         """
         os.makedirs(batch_out_dir, exist_ok=True)
         project_root = os.getcwd()
         config_path = os.path.join(project_root, ".nextflow.config")
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
 
+        success = self._run_nextflow(samplesheet_path, batch_out_dir, refs, config_path)
+
+        if success:
+            return True, set()
+
+        # --- FIX 3: identify bad samples from Nextflow log and retry ---
+        bad_samples = self._extract_failed_samples(batch_out_dir)
+
+        if bad_samples:
+            print(f"  [!] Identified {len(bad_samples)} failing sample(s): {bad_samples}")
+            print(f"  [!] Removing them from the samplesheet and retrying the batch...")
+
+            retry_path = samplesheet_path.replace('.csv', '_retry.csv')
+            removed = self._write_samplesheet_without(samplesheet_path, retry_path, bad_samples)
+
+            if removed == 0:
+                print("  [!] Could not match failing samples to samplesheet rows — cannot retry.")
+                return False, bad_samples
+
+            success_retry = self._run_nextflow(retry_path, batch_out_dir, refs, config_path)
+            if success_retry:
+                print(f"  [✓] Retry succeeded after removing {bad_samples}")
+                return True, bad_samples
+            else:
+                print(f"  [✗] Retry also failed.")
+                return False, bad_samples
+
+        # No bad samples identified — unrecoverable failure
+        return False, set()
+
+    # ------------------------------------------------------------------
+    # Private helpers for run_pipeline_batch
+    # ------------------------------------------------------------------
+
+    def _run_nextflow(self, samplesheet_path: str, batch_out_dir: str, refs: dict, config_path: str) -> bool:
+        """Execute the nextflow command and return True on success."""
         cmd = [
             "nextflow", "run", "nf-core/rnaseq",
             "-profile", self.profile,
             "-c", config_path,
-            # "-preview",
             "-with-dag", f'{batch_out_dir}/flow_diagram.svg',
             "-revision", "3.14.0",
             "-ansi-log", "false",
@@ -217,23 +327,12 @@ class RNASeq_processor:
             "--slurm_partition", "ewi-insy-prb,prb,ewi-insy,insy",
             "--input", samplesheet_path,
             "--outdir", batch_out_dir,
-            
-            # --- ALIGNMENT STRATEGY (MAX SPEED) ---
             "--pseudo_aligner", "salmon",
-            "--skip_alignment",            
-            
-            # --- REFERENCE GENOME & ANNOTATIONS ---
+            "--skip_alignment",
             "--fasta",        refs['fasta'],
             "--gtf",          refs['gtf'],
             "--salmon_index", refs['salmon_index'],
             "--gtf_group_features_type", "mRNA",
-            # "--fasta", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0.fasta",
-            # "--gtf", "/tudelft.net/staff-umbrella/GeneExpressionStorage/files_for_rna_seq/col-0_liftoff_polished_sorted_tbtools_clean.gtf",
-            
-            # Note: --salmon_index and --transcript_fasta have been intentionally removed.
-            # Nextflow will automatically build a new index from the fasta and gtf above.
-            
-            # --- SKIP UNNECESSARY HEAVY QC & STEPS ---
             "--skip_biotype_qc",
             "--skip_stringtie",
             "--skip_bigwig",
@@ -242,14 +341,10 @@ class RNASeq_processor:
             "--skip_dupradar",
             "--skip_qualimap",
             "--skip_rseqc",
-            
-            # "-resume"  <-- Keep this commented out for the very first run to ensure a clean start
         ]
-        
+
         try:
             clean_env = os.environ.copy()
-
-            # 2. Delete any variable that mentions CONDA so it doesn't leak
             for key in list(clean_env.keys()):
                 if 'CONDA' in key:
                     del clean_env[key]
@@ -258,6 +353,53 @@ class RNASeq_processor:
         except subprocess.CalledProcessError as e:
             print(f"Nextflow Batch Error: {e}")
             return False
+
+    def _extract_failed_samples(self, batch_out_dir: str) -> set:
+        """
+        Parse the Nextflow log in batch_out_dir to extract sample names
+        from ERROR lines like:
+          ERROR ~ Error executing process > 'TRIMGALORE (GSE280648_SRR31170500)'
+        Returns a set of sample name strings (e.g. {'GSE280648_SRR31170500'}).
+        """
+        bad = set()
+        log_path = os.path.join(batch_out_dir, '.nextflow.log')
+        if not os.path.exists(log_path):
+            # Also check CWD (nextflow sometimes writes log there)
+            log_path = os.path.join(os.getcwd(), '.nextflow.log')
+        if not os.path.exists(log_path):
+            print("  [!] .nextflow.log not found; cannot identify failing samples.")
+            return bad
+
+        # Match lines like: Error executing process > '...:TRIMGALORE (SAMPLE_NAME)'
+        pattern = re.compile(r"Error executing process\s*>\s*'[^']*\(([^)]+)\)'")
+        with open(log_path, 'r', errors='replace') as fh:
+            for line in fh:
+                m = pattern.search(line)
+                if m:
+                    bad.add(m.group(1).strip())
+        return bad
+
+    def _write_samplesheet_without(self, src_path: str, dst_path: str, bad_samples: set) -> int:
+        """
+        Copy the samplesheet from src_path to dst_path, omitting rows
+        whose sample name (column 0) is in bad_samples.
+        Returns the number of rows removed.
+        """
+        removed = 0
+        with open(src_path, newline='') as fin, open(dst_path, 'w', newline='') as fout:
+            reader = csv.reader(fin)
+            writer = csv.writer(fout)
+            for i, row in enumerate(reader):
+                if i == 0:   # header
+                    writer.writerow(row)
+                    continue
+                if row and row[0] in bad_samples:
+                    print(f"    Removing bad sample from samplesheet: {row[0]}")
+                    removed += 1
+                else:
+                    writer.writerow(row)
+        return removed
+
 
 # --- BATCH HELPER FUNCTIONS ---
 
@@ -391,15 +533,12 @@ def save_rnaseq_sample_metadata(gse_id: str, gse, output_dir: str) -> str | None
             }
 
             # --- Parse characteristics_ch1 as individual columns ---
-            # GEOparse stores these as a list of "key: value" strings, e.g.:
-            # ["genotype: wild type", "treatment: drought stress", "tissue: leaf"]
             for char in m.get('characteristics_ch1', []):
                 if ':' in char:
                     key, _, value = char.partition(':')
                     col_name = key.strip().lower().replace(' ', '_')
                     row[col_name] = value.strip()
                 else:
-                    # Unparseable characteristic — store as-is under a generic key
                     row[f'characteristic_{len(row)}'] = char.strip()
 
             rows.append(row)
@@ -450,7 +589,6 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     # Filter list for things already processed
     todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g)]
         # --- PHASE 0: DETECT AND GROUP BY ECOTYPE ---
-    # Group studies by their ecotype so each batch shares one reference genome
     from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)
     
@@ -471,12 +609,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
 
         ecotype_groups[ecotype].append(gse_id)
 
-    # Log ecotype summary before processing
     for ecotype, ids in ecotype_groups.items():
         print(f"  Ecotype '{ecotype}': {len(ids)} studies -> {ids}")
 
-    # Iterate over each ecotype group, then chunk within that group.
-    # This guarantees every batch is homogeneous and uses the correct reference.
     for ecotype, gse_ids_for_ecotype in ecotype_groups.items():
         refs = REFERENCE_MAP.get(ecotype, REFERENCE_MAP['col-0'])
         print(f"\n{'='*60}")
@@ -488,7 +623,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
         for batch in chunk_list(gse_ids_for_ecotype, batch_size):
             
             batch_samplesheet_rows = []
-            batch_study_map = {} # {gse_id: [sample_names]}
+            batch_study_map = {}
             batch_fastq_dirs = []
             
             print(f"\n=== Processing Batch [{ecotype}]: {batch} ===")
@@ -497,11 +632,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
             for gse_id in batch:
                 print(f"\n=== Processing study: {gse_id} ===")
                 try:
-                    # 1. Setup Folders
                     fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
                     cluster_temp = os.environ.get('TMPDIR', '/tmp')
                     
-                    # 2. Metadata Check
                     try:
                         gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
                     except:
@@ -514,18 +647,22 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                     if len(gse.gsms) < 5:
                         tracker.mark_ignore(gse_id); continue
 
-                    # 2b. Save sample-level metadata (mirrors microarray process_metadata)
+                    # --- FIX 1: technology compatibility check ---
+                    compatible, reason = is_study_compatible(gse)
+                    if not compatible:
+                        print(f"  [!] Skipping {gse_id}: {reason}")
+                        tracker.mark_ignore(gse_id)
+                        continue
+
                     save_rnaseq_sample_metadata(gse_id, gse, output_dir)
 
                     if debug:
-                        # --- DEBUG: KEEP ONLY 1 SAMPLE ---
                         if len(gse.gsms) > 1:
                             first_sample_id = list(gse.gsms.keys())[0]
                             gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
                             print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
-                        # ---------------------------------
 
-                    # 3. Download
+                    # 3. Download (FIX 2: retry on corruption baked into download_fastq)
                     if download_raw:
                         if not tracker.is_downloaded(gse_id):
                             try:
@@ -538,7 +675,6 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                                 shutil.rmtree(fastq_folder, ignore_errors=True)
                                 continue
 
-                    # 4. Generate Samplesheet Rows
                     if os.path.exists(fastq_folder) and os.listdir(fastq_folder):
                         print(f'Generating sample sheet rows for: {gse_id}')
                         rows = processor.get_samplesheet_rows(gse_id, fastq_folder)
@@ -563,8 +699,6 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 print("Skipping batch execution (no valid samples).")
                 continue
 
-            # Write Combined Samplesheet
-            # Batch ID encodes ecotype so dirs are never shared across ecotype runs
             batch_id = f"batch_{ecotype}_{batch[0]}_{len(batch)}"
             batch_dir = os.path.join(output_dir, "batch_processing", batch_id)
             os.makedirs(batch_dir, exist_ok=True)
@@ -580,15 +714,25 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
             print("Waiting 10 seconds for umbrella drive to sync samplesheet...")
             time.sleep(10)
 
-            # BUG FIX: pass `refs` (single ecotype dict), not the entire REFERENCE_MAP
-            success = processor.run_pipeline_batch(samplesheet_path, batch_dir, refs)
+            # FIX 3: run_pipeline_batch now returns (success, bad_samples)
+            success, bad_samples = processor.run_pipeline_batch(samplesheet_path, batch_dir, refs)
 
             # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
             if success:
-                split_success = split_merged_counts(batch_dir, batch_study_map, output_dir)
+                # Exclude bad samples from demultiplexing
+                effective_study_map = {}
+                for gse_id, samples in batch_study_map.items():
+                    clean_samples = [s for s in samples if s not in bad_samples]
+                    if clean_samples:
+                        effective_study_map[gse_id] = clean_samples
+                    else:
+                        print(f"  [!] All samples for {gse_id} were removed — marking as error.")
+                        tracker.mark_error(gse_id)
+
+                split_success = split_merged_counts(batch_dir, effective_study_map, output_dir)
                 
                 if split_success:
-                    for gse_id in batch_study_map.keys():
+                    for gse_id in effective_study_map.keys():
                         tracker.mark_processed(gse_id)
                         valid_gse_ids.append(gse_id)
                         
