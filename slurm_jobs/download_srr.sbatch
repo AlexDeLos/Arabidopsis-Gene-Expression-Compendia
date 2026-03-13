@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=fastq_download
-#SBATCH --time=04:00:00
+#SBATCH --qos=medium
+#SBATCH --time=10:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=2
 #SBATCH --account=ewi-insy-prb

@@ -6,7 +6,6 @@ import shutil
 # Ensure we can import the local modules
 module_dir = './'
 sys.path.append(module_dir)
-
 # Import the processing classes
 def search_geo_accessions(query, max_results=20, filter_organism="Arabidopsis thaliana"):
     '''
