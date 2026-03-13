@@ -594,20 +594,26 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     
     print("Detecting ecotypes for all studies...")
     for gse_id in todos:
-        cached = tracker.get_ecotype(gse_id)
-        if cached is not None:
-            ecotype = cached
-            print(f"  {gse_id} -> {ecotype} (cached)")
-        else:
-            try:
-                gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
-                ecotype = get_ecotype_from_gse(gse)
-            except Exception:
-                ecotype = 'col-0'  # Safe default
-            tracker.mark_ecotype(gse_id, ecotype)
-            print(f"  {gse_id} -> {ecotype} (detected)")
-
-        ecotype_groups[ecotype].append(gse_id)
+        ecotype = 'col-0'  # safe default always set first
+        try:
+            cached = tracker.get_ecotype(gse_id)
+            if cached is not None:
+                ecotype = cached
+                print(f"  {gse_id} -> {ecotype} (cached)")
+            else:
+                try:
+                    gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
+                    ecotype = get_ecotype_from_gse(gse)
+                except Exception as e:
+                    print(f"  WARNING: ecotype detection failed for {gse_id} ({e}), defaulting to col-0")
+                    ecotype = 'col-0'
+                tracker.mark_ecotype(gse_id, ecotype)
+                print(f"  {gse_id} -> {ecotype} (detected)")
+        except Exception as e:
+            print(f"  WARNING: unexpected error for {gse_id} ({e}), defaulting to col-0")
+            ecotype = 'col-0'
+        finally:
+            ecotype_groups[ecotype].append(gse_id)  # ALWAYS appended no matter what
 
     for ecotype, ids in ecotype_groups.items():
         print(f"  Ecotype '{ecotype}': {len(ids)} studies -> {ids}")
