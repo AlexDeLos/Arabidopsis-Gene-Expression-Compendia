@@ -264,60 +264,64 @@ class RNASeq_processor:
         return rows
 
     def run_pipeline_batch(self, samplesheet_path, batch_out_dir, refs: dict):
-        """
-        Runs nf-core/rnaseq on a combined samplesheet.
-
-        FIX 3: If the pipeline fails, parse the Nextflow log to identify
-        which *samples* caused the error.  Remove those samples from the
-        samplesheet and retry once.  This prevents a single bad sample
-        (e.g. truncated FASTQ that passed the gzip check, SOLiD sample
-        missed by pre-screening, etc.) from aborting an entire batch.
-
-        Returns (success: bool, bad_samples: set[str]).
-        """
         os.makedirs(batch_out_dir, exist_ok=True)
         project_root = os.getcwd()
         config_path = os.path.join(project_root, ".nextflow.config")
+
+        # Unique log file inside batch_out_dir — safe across concurrent array jobs
+        batch_name = os.path.basename(batch_out_dir)
+        log_path = os.path.join(batch_out_dir, f"nextflow_{batch_name}.log")
         print(f"Running nf-core/rnaseq (Batch Mode) in {batch_out_dir}...")
+        print(f"Nextflow log: {log_path}")
 
-        success = self._run_nextflow(samplesheet_path, batch_out_dir, refs, config_path)
+        all_bad_samples = set()
+        current_samplesheet = samplesheet_path
+        max_isolation_rounds = 10
 
-        if success:
-            return True, set()
+        for round_num in range(max_isolation_rounds):
+            success = self._run_nextflow(current_samplesheet, batch_out_dir, refs, config_path, log_path)
 
-        # --- FIX 3: identify bad samples from Nextflow log and retry ---
-        bad_samples = self._extract_failed_samples(batch_out_dir)
+            if success:
+                return True, all_bad_samples
 
-        if bad_samples:
-            print(f"  [!] Identified {len(bad_samples)} failing sample(s): {bad_samples}")
-            print(f"  [!] Removing them from the samplesheet and retrying the batch...")
+            bad_samples = self._extract_failed_samples(log_path)   # <-- pass path directly
 
-            retry_path = samplesheet_path.replace('.csv', '_retry.csv')
-            removed = self._write_samplesheet_without(samplesheet_path, retry_path, bad_samples)
+            if not bad_samples:
+                print("  [!] No bad samples identified — unrecoverable failure.")
+                return False, all_bad_samples
+
+            new_bad = bad_samples - all_bad_samples
+            if not new_bad:
+                print("  [!] Same samples failing again — unrecoverable failure.")
+                return False, all_bad_samples
+
+            all_bad_samples.update(new_bad)
+            print(f"  [!] Round {round_num+1}: isolated {len(new_bad)} new failing sample(s): {new_bad}")
+            print(f"  [!] Total bad samples so far: {all_bad_samples}")
+            print(f"  [!] Removing them from the samplesheet and retrying...")
+
+            retry_path = samplesheet_path.replace('.csv', f'_retry{round_num+1}.csv')
+            removed = self._write_samplesheet_without(samplesheet_path, retry_path, all_bad_samples)
 
             if removed == 0:
                 print("  [!] Could not match failing samples to samplesheet rows — cannot retry.")
-                return False, bad_samples
+                return False, all_bad_samples
 
-            success_retry = self._run_nextflow(retry_path, batch_out_dir, refs, config_path)
-            if success_retry:
-                print(f"  [✓] Retry succeeded after removing {bad_samples}")
-                return True, bad_samples
-            else:
-                print(f"  [✗] Retry also failed.")
-                return False, bad_samples
+            current_samplesheet = retry_path
 
-        # No bad samples identified — unrecoverable failure
-        return False, set()
+        print(f"  [!] Reached max isolation rounds ({max_isolation_rounds}).")
+        return False, all_bad_samples
 
     # ------------------------------------------------------------------
     # Private helpers for run_pipeline_batch
     # ------------------------------------------------------------------
 
-    def _run_nextflow(self, samplesheet_path: str, batch_out_dir: str, refs: dict, config_path: str) -> bool:
+    def _run_nextflow(self, samplesheet_path: str, batch_out_dir: str, refs: dict, config_path: str, log_path: str) -> bool:
         """Execute the nextflow command and return True on success."""
         cmd = [
-            "nextflow", "run", "nf-core/rnaseq",
+            "nextflow",
+            "-log", log_path,          # <-- explicit log file, isolated per batch
+            "run", "nf-core/rnaseq",
             "-profile", self.profile,
             "-c", config_path,
             "-with-dag", f'{batch_out_dir}/flow_diagram.svg',
@@ -354,23 +358,17 @@ class RNASeq_processor:
             print(f"Nextflow Batch Error: {e}")
             return False
 
-    def _extract_failed_samples(self, batch_out_dir: str) -> set:
+    def _extract_failed_samples(self, log_path: str) -> set:
         """
-        Parse the Nextflow log in batch_out_dir to extract sample names
-        from ERROR lines like:
-          ERROR ~ Error executing process > 'TRIMGALORE (GSE280648_SRR31170500)'
-        Returns a set of sample name strings (e.g. {'GSE280648_SRR31170500'}).
+        Parse a Nextflow log file to extract sample names from ERROR lines like:
+        ERROR ~ Error executing process > 'TRIMGALORE (GSE280648_SRR31170500)'
+        Returns a set of sample name strings.
         """
         bad = set()
-        log_path = os.path.join(batch_out_dir, '.nextflow.log')
         if not os.path.exists(log_path):
-            # Also check CWD (nextflow sometimes writes log there)
-            log_path = os.path.join(os.getcwd(), '.nextflow.log')
-        if not os.path.exists(log_path):
-            print("  [!] .nextflow.log not found; cannot identify failing samples.")
+            print(f"  [!] Nextflow log not found at {log_path}; cannot identify failing samples.")
             return bad
 
-        # Match lines like: Error executing process > '...:TRIMGALORE (SAMPLE_NAME)'
         pattern = re.compile(r"Error executing process\s*>\s*'[^']*\(([^)]+)\)'")
         with open(log_path, 'r', errors='replace') as fh:
             for line in fh:
@@ -780,8 +778,34 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                     print('Count matrices for studies were not generated.')
                     print('Nothing was deleted and study tracker states were not changed.')
             else:
-                print("Batch execution failed. Marking studies for review.")
+                # Pipeline failed even after bad-sample isolation.
+                # bad_samples contains the GSE_SRR names that caused failures.
+                # Only mark the GSEs that owned those bad samples as error.
+                # All other GSEs in the batch stay at STATUS_DOWNLOADED so
+                # they will be retried in the next run.
+
+                # Identify which GSEs are responsible for the bad samples
+                guilty_gses = set()
+                for bad_sample in bad_samples:
+                    # Sample names are formatted as GSE{id}_SRR{id}
+                    for gse_id in batch_study_map.keys():
+                        if bad_sample.startswith(gse_id):
+                            guilty_gses.add(gse_id)
+                            break
+
+                # If we couldn't identify any guilty GSE (e.g. no bad_samples
+                # were extracted from the log), mark everything as error to
+                # avoid an infinite retry loop
+                if not guilty_gses:
+                    print("  [!] Could not identify guilty GSEs — marking all as error.")
+                    guilty_gses = set(batch_study_map.keys())
+
                 for gse_id in batch_study_map.keys():
-                    tracker.mark_error(gse_id)
+                    if gse_id in guilty_gses:
+                        print(f"  Marking {gse_id} as error (caused pipeline failure).")
+                        tracker.mark_error(gse_id)
+                    else:
+                        # Leave at STATUS_DOWNLOADED — will be retried next run
+                        print(f"  Leaving {gse_id} as downloaded (collateral, will retry).")
 
     return valid_gse_ids
