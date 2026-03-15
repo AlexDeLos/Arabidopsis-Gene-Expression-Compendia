@@ -231,3 +231,4 @@ my_env_packed.tar.gz
 .nextflow.config
 /src/models/weights
 /temp
+.vscode/settings.json
