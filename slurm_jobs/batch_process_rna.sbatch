@@ -1,9 +1,8 @@
 #!/bin/bash
 
 #SBATCH --partition=general
-#SBATCH --account=ewi-insy-prb
 #SBATCH --qos=long
-#SBATCH --time=168:00:00
+#SBATCH --time=90:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=6G
