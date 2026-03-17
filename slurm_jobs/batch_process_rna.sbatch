@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --partition=general
-#SBATCH --qos=long
-#SBATCH --time=90:00:00
+#SBATCH --qos=medium
+#SBATCH --time=24:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=6G
