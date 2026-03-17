@@ -586,7 +586,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
 
     # Filter list for things already processed
     todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g)]
-        # --- PHASE 0: DETECT AND GROUP BY ECOTYPE ---
+    print(f'we are going to process these studies {todos}')
     from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)
     
@@ -635,6 +635,8 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
             # --- PHASE 1: DOWNLOAD & PREPARE ---
             for gse_id in batch:
                 print(f"\n=== Processing study: {gse_id} ===")
+                if tracker.is_ignored(gse_id):
+                    print(f"Ignore made it this far, why? {gse_id}")
                 try:
                     fastq_folder = os.path.join(output_dir, "fastq_storage", gse_id)
                     cluster_temp = os.environ.get('TMPDIR', '/tmp')
@@ -648,7 +650,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                     if not check_metadata_for_sra_boolean(gse):
                         print(f"No SRA data for {gse_id}")
                         tracker.mark_ignore(gse_id); continue
-                    if len(gse.gsms) < 5:
+                    if len(gse.gsms) < 5: # type: ignore
                         tracker.mark_ignore(gse_id); continue
 
                     # --- FIX 1: technology compatibility check ---
