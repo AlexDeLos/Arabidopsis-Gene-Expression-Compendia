@@ -402,46 +402,38 @@ class RNASeq_processor:
 # --- BATCH HELPER FUNCTIONS ---
 
 def split_merged_counts(batch_results_dir, study_map, output_root):
-    """
-    Reads the huge salmon.merged.gene_counts.tsv from the batch run
-    and saves individual copies for each GSE study.
-    
-    study_map: dict {gse_id: [list of sample_ids (e.g. GSE123_SRR456)]}
-    """
     merged_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
     if not os.path.exists(merged_file):
         merged_file = os.path.join(batch_results_dir, "salmon", "salmon.merged.gene_counts.tsv")
-        
     if not os.path.exists(merged_file):
         print("Error: Merged count file not found in batch output.")
         return False
 
     print("Demultiplexing batch results...")
     df = pd.read_csv(merged_file, sep='\t')
-    
-    # Gene info columns
-    meta_cols = ['gene_id', 'gene_name']
-    
+
+    # Only keep meta columns that actually exist in the dataframe
+    # pseudo-alignment produces 'gene_id' only; full alignment adds 'gene_name'
+    meta_cols = [c for c in ['gene_id', 'gene_name'] if c in df.columns]
+
+    saved = []
     for gse_id, samples in study_map.items():
-        # Determine which columns belong to this study
-        # The samplesheet named them f"{gse_id}_{srr}", so they should match df columns
         study_cols = [c for c in df.columns if c in samples]
-        
+
         if not study_cols:
-            print(f"Warning: No samples found in results for {gse_id}")
+            print(f"  Warning: No samples found in results for {gse_id}")
             continue
-            
-        # Create study output folder
+
         study_out = os.path.join(output_root, "processed_rnaseq", gse_id)
         os.makedirs(os.path.join(study_out, "star_salmon"), exist_ok=True)
-        
-        # Subset and Save
+
         study_df = df[meta_cols + study_cols]
         target_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_counts.tsv")
         study_df.to_csv(target_file, sep='\t', index=False)
         print(f"  Saved {gse_id} counts to {target_file}")
-        
-    return True
+        saved.append(gse_id)
+
+    return saved  # return list of saved GSEs instead of bare True
 
 def chunk_list(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -736,49 +728,51 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         tracker.mark_error(gse_id)
 
                 split_success = split_merged_counts(batch_dir, effective_study_map, output_dir)
-                
-                if split_success:
-                    for gse_id in effective_study_map.keys():
+                # split_success is a list of saved GSE IDs, or False if merged file not found
+
+                if split_success is not False:
+                    for gse_id in split_success:
                         tracker.mark_processed(gse_id)
                         valid_gse_ids.append(gse_id)
-                        
+
                         if run_and_delete:
                             fq_dir = os.path.join(output_dir, "fastq_storage", gse_id)
                             if os.path.exists(fq_dir):
                                 print(f"Cleaning FASTQs for {gse_id}")
                                 shutil.rmtree(fq_dir)
-                                
                             soft_file = os.path.join(output_dir, f"{gse_id}_family.soft.gz")
                             if os.path.exists(soft_file):
                                 print(f"Cleaning SOFT file for {gse_id}")
                                 os.remove(soft_file)
-                
-                tracker.save_to_json(tracker_save_path)
-                
-                if split_success and run_and_delete:
-                    print(f"Trimming batch directory {batch_dir} to save space (Keeping only QC logs)...")
-                    for root, dirs, files in os.walk(batch_dir, topdown=False):
-                        for name in files:
-                            filepath = os.path.join(root, name)
-                            keep = False
-                            if name == "deseq2.plots.pdf" and "deseq2_qc" in root:
-                                keep = True
-                            elif name == "meta_info.json" and "aux_info" in root:
-                                keep = True
-                            if not keep:
+
+                    # Studies with no matching columns stay at STATUS_DOWNLOADED for retry
+                    not_saved = set(effective_study_map.keys()) - set(split_success)
+                    for gse_id in not_saved:
+                        print(f"  [!] No columns found for {gse_id} in merged counts — leaving as downloaded.")
+
+                    tracker.save_to_json(tracker_save_path)
+
+                    if run_and_delete and split_success:
+                        print(f"Trimming batch directory {batch_dir} to save space (Keeping only QC logs)...")
+                        for root, dirs, files in os.walk(batch_dir, topdown=False):
+                            for name in files:
+                                filepath = os.path.join(root, name)
+                                keep = (name == "deseq2.plots.pdf" and "deseq2_qc" in root) or \
+                                       (name == "meta_info.json" and "aux_info" in root)
+                                if not keep:
+                                    try:
+                                        os.remove(filepath)
+                                    except OSError:
+                                        pass
+                            for name in dirs:
                                 try:
-                                    os.remove(filepath)
+                                    os.rmdir(os.path.join(root, name))
                                 except OSError:
                                     pass
-                        for name in dirs:
-                            dirpath = os.path.join(root, name)
-                            try:
-                                os.rmdir(dirpath)
-                            except OSError:
-                                pass
                 else:
-                    print('Count matrices for studies were not generated.')
-                    print('Nothing was deleted and study tracker states were not changed.')
+                    # Merged count file not found at all — leave everything as downloaded for retry
+                    print("Error: Merged count file not found — leaving all studies as downloaded.")
+                    tracker.save_to_json(tracker_save_path)
             else:
                 # Pipeline failed even after bad-sample isolation.
                 # bad_samples contains the GSE_SRR names that caused failures.
