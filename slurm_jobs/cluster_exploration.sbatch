@@ -23,6 +23,6 @@ echo "Environment activated: $CONDA_PREFIX"
 echo "Python being used: $(which python3)"
 
 echo "Analizing data..."
-python3 -u src/data_analisys/cluster_explotation_new.py
+apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_analisys/cluster_explotation_new.py
 
 echo "Job finished successfully."

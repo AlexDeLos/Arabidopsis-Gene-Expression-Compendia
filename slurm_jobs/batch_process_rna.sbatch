@@ -76,7 +76,7 @@ echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
 # --- RUN THE PIPELINE ---
 echo "Running RNA SEQ download and processing..."
-python3 -u src/data_importing/new_download.py \
+apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_importing/new_download.py \
     -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
