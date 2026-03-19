@@ -1,0 +1,110 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author      alexdelossanto
+    Project     Dataset_fusion_Microarray
+    Python      3.11
+    R           4.3+
+
+%environment
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export PATH="/usr/local/bin:$PATH"
+    export R_LIBS_USER=/opt/R_libs
+    export HF_HOME=/home/user/.cache/huggingface
+    export TRANSFORMERS_CACHE=$HF_HOME
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+
+    # =========================================================================
+    # 1. System dependencies + R from Debian repos (no external apt source needed)
+    # =========================================================================
+    apt-get update && apt-get install -y --no-install-recommends \
+        wget \
+        curl \
+        gnupg \
+        ca-certificates \
+        gcc \
+        g++ \
+        gfortran \
+        make \
+        r-base \
+        r-base-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+        libfontconfig1-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libjpeg-dev \
+        libgmp-dev \
+        libmpfr-dev \
+        libbz2-dev \
+        liblzma-dev \
+        zlib1g-dev \
+        libffi-dev \
+        liblapack-dev \
+        libblas-dev \
+        gzip \
+        r-bioc-biobase \
+        r-bioc-oligo \
+        r-bioc-limma
+
+    rm -rf /var/lib/apt/lists/*
+
+    # =========================================================================
+    # 2. R packages
+    # =========================================================================
+    mkdir -p /opt/R_libs
+    Rscript -e "options(repos=c(CRAN='https://cloud.r-project.org')); install.packages(c('writexl'), lib='/opt/R_libs', quiet=TRUE)"
+
+    # =========================================================================
+    # 3. Python packages
+    # =========================================================================
+    pip install --upgrade pip setuptools wheel
+
+    pip install numpy pandas scipy matplotlib plotly scikit-learn tqdm python-dotenv seaborn polars
+
+    # PyTorch with CUDA 12.1 (bundles its own CUDA runtime)
+    pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+    pip install sentence-transformers spacy transformers huggingface-hub
+    python -m spacy download en_core_web_sm
+
+    pip install biopython GEOparse mygene goatools rpy2
+
+    # =========================================================================
+    # 4. Verify
+    # =========================================================================
+    python -c "
+import sklearn, numpy, torch, pandas, matplotlib
+import GEOparse, Bio, tqdm, rpy2, mygene, plotly, goatools, ftplib
+from sentence_transformers import SentenceTransformer
+print('All Python imports OK')
+print('CUDA available:', torch.cuda.is_available())
+"
+    # Note: Biobase, oligo, and limma don't need lib.loc because apt installs them to the system default path
+    Rscript -e "library(Biobase); library(oligo); library(limma); library(writexl, lib.loc='/opt/R_libs'); cat('All R imports OK\n')"
+
+%runscript
+    exec python "$@"
+
+%test
+    python --version
+    Rscript --version
+    python -c "
+import sklearn, numpy, torch, pandas, matplotlib
+import GEOparse, Bio, tqdm, rpy2, mygene, plotly, goatools, ftplib
+from sentence_transformers import SentenceTransformer
+print('torch:', torch.__version__)
+print('CUDA available:', torch.cuda.is_available())
+print('All imports OK')
+"
+    Rscript -e "suppressMessages({library(Biobase); library(oligo); library(limma); library(writexl, lib.loc='/opt/R_libs')}); cat('R packages OK\n')"

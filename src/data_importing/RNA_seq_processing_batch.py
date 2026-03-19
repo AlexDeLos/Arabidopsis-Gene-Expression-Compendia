@@ -4,7 +4,6 @@ import shutil
 import csv
 import re
 import pandas as pd
-from Bio import Entrez
 from tqdm import tqdm
 import GEOparse
 from urllib.error import HTTPError
@@ -577,7 +576,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     valid_gse_ids = []
 
     # Filter list for things already processed
-    todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g)]
+    todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g) and not tracker.is_error(g)]
     print(f'we are going to process these studies {todos}')
     from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)

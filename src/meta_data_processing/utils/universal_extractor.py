@@ -1,7 +1,7 @@
 import re
 from typing import Dict, List, Any, Optional, Set, Tuple
 from sentence_transformers import util
-from src.constants import TissueEnum, TreatmentEnum, MediumEnum, EXPLICIT_KEYWORDS, AREA_KEYWORDS, LABELS
+from src.constants import TissueEnum, TreatmentEnum, MediumEnum, GenotypeEnum, EXPLICIT_KEYWORDS, AREA_KEYWORDS, LABELS
 from src.meta_data_processing.utils.groundingOptimizer import GroundingOptimizer
 import sys
 import torch
@@ -52,42 +52,67 @@ def condense_candidates(candidates: Set[str], optimizer: GroundingOptimizer, cat
     return set([best_term] if best_term else [])
 
 def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimizer, target_category: str, study_info:bool, top_k: int = 5) -> List[Tuple[str, float]]:
-    if target_category == 'treatment': contrast_category = 'tissue'
-    elif target_category == 'tissue': contrast_category = 'treatment' 
-    elif target_category == 'medium': contrast_category = 'tissue' 
+    if target_category == 'treatment':  contrast_category = 'tissue'
+    elif target_category == 'tissue':   contrast_category = 'treatment'
+    elif target_category == 'medium':   contrast_category = 'tissue'
+    elif target_category == 'genotype': contrast_category = 'treatment'
     else: contrast_category = None
 
-    NOISE_STOPLIST = {
-        "wild type", "wild-type", "columbia", "col-0", "mutant", "genotype", 
-        "transgenic", "plants", "analysis", "data", "replicate", "study", 
-        "experiment", "grown", "growth", "independent", "agb1", "gpa1",
-        "control", "mock", "buffer", "treated", "samples", "using", "total", "rna",
-        "rep1", "rep2", "rep3", "atgen", "unknown"
+    # Hard blocklist — whole-word matching only (prevents "rep1" blocking "replicate 1",
+    # and prevents dropping "mock inoculation" because it contains "mock").
+    # NOTE: genotype-signal terms ("col-0", "mutant", "transgenic", "columbia",
+    # "wild type", "wild-type") are intentionally absent — they are valid signal
+    # for the genotype label and are handled by extract_valid_candidates' contrast
+    # scoring when target_category != 'genotype'.
+    NOISE_TOKENS = {
+        "plants", "analysis", "data", "replicate", "study", "experiment",
+        "grown", "growth", "independent", "agb1", "gpa1",
+        "rep1", "rep2", "rep3", "atgen", "unknown",
+        "total", "rna", "using", "samples", "buffer",
     }
 
-    valid_raw_terms = {} 
+    # Soft-strip words: present in a phrase but not the meaningful part.
+    # Stripped before scoring so "treated with NaCl" -> "NaCl" gets a fair chance,
+    # but the *original* term is kept as the candidate key for the grounder.
+    STRIP_WORDS = {"treated", "treatment", "with", "under", "by", "the", "a", "an",
+                   "condition", "conditions", "exposure"}
+
+    valid_raw_terms: Dict[str, float] = {}
     golden_keywords_list = EXPLICIT_KEYWORDS.get(target_category, [])
 
     for term in candidate_set:
         term_lower = term.lower()
-        
-        if any(bad in term_lower for bad in NOISE_STOPLIST): continue
-        if len(term) < 2: continue
-        if len(term_lower.split(' ')) > 10: continue
+        term_words = set(re.findall(r'\b\w+\b', term_lower))
 
-        # Check Golden Keywords (Synonyms included)
-        has_golden_keyword, socre, _, _ = has_golden_key_word(term_lower, golden_keywords_list, optimizer, 0.75)
-        
-        if has_golden_keyword:
-            valid_raw_terms[term] = socre 
+        # Whole-word noise block (not substring — avoids over-filtering)
+        if term_words & NOISE_TOKENS:
+            continue
+        if len(term) < 2:
+            continue
+        if len(term_lower.split()) > 10:
             continue
 
-        _, target_score = optimizer.get_best_match_with_score(term, category=target_category)
-        
-        if target_score < 0.75: continue
+        # Soft-strip then score; keep original as key for grounder
+        stripped_words = [w for w in term_lower.split() if w not in STRIP_WORDS]
+        eval_term = " ".join(stripped_words).strip() or term_lower
+
+        # Golden keyword fast-path (exact or semantic synonym match)
+        has_golden_keyword, score, _, _ = has_golden_key_word(eval_term, golden_keywords_list, optimizer, 0.75)
+
+        if has_golden_keyword:
+            valid_raw_terms[term] = score
+            continue
+
+        _, target_score = optimizer.get_best_match_with_score(eval_term, category=target_category)
+
+        # Per-label threshold: medium terms are short and lexically unusual,
+        # so a slightly lower bar prevents "MS", "B5", "agar" from being dropped.
+        per_label_threshold = 0.70 if target_category == 'medium' else 0.75
+        if target_score < per_label_threshold:
+            continue
 
         if contrast_category:
-            _, contrast_score = optimizer.get_best_match_with_score(term, category=contrast_category)
+            _, contrast_score = optimizer.get_best_match_with_score(eval_term, category=contrast_category)
             if contrast_score > target_score: continue
 
         valid_raw_terms[term] = target_score
@@ -168,33 +193,28 @@ class UniversalExtractor:
 
     def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id: str) -> Dict[str, Set[str]]:
         extracted = {}
-        
+
         for label_type in LABELS:
-            # FIX: Merge ALL three sources rather than short-circuiting on first hit.
-            # Previously: Step 2 was skipped if Step 1 returned anything — even noise.
-            # Now: we collect from all sources, then let extract_valid_candidates filter
-            # and disambiguate the union using contrast-category scoring.
             all_hits: Set[str] = set()
 
-            # Source 1: Explicit columns (key:value parsing)
+            # Source 1: Explicit column key:value parsing
             col_hits = self._extract_from_matched_columns(sample_metadata, label_type)
             all_hits.update(col_hits)
 
-            # Source 2: Priority text blob (title, characteristics, source_name)
+            # Source 2: Priority text blob from sample metadata
             priority_text = self._get_text_blob(sample_metadata, ['title', 'characteristics_ch1', 'source_name_ch1'])
             if priority_text:
                 all_hits.update(self._semantic_ngram_search(priority_text, label_type))
 
-            # Source 3: Study-level fallback — always included (not only when sample fails)
-            # Gives context when sample metadata is sparse
+            # Source 3: Study-level text — always searched for medium/genotype since
+            # those are often only described in the study summary, not per-sample fields.
+            # For treatment/tissue, only supplement when sample level found nothing useful.
             study_text = self._get_text_blob(study_metadata, ['summary', 'overall_design'])
-            if study_text and not all_hits:
-                # Study text is noisier; only use it when sample-level search found nothing
-                all_hits.update(self._semantic_ngram_search(study_text, label_type))
+            if study_text:
+                if label_type in ('medium', 'genotype') or not all_hits:
+                    all_hits.update(self._semantic_ngram_search(study_text, label_type))
 
-            # Post-filter: extract_valid_candidates applies contrast-category disambiguation
-            # (e.g. removes tissue terms from treatment candidates) and scores the union.
-            # Previously this function existed but was never called from extract().
+            # Post-filter: contrast-category disambiguation + noise removal
             if all_hits:
                 valid = extract_valid_candidates(
                     candidate_set=all_hits,
@@ -203,13 +223,12 @@ class UniversalExtractor:
                     study_info=bool(study_metadata),
                     top_k=5
                 )
-                # valid is a list of (term, score) tuples — keep only the terms
                 final_hits = {term for term, _ in valid}
             else:
                 final_hits = set()
 
             extracted[label_type] = final_hits if final_hits else {"unspecified"}
-            
+
         return extracted
 
     def _get_text_blob(self, metadata: Dict, keys: List[str]) -> str:
@@ -308,6 +327,10 @@ class UniversalExtractor:
     def _extract_from_matched_columns(self, metadata: Dict, label_type: str) -> Set[str]:
         """Scans keys and priority lists for semantic matches to the label type and extracts values."""
         found = set()
+
+        # Pre-build a flat set of all trigger words for this label for fast sub-key bypass
+        trigger_words = set(w.lower() for w in LABEL_CONFIG[label_type].get('search_triggers', []))
+
         for key, value in metadata.items():
             vals = value if isinstance(value, list) else [value]
             
@@ -315,27 +338,28 @@ class UniversalExtractor:
             if self._is_priority_column(key, label_type):
                 for val in vals:
                     val_str = str(val).strip()
-                    # Removed replace('-',' ') here to protect terms like 'Col-0' or 'UV-B'
                     val_str_clean = val_str.replace('_', ' ')
                     
                     if ":" in val_str_clean:
-                        sub_key, actual_val = val_str_clean.split(":", 1) 
-                        
-                        if self._is_relevant_element(sub_key.strip(), label_type):
-                            actual_val = actual_val.strip()
-                            
-                            # THE FIX: If the value is long, extract ONLY the keywords
+                        sub_key, actual_val = val_str_clean.split(":", 1)
+                        sub_key_clean = sub_key.strip().lower()
+                        actual_val = actual_val.strip()
+
+                        # FIX: fast-path bypass — if ANY trigger word appears in the sub-key,
+                        # skip the vector gate entirely. This catches sub-keys like
+                        # "growth condition", "treatment protocol", "experimental factor"
+                        # that were scoring below threshold and silently dropping valid values.
+                        sub_key_has_trigger = any(t in sub_key_clean for t in trigger_words)
+
+                        if sub_key_has_trigger or self._is_relevant_element(sub_key_clean, label_type, threshold=0.60):
                             if len(actual_val.split()) > 3:
                                 ngrams = self._semantic_ngram_search(actual_val, label_type, threshold=0.75)
                                 found.update(ngrams)
                             else:
                                 found.add(actual_val)
                     else:
-                        # NO COLON exists (e.g., pure paragraph in a protocol column)
-                        # Check if the start of the string indicates it's relevant to this label_type
                         if self._is_relevant_element(val_str_clean, label_type):
                             if len(val_str_clean.split()) > 3:
-                                # This will extract ONLY "Osmotic stress" from your massive paragraph!
                                 ngrams = self._semantic_ngram_search(val_str_clean, label_type, threshold=0.75)
                                 found.update(ngrams)
                             else:
@@ -410,15 +434,19 @@ class UniversalExtractor:
     def _semantic_ngram_search(self, text: str, label_type: str, threshold: float = 0.75) -> Set[str]:
         if not text: return set()
         
-        # 1. Strip out noise words that poison the vectors
-        noise_words = r'\b(genotype|mutant|wild-type|wildtype|age|weeks|days|old|developmental stage|cell type)\b'
-        clean_text = re.sub(noise_words, '', text, flags=re.IGNORECASE)
+        # Noise regex strips words that pollute treatment/tissue/medium searches.
+        # For genotype, these words ARE the signal — skip stripping entirely.
+        if label_type != 'genotype':
+            noise_words = r'\b(genotype|mutant|wild-type|wildtype|age|weeks|days|old|developmental stage|cell type)\b'
+            clean_text = re.sub(noise_words, '', text, flags=re.IGNORECASE)
+        else:
+            clean_text = text
         
-        # 2. THE FIX FOR TITLES: Break apart squished string formatting
-        # Converts "AtGen_6-2521_Osmoticstress-Roots" -> "AtGen 6 2521 Osmoticstress Roots"
+        # Break apart squished string formatting
+        # e.g. "AtGen_6-2521_Osmoticstress-Roots" -> "AtGen 6 2521 Osmoticstress Roots"
         clean_text = clean_text.replace('_', ' ').replace('-', ' ')
         
-        # Tokenize (Now keeping forward slash for things like "1/2 MS")
+        # Tokenize (keeping forward slash for things like "1/2 MS")
         words = re.findall(r'\b[\w/]+\b', clean_text)
         if not words: return set()
 

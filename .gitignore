@@ -232,3 +232,4 @@ my_env_packed.tar.gz
 /src/models/weights
 /temp
 .vscode/settings.json
+*.sif

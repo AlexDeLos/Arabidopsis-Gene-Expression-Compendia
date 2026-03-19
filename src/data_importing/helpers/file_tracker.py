@@ -50,6 +50,9 @@ class FileTracker:
     def is_ignored(self, gse_id):
         return self.get_status(gse_id) == STATUS_IGNORE
 
+    def is_error(self, gse_id):
+        return self.get_status(gse_id) == STATUS_ERROR
+
     # --- MARKER METHODS ---
     def mark_processed(self, gse_id):
         print(f'Marking {gse_id} as processed')

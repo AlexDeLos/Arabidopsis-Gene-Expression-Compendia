@@ -48,7 +48,7 @@ from enum import Enum
 from typing import Dict, List, Any
 
 # 1. Define the Labels (The keys for everything)
-LABELS = ['tissue', 'treatment', 'medium']
+LABELS = ['tissue', 'treatment', 'medium', 'genotype']
 
 # 2. Define the Enums (The Canonical "Truth")
 class TissueEnum(str, Enum):
@@ -104,6 +104,29 @@ class MediumEnum(str, Enum):
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
     GAMBORG_B5_MEDIUM = "Gamborg B5"
+
+class GenotypeEnum(str, Enum):
+    # Wild-type accessions
+    COL_0       = "Col-0"
+    WS          = "Ws"
+    WS_2        = "Ws-2"
+    WS_4        = "Ws-4"
+    LER         = "Ler"
+    C24         = "C24"
+    CVI         = "Cvi"
+    # Mutant / transgenic classes
+    KNOCKOUT    = "Knockout mutant"
+    KNOCKDOWN   = "Knockdown mutant"
+    OVEREXPRESSOR = "Overexpressor"
+    REPORTER    = "Reporter line"
+    RNAi        = "RNAi line"
+    CRISPR      = "CRISPR mutant"
+    # Catch-alls
+    WILD_TYPE   = "Wild-type"
+    MUTANT      = "Mutant"
+    TRANSGENIC  = "Transgenic"
+    UNKNOWN     = "unknown"
+    UNSPECIFIED = "unspecified"
 
 # 3. Define Synonyms (Map Canonical Enum -> List of Synonyms)
 # This replaces TreatmentEnum_alt. You can add as many variations as you want here.
@@ -263,6 +286,59 @@ MEDIUM_SYNONYMS = {
     ]
 }
 
+GENOTYPE_SYNONYMS = {
+    # Wild-type accessions
+    GenotypeEnum.COL_0: [
+        "Columbia", "Col", "Col-0", "Columbia-0", "ecotype Col",
+        "background Col-0", "WT Col-0",
+    ],
+    GenotypeEnum.WS: [
+        "Wassilewskija", "Ws", "WS",
+    ],
+    GenotypeEnum.WS_2: ["Ws-2", "WS-2"],
+    GenotypeEnum.WS_4: ["Ws-4", "WS-4"],
+    GenotypeEnum.LER: [
+        "Landsberg erecta", "Ler", "Ler-0", "L. er",
+    ],
+    GenotypeEnum.C24: ["C24", "ecotype C24"],
+    GenotypeEnum.CVI: ["Cape Verde Islands", "Cvi", "Cvi-0"],
+
+    # Functional mutant / transgenic classes
+    GenotypeEnum.KNOCKOUT: [
+        "T-DNA insertion", "loss-of-function", "null mutant",
+        "insertion line", "SALK line", "SAIL line", "GABI-Kat",
+    ],
+    GenotypeEnum.KNOCKDOWN: [
+        "hypomorphic", "partial loss-of-function", "weak allele",
+    ],
+    GenotypeEnum.OVEREXPRESSOR: [
+        "overexpression", "35S::", "35S promoter", "OE", "OX",
+        "gain-of-function", "constitutive expression",
+    ],
+    GenotypeEnum.REPORTER: [
+        "GFP fusion", "GUS fusion", "luciferase", "reporter construct",
+        "promoter:GFP", "promoter:GUS",
+    ],
+    GenotypeEnum.RNAi: [
+        "RNAi", "RNA interference", "hairpin", "amiRNA",
+        "artificial microRNA", "gene silencing",
+    ],
+    GenotypeEnum.CRISPR: [
+        "CRISPR", "CRISPR-Cas9", "Cas9", "genome editing", "edited line",
+    ],
+
+    # Catch-alls (used when no specific accession or class is determinable)
+    GenotypeEnum.WILD_TYPE: [
+        "wild type", "wild-type", "WT", "wt", "unmodified", "non-transgenic",
+    ],
+    GenotypeEnum.MUTANT: [
+        "mutant", "loss of function", "allele", "atxxx mutant",
+    ],
+    GenotypeEnum.TRANSGENIC: [
+        "transgenic", "transformed", "stably transformed",
+    ],
+}
+
 # 4. Master Configuration (The "Registry")
 LABEL_CONFIG = {
     'treatment': {
@@ -281,7 +357,15 @@ LABEL_CONFIG = {
         'enum': MediumEnum,
         'synonyms': MEDIUM_SYNONYMS,
         'search_triggers': ['medium', 'growth medium', 'substrate'],
-        'priority_cols': ['title','growth_protocol_ch1', 'characteristics_ch1','medium']
+        'priority_cols': ['titel','growth_protocol_ch1', 'characteristics_ch1','medium']
+    },
+    'genotype': {
+        'enum': GenotypeEnum,
+        'synonyms': GENOTYPE_SYNONYMS,
+        # "ecotype", "background", "genotype" are the most reliable column triggers.
+        # "line" is intentionally excluded — too generic and appears in unrelated contexts.
+        'search_triggers': ['genotype', 'ecotype', 'background', 'accession', 'strain', 'mutation'],
+        'priority_cols': ['characteristics_ch1', 'title', 'source_name_ch1', 'genotype', 'ecotype']
     }
 }
 
@@ -331,7 +415,7 @@ ALL_TRIGGERS = {label: config['search_triggers'] + EXPLICIT_KEYWORDS[label]
                 for label, config in LABEL_CONFIG.items()}
 
 # Define which categories should strictly have only ONE label
-UNIQUE_LABELS = ['tissue', 'medium'] 
+UNIQUE_LABELS = ['tissue', 'medium', 'genotype']
 
 # Map each category to its Control value. 
 # Assuming your enums are imported here, use `.value` to get the string.

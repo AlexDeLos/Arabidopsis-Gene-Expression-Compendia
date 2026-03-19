@@ -1,115 +1,221 @@
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import os
 from src.constants import LABELS
 
-def load_json(path:str):
+
+def load_json(path: str):
     with open(path, 'r') as file:
-        object = json.load(file)
-    return object
+        return json.load(file)
+
 
 class LabelMap:
     """
     Manages persistent mapping of raw terms to grounded ontology terms.
-    Structure: { "raw_term": ["grounded_term", ["StudyID1", "StudyID2"]] }
+
+    Storage format (v2):
+        {
+          "raw_term": {
+              "label":   "Drought Stress",
+              "studies": {
+                  "GSE001": ["GSM001", "GSM002"],
+                  "GSE002": ["GSM099"]
+              }
+          }
+        }
+
+    Automatically migrates older formats on load:
+        v0  "raw_term": "grounded_term"
+        v1  "raw_term": ["grounded_term", ["GSE001", "GSE002"]]
     """
+
+    # ------------------------------------------------------------------ #
+    #  Init / Loading                                                      #
+    # ------------------------------------------------------------------ #
+
     def __init__(self, path: Optional[str] = None):
         self.path = path
-        
-        # If a path is provided but the folder doesn't exist, create it
+
         if path is not None and not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
 
-        # Generate specific maps dynamically based on LABELS
         for label in LABELS:
-            attr_name = f"map_{label}" 
-            
+            attr_name = f"map_{label}"
             if path is None:
                 setattr(self, attr_name, {})
             else:
                 file_path = os.path.join(path, f"{attr_name}.json")
                 try:
-                    # Assuming load_json is defined elsewhere in your file
-                    setattr(self, attr_name, load_json(file_path))
+                    raw = load_json(file_path)
+                    setattr(self, attr_name, self._migrate(raw))
                 except Exception:
-                    print(f"Warning: {file_path} not found or invalid. Generating a new one.")
+                    print(f"Warning: {file_path} not found or invalid. Starting fresh.")
                     setattr(self, attr_name, {})
                     with open(file_path, 'w') as f:
                         json.dump({}, f)
 
-    def _update_entry(self, map_dict: Dict, raw_label: str, grounded_label: str, study_id: str):
-        """Helper to safely update the mapping structure with study tracking."""
-        if raw_label not in map_dict:
-            # Create new entry: [Value, [StudyID]]
-            map_dict[raw_label] = [grounded_label, [study_id]]
-        else:
-            entry = map_dict[raw_label]
-            # Migration handling: Convert old string format to new list format if needed
+    # ------------------------------------------------------------------ #
+    #  Migration                                                           #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _migrate(raw: Dict) -> Dict:
+        """Upgrade an entire map dict from v0 / v1 to v2."""
+        migrated = {}
+        for raw_term, entry in raw.items():
             if isinstance(entry, str):
-                entry = [entry, []]
-            
-            # entry[0] is the label. We keep the existing label (first winner stays).
-            # entry[1] is the list of studies.
-            if study_id and study_id not in entry[1]:
-                entry[1].append(study_id)
-            
+                # v0: plain string value
+                migrated[raw_term] = {"label": entry, "studies": {}}
+
+            elif isinstance(entry, list):
+                # v1: ["label", ["GSE001", "GSE002"]]
+                label_val = entry[0] if entry else "unknown"
+                study_ids = entry[1] if (len(entry) > 1 and isinstance(entry[1], list)) else []
+                # No sample IDs available in v1 — carry studies with empty sample lists
+                migrated[raw_term] = {
+                    "label":   label_val,
+                    "studies": {sid: [] for sid in study_ids},
+                }
+
+            elif isinstance(entry, dict):
+                # v2 already — ensure required keys exist
+                entry.setdefault("label", "unknown")
+                entry.setdefault("studies", {})
+                migrated[raw_term] = entry
+
+            else:
+                migrated[raw_term] = {"label": str(entry), "studies": {}}
+
+        return migrated
+
+    # ------------------------------------------------------------------ #
+    #  Internal helpers                                                    #
+    # ------------------------------------------------------------------ #
+
+    def _get_map(self, category: str) -> Optional[Dict]:
+        return getattr(self, f"map_{category}", None)
+
+    def _update_entry(
+        self,
+        map_dict: Dict,
+        raw_label: str,
+        grounded_label: str,
+        study_id: str,
+        sample_id: Optional[str] = None,
+    ) -> None:
+        """
+        Insert or update a mapping entry.
+        First-winner policy: the label is never overwritten once set.
+        Provenance is tracked as studies[GSE_ID] = [GSM_ID, ...].
+        """
+        if raw_label not in map_dict:
+            map_dict[raw_label] = {"label": grounded_label, "studies": {}}
+
+        entry = map_dict[raw_label]
+
+        # Guard against stale in-memory data from a failed migration
+        if not isinstance(entry, dict):
+            entry = {"label": grounded_label, "studies": {}}
             map_dict[raw_label] = entry
 
-    def _get_value(self, category: str, raw_label: str) -> Optional[str]:
-        """Helper to retrieve just the string label dynamically."""
-        map_dict = getattr(self, f"map_{category}", None)
-        if map_dict is not None and raw_label in map_dict:
-            entry = map_dict[raw_label]
-            if isinstance(entry, list):
-                return entry[0]
-            return entry # Fallback if it's still a string
-        return None
+        entry.setdefault("label", grounded_label)  # first-winner
+        entry.setdefault("studies", {})
 
-    def add_entry(self, category: str, raw_label: str, grounded_label: str, study_id: str) -> None:
-        """Dynamically add an entry to the correct map."""
-        map_dict = getattr(self, f"map_{category}", None)
+        if study_id:
+            if study_id not in entry["studies"]:
+                entry["studies"][study_id] = []
+            if sample_id and sample_id not in entry["studies"][study_id]:
+                entry["studies"][study_id].append(sample_id)
+
+    # ------------------------------------------------------------------ #
+    #  Public read                                                         #
+    # ------------------------------------------------------------------ #
+
+    def _get_value(self, category: str, raw_label: str) -> Optional[str]:
+        """Return just the canonical label string for a raw term, or None if unseen."""
+        map_dict = self._get_map(category)
+        if map_dict is None or raw_label not in map_dict:
+            return None
+        entry = map_dict[raw_label]
+        if isinstance(entry, dict):
+            return entry.get("label")
+        if isinstance(entry, list):   # stale v1 still in memory
+            return entry[0]
+        return entry                  # stale v0 still in memory
+
+    # ------------------------------------------------------------------ #
+    #  Public write                                                        #
+    # ------------------------------------------------------------------ #
+
+    def add_entry(
+        self,
+        category: str,
+        raw_label: str,
+        grounded_label: str,
+        study_id: str,
+        sample_id: Optional[str] = None,
+    ) -> None:
+        """Add or update a single entry in the correct label map."""
+        map_dict = self._get_map(category)
         if map_dict is not None:
-            self._update_entry(map_dict, raw_label, grounded_label, study_id)
+            self._update_entry(map_dict, raw_label, grounded_label, study_id, sample_id)
         else:
             print(f"Warning: Category '{category}' is not a valid label map.")
 
-    def add_mapping_dict(self, mapping: Dict[str, str], category: str, study_id: str):
-        """Batch update from LLM results using dynamic fetching."""
-        map_dict = getattr(self, f"map_{category}", None)
+    def add_mapping_dict(
+        self,
+        mapping: Dict[str, str],
+        category: str,
+        study_id: str,
+        sample_id: Optional[str] = None,
+    ) -> None:
+        """Batch-update from an external {raw: grounded} dict."""
+        map_dict = self._get_map(category)
         if map_dict is not None:
             for raw, grounded in mapping.items():
-                self._update_entry(map_dict, raw, grounded, study_id)
+                self._update_entry(map_dict, raw, grounded, study_id, sample_id)
         else:
             print(f"Warning: Category '{category}' is not a valid label map.")
 
-    def add_mapping(self, og_sample: Dict, grounded_sample: Dict, study_id: str) -> None:
+    def add_mapping(
+        self,
+        og_sample: Dict,
+        grounded_sample: Dict,
+        study_id: str,
+        sample_id: Optional[str] = None,
+    ) -> None:
         """
-        Updates the internal maps based on the difference between raw and grounded samples.
-        Dynamically loops through all LABELS.
+        Update maps from a (raw_sample, grounded_sample) pair.
+        sample_id is read from grounded_sample['sample_id'] if not supplied explicitly.
+        Only 1-to-1 raw->grounded pairs are stored to avoid list-alignment ambiguity.
         """
+        if sample_id is None:
+            sample_id = (grounded_sample.get('sample_id')
+                         or og_sample.get('sample_id'))
+
         for category in LABELS:
-            raw_val = og_sample.get(category)
+            raw_val    = og_sample.get(category)
             ground_val = grounded_sample.get(category)
 
-            # Fix for `#TODO: broke it by making everything a set`
-            if isinstance(raw_val, set): raw_val = list(raw_val)
+            if isinstance(raw_val, set):    raw_val    = list(raw_val)
             if isinstance(ground_val, set): ground_val = list(ground_val)
-
-            # Standardize to lists so we can reliably check lengths
-            if isinstance(raw_val, str): raw_val = [raw_val]
+            if isinstance(raw_val, str):    raw_val    = [raw_val]
             if isinstance(ground_val, str): ground_val = [ground_val]
-            
-            # Heuristic: Only map if 1-to-1 to avoid list confusion
-            if raw_val and ground_val and len(raw_val) == 1 and len(ground_val) == 1:
-                r_str = str(raw_val[0])
-                g_str = str(ground_val[0])
-                self.add_entry(category, r_str, g_str, study_id)
 
-    def save_map(self):
-        """Dynamically saves all maps based on LABELS."""
-        if self.path:
-            for label in LABELS:
-                file_path = os.path.join(self.path, f"map_{label}.json")
-                map_dict = getattr(self, f"map_{label}", {})
-                with open(file_path, 'w') as f:
-                    json.dump(map_dict, f, indent=4)
+            if raw_val and ground_val and len(raw_val) == 1 and len(ground_val) == 1:
+                self.add_entry(category, str(raw_val[0]), str(ground_val[0]),
+                               study_id, sample_id)
+
+    # ------------------------------------------------------------------ #
+    #  Persistence                                                         #
+    # ------------------------------------------------------------------ #
+
+    def save_map(self) -> None:
+        """Write all label maps to disk."""
+        if not self.path:
+            return
+        for label in LABELS:
+            file_path = os.path.join(self.path, f"map_{label}.json")
+            map_dict = getattr(self, f"map_{label}", {})
+            with open(file_path, 'w') as f:
+                json.dump(map_dict, f, indent=4)

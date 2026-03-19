@@ -98,8 +98,10 @@ def condense_labels(in_folder, saving_path, Studies=None):
             
             for raw, grounded in zip(raw_samples, grounded_samples):
                 
-                # Update the LabelMap (seen.add_mapping handles the complexity of splitting dicts)
-                seen.add_mapping(raw, grounded, study_id=study_id)
+                # Update the LabelMap — now passes sample_id so both study and
+                # sample provenance are recorded in the v2 map format.
+                s_id = grounded.get('sample_id') or raw.get('sample_id')
+                seen.add_mapping(raw, grounded, study_id=study_id, sample_id=s_id)
                 
                 s_id = grounded.pop('sample_id')
                 final_output[s_id] = grounded
