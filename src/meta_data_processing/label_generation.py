@@ -42,7 +42,7 @@ def condense_labels(in_folder, saving_path, Studies=None):
     uni_extractor = UniversalExtractor(optimizer)
     # --- COMPONENT 1: Restore LabelMap ---
     # This loads your historical mappings (map.json, map_treatment.json, etc.)
-    seen = LabelMap(f'{STORAGE_DIR}/maps/{EXPERIMENT_NAME}')
+    seen = LabelMap(f'{STORAGE_DIR}/maps/{MODEL}/{EXPERIMENT_NAME}')
     
     # Initialize Optimizer
     

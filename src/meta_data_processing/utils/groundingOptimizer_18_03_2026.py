@@ -66,14 +66,8 @@ class GroundingOptimizer:
     def find_semantic_match(self, string: str, words: List[str], target_embeddings, threshold: float) -> Tuple[bool, float, Optional[str], Optional[str]]:
         if not string or not words: return False, 0.0, None, None
         string_lower = string.lower()
-
-        # FIX: collect ALL substring matches and return the longest one (most specific).
-        # Previously: first match short-circuited, so "liquid MS medium" matched "liquid"
-        # at score 1.0 and never considered "MS" or "MS medium".
-        substring_matches = [(w, w.lower()) for w in words if w.lower() in string_lower]
-        if substring_matches:
-            best_w, best_w_lower = max(substring_matches, key=lambda x: len(x[1]))
-            return True, 1.0, best_w_lower, best_w
+        for w in words:
+            if w.lower() in string_lower: return True, 1.0, w.lower(), w 
 
         vectored = False
         for label in LABELS:
@@ -208,29 +202,15 @@ class GroundingOptimizer:
                             canonical_fit = self.canonicalize_term(mapped_val, label)
                             local_cache[label][raw_term] = {"val": canonical_fit, "score": 2.0}
                         else:
-                            # 1. Bucket Match (Canonical names only)
-                            _, score_b, _, best_keyword_b = self.find_semantic_match(raw_term, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.8)
+                            # 1. Bucket Match (Canonical)
+                            _, score, _, best_keyword = self.find_semantic_match(raw_term, BUCKET_KEYWORDS[label], self.vectors['bucket'][label], threshold=0.8)
                             
-                            # 2. Explicit Match (Synonyms + canonicals)
-                            _, score_e, _, best_keyword_e = self.find_semantic_match(raw_term, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.75)
-
-                            # FIX: bucket and explicit scores are NOT directly comparable —
-                            # bucket embeds ~10-20 canonical names; explicit embeds 100+ synonyms.
-                            # A raw score of 0.79 against a small canonical set is weaker evidence
-                            # than 0.79 against the full synonym list. We prefer the explicit match
-                            # unless the bucket score is meaningfully higher (gap > 0.04).
-                            # Special case: if either is a substring match (score==1.0) trust it directly.
-                            if score_b == 1.0:
-                                score, best_keyword = score_b, best_keyword_b
-                            elif score_e == 1.0:
-                                score, best_keyword = score_e, best_keyword_e
-                            elif score_e >= 0.75 and (score_b - score_e) < 0.04:
-                                # Explicit wins on tie or near-tie: synonym list is more discriminative
-                                score, best_keyword = score_e, best_keyword_e
-                            else:
-                                # Bucket wins only when clearly ahead
-                                score = score_b if score_b > score_e else score_e
-                                best_keyword = best_keyword_b if score_b > score_e else best_keyword_e
+                            # 2. Explicit Match (Synonyms)
+                            _, score_, _, best_keyword_ = self.find_semantic_match(raw_term, EXPLICIT_KEYWORDS[label], self.vectors['explicit'][label], threshold=0.75)
+                            
+                            if score_ > score:
+                                score = score_
+                                best_keyword = best_keyword_
                             
                             if score >= max_score:
                                 best_fit = str(best_keyword)
@@ -260,30 +240,12 @@ class GroundingOptimizer:
                     mapped_items.append(item)
 
                 # RULE 1: Highest-score Unique Label
-                # treatment is also collapsed to one label, but only when the top score
-                # beats second place by >= TREATMENT_COLLAPSE_GAP (avoids collapsing
-                # genuinely multi-treatment samples, e.g. heat + drought combined).
-                TREATMENT_COLLAPSE_GAP = 0.05
-                is_unique = label in UNIQUE_LABELS
-                is_treatment = label == 'treatment'
-
-                if (is_unique or is_treatment) and len(mapped_items) > 1:
+                if label in UNIQUE_LABELS and len(mapped_items) > 1:
+                    # Sort descending by score
                     mapped_items.sort(key=lambda x: x["score"], reverse=True)
+                    # Pick the highest scoring item that isn't 'unknown' (or fallback to unknown if that's all there is)
                     best_item = next((item for item in mapped_items if item["val"] != "unknown"), mapped_items[0])
-
-                    if is_treatment and not is_unique:
-                        # Only collapse treatment if the winner is clearly ahead
-                        non_unknown = [i for i in mapped_items if i["val"] != "unknown"]
-                        if len(non_unknown) >= 2:
-                            gap = non_unknown[0]["score"] - non_unknown[1]["score"]
-                            if gap >= TREATMENT_COLLAPSE_GAP:
-                                final_vals = [best_item["val"]]
-                            else:
-                                final_vals = [i["val"] for i in non_unknown]
-                        else:
-                            final_vals = [best_item["val"]]
-                    else:
-                        final_vals = [best_item["val"]]
+                    final_vals = [best_item["val"]]
                 else:
                     final_vals = [item["val"] for item in mapped_items]
 

@@ -99,12 +99,9 @@ def has_golden_key_word(string: str, words: list[str], optimized: GroundingOptim
     if not string or not words: return False, 0.0, None, None
 
     string_lower = string.lower()
-    # FIX: return the longest (most specific) substring match rather than the first.
-    # Mirrors the fix applied to find_semantic_match in groundingOptimizer.py.
-    substring_matches = [(w, w.lower()) for w in words if w.lower() in string_lower]
-    if substring_matches:
-        best_w, best_w_lower = max(substring_matches, key=lambda x: len(x[1]))
-        return True, 1.0, best_w_lower, best_w
+    for w in words:
+        if w.lower() in string_lower:
+            return True, 1.0, w.lower(), w 
 
     vectored = False
     for label in LABELS:
@@ -170,45 +167,21 @@ class UniversalExtractor:
         extracted = {}
         
         for label_type in LABELS:
-            # FIX: Merge ALL three sources rather than short-circuiting on first hit.
-            # Previously: Step 2 was skipped if Step 1 returned anything — even noise.
-            # Now: we collect from all sources, then let extract_valid_candidates filter
-            # and disambiguate the union using contrast-category scoring.
-            all_hits: Set[str] = set()
-
-            # Source 1: Explicit columns (key:value parsing)
-            col_hits = self._extract_from_matched_columns(sample_metadata, label_type)
-            all_hits.update(col_hits)
-
-            # Source 2: Priority text blob (title, characteristics, source_name)
-            priority_text = self._get_text_blob(sample_metadata, ['title', 'characteristics_ch1', 'source_name_ch1'])
-            if priority_text:
-                all_hits.update(self._semantic_ngram_search(priority_text, label_type))
-
-            # Source 3: Study-level fallback — always included (not only when sample fails)
-            # Gives context when sample metadata is sparse
-            study_text = self._get_text_blob(study_metadata, ['summary', 'overall_design'])
-            if study_text and not all_hits:
-                # Study text is noisier; only use it when sample-level search found nothing
-                all_hits.update(self._semantic_ngram_search(study_text, label_type))
-
-            # Post-filter: extract_valid_candidates applies contrast-category disambiguation
-            # (e.g. removes tissue terms from treatment candidates) and scores the union.
-            # Previously this function existed but was never called from extract().
-            if all_hits:
-                valid = extract_valid_candidates(
-                    candidate_set=all_hits,
-                    optimizer=self.optimizer,
-                    target_category=label_type,
-                    study_info=bool(study_metadata),
-                    top_k=5
-                )
-                # valid is a list of (term, score) tuples — keep only the terms
-                final_hits = {term for term, _ in valid}
-            else:
-                final_hits = set()
-
-            extracted[label_type] = final_hits if final_hits else {"unspecified"}
+            # Step 1: Check Explicit Columns (Column names matching the label_type)
+            hits = self._extract_from_matched_columns(sample_metadata, label_type)
+            
+            # Step 2: Fallback to Priority Text (Sample Title/Characteristics)
+            if not hits:
+                priority_text = self._get_text_blob(sample_metadata, ['title', 'characteristics_ch1', 'source_name_ch1'])
+                hits = self._semantic_ngram_search(priority_text, label_type)
+            
+            # Step 3: Fallback to Study Level Metadata
+            if not hits:
+                study_text = self._get_text_blob(study_metadata, ['summary', 'overall_design'])
+                hits = self._semantic_ngram_search(study_text, label_type)
+            
+            # Requirement: If empty, set to unspecified
+            extracted[label_type] = hits if hits else {"unspecified"}
             
         return extracted
 
