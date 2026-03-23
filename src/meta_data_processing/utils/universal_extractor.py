@@ -58,17 +58,22 @@ def extract_valid_candidates(candidate_set: Set[str], optimizer: GroundingOptimi
     elif target_category == 'genotype': contrast_category = 'treatment'
     else: contrast_category = None
 
-    # Hard blocklist — whole-word matching only (prevents "rep1" blocking "replicate 1",
-    # and prevents dropping "mock inoculation" because it contains "mock").
-    # NOTE: genotype-signal terms ("col-0", "mutant", "transgenic", "columbia",
-    # "wild type", "wild-type") are intentionally absent — they are valid signal
-    # for the genotype label and are handled by extract_valid_candidates' contrast
-    # scoring when target_category != 'genotype'.
+    # Hard blocklist — whole-word token set intersection.
+    # Rules for inclusion: must be irrelevant to ALL four label axes and must not
+    # appear as a word inside any valid canonical or synonym term.
+    #
+    # Removed vs. earlier version (reason in parentheses):
+    #   "growth"     → present in "growth medium", "growth condition", "growth substrate"
+    #   "experiment" → present in "drought experiment", "salt experiment"
+    #   "grown"      → present in "grown in soil", "grown hydroponically"
+    #   "study"      → too broad; blocks valid study-level tissue/treatment phrases
+    #   "plants"     → blocks "plants grown under drought", valid tissue signal
+    #   "samples"    → blocks "root samples", "leaf samples"
+    #   "buffer"     → blocks "phosphate buffer" (medium), "citrate buffer" (treatment)
     NOISE_TOKENS = {
-        "plants", "analysis", "data", "replicate", "study", "experiment",
-        "grown", "growth", "independent", "agb1", "gpa1",
-        "rep1", "rep2", "rep3", "atgen", "unknown",
-        "total", "rna", "using", "samples", "buffer",
+        "analysis", "data", "replicate", "independent",
+        "agb1", "gpa1", "rep1", "rep2", "rep3", "atgen",
+        "unknown", "total", "rna", "using",
     }
 
     # Soft-strip words: present in a phrase but not the meaningful part.
@@ -176,23 +181,60 @@ from sentence_transformers import util
 from src.constants import LABELS, LABEL_CONFIG, EXPLICIT_KEYWORDS
 
 class UniversalExtractor:
+    # GEO field names that are definitively priority columns for each label.
+    # Pre-seeding the cache with these means zero vector calls for the most
+    # common column names — and avoids threshold misses on near-identical names.
+    _KNOWN_PRIORITY_COLS: Dict[str, List[str]] = {
+        'treatment': [
+            'characteristics_ch1', 'treatment_protocol_ch1', 'treatment',
+            'title', 'description', 'data_processing',
+        ],
+        'tissue': [
+            'source_name_ch1', 'characteristics_ch1', 'tissue',
+            'title', 'description',
+        ],
+        'medium': [
+            'growth_protocol_ch1', 'characteristics_ch1', 'medium',
+            'title', 'description', 'extract_protocol_ch1',
+        ],
+        'genotype': [
+            'characteristics_ch1', 'title', 'source_name_ch1',
+            'genotype', 'description',
+        ],
+    }
+
     def __init__(self, optimizer):
         self.optimizer = optimizer
         self.model = optimizer.model
-        # Pre-compute trigger vectors for column identification
         self.trigger_vectors = {}
         self.search_col_vectors = {}
         self._column_cache = {}
+
         for label in LABELS:
             triggers = LABEL_CONFIG[label].get('search_triggers', [])
-            # Combine triggers with explicit keywords for better coverage
             combined_triggers = list(set(triggers + EXPLICIT_KEYWORDS.get(label, [])))
             self.trigger_vectors[label] = self.model.encode(combined_triggers, convert_to_tensor=True)
             cols = LABEL_CONFIG[label].get('priority_cols', [])
             self.search_col_vectors[label] = self.model.encode(cols, convert_to_tensor=True)
 
+        # Pre-seed cache: known GEO column names are always treated as priority
+        # columns for the appropriate label — no vector call needed at runtime.
+        for label, known_cols in self._KNOWN_PRIORITY_COLS.items():
+            for col in known_cols:
+                self._column_cache[f"prio_{col}_{label}"] = True
+
     def extract(self, sample_metadata: Dict, study_metadata: Dict, study_id: str) -> Dict[str, Set[str]]:
         extracted = {}
+
+        # All GEO sample-level fields that can carry label information.
+        # Wider than the original ['title','characteristics_ch1','source_name_ch1'] —
+        # older studies often put tissue/treatment in description or data_processing.
+        SAMPLE_TEXT_FIELDS = [
+            'title', 'characteristics_ch1', 'source_name_ch1',
+            'description', 'molecule_ch1', 'label_ch1',
+            'data_processing', 'extract_protocol_ch1',
+        ]
+        STUDY_TEXT_FIELDS = ['summary', 'overall_design', 'title']
 
         for label_type in LABELS:
             all_hits: Set[str] = set()
@@ -201,15 +243,15 @@ class UniversalExtractor:
             col_hits = self._extract_from_matched_columns(sample_metadata, label_type)
             all_hits.update(col_hits)
 
-            # Source 2: Priority text blob from sample metadata
-            priority_text = self._get_text_blob(sample_metadata, ['title', 'characteristics_ch1', 'source_name_ch1'])
+            # Source 2: Full sample text blob (wider field list than before)
+            priority_text = self._get_text_blob(sample_metadata, SAMPLE_TEXT_FIELDS)
             if priority_text:
                 all_hits.update(self._semantic_ngram_search(priority_text, label_type))
 
             # Source 3: Study-level text — always searched for medium/genotype since
             # those are often only described in the study summary, not per-sample fields.
             # For treatment/tissue, only supplement when sample level found nothing useful.
-            study_text = self._get_text_blob(study_metadata, ['summary', 'overall_design'])
+            study_text = self._get_text_blob(study_metadata, STUDY_TEXT_FIELDS)
             if study_text:
                 if label_type in ('medium', 'genotype') or not all_hits:
                     all_hits.update(self._semantic_ngram_search(study_text, label_type))
@@ -353,10 +395,15 @@ class UniversalExtractor:
 
                         if sub_key_has_trigger or self._is_relevant_element(sub_key_clean, label_type, threshold=0.60):
                             if len(actual_val.split()) > 3:
+                                # Long value: only extract matching n-grams to avoid noise
                                 ngrams = self._semantic_ngram_search(actual_val, label_type, threshold=0.75)
                                 found.update(ngrams)
                             else:
+                                # Short value: add verbatim AND run ngram search.
+                                # Verbatim preserves exact strings like "Col-0" or "1/2 MS".
+                                # Ngram search catches multi-word short values like "drought stress".
                                 found.add(actual_val)
+                                found.update(self._semantic_ngram_search(actual_val, label_type, threshold=0.75))
                     else:
                         if self._is_relevant_element(val_str_clean, label_type):
                             if len(val_str_clean.split()) > 3:
@@ -364,6 +411,7 @@ class UniversalExtractor:
                                 found.update(ngrams)
                             else:
                                 found.add(val_str_clean)
+                                found.update(self._semantic_ngram_search(val_str_clean, label_type, threshold=0.75))
                                 
             # --- CASE 2: The key itself is highly relevant (e.g., key='tissue') ---
             elif self._is_relevant_column(key, label_type):

@@ -233,3 +233,6 @@ my_env_packed.tar.gz
 /temp
 .vscode/settings.json
 *.sif
+/.vscode
+debug_run.sh
+apptainer_python.sh
