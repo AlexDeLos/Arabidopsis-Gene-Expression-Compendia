@@ -17,6 +17,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 module_dir = './'
 sys.path.append(module_dir)
 from src.data_importing.helpers.download_helper import check_metadata_for_sra_boolean
+from src.data_importing.helpers.helpers import process_metadata
 from src.constants import *
 from src.data_importing.helpers.file_tracker import FileTracker
 
@@ -650,8 +651,15 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"  [!] Skipping {gse_id}: {reason}")
                         tracker.mark_ignore(gse_id)
                         continue
+                    
+                    print("  - Processing metadata for all samples in study...")
+                    try:
+                        for _, gsm in gse.gsms.items(): # type: ignore
+                            process_metadata(gse_id, gse, gsm, save_path=os.path.join(output_dir, "metadata", gse_id))
+                    except Exception as e:
+                        print(f"    > Metadata processing failed: {e}")
 
-                    save_rnaseq_sample_metadata(gse_id, gse, output_dir)
+                    # save_rnaseq_sample_metadata(gse_id, gse, output_dir)
 
                     if debug:
                         if len(gse.gsms) > 1:

@@ -97,6 +97,8 @@ Rules:
 3. If the metadata does not contain clear evidence for a label axis, assign "unspecified".
 4. Do not invent values not in the canonical options list.
 5. No markdown fences around the JSON.
+# 6. Output ONLY the information labeling information, NO EXPLANATIONS.
+7. Output ONLY in the Output format described.
 
 Output format (one key per label axis, value is the single chosen canonical string):
 {
