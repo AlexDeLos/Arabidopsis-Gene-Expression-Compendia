@@ -61,7 +61,7 @@ def process_metadata(geo_accession, gse, gsm, save_path = METADATA_OUTPUT_DIR):
         'sample_metadata': filtered_sample_meta
     }
     output_path = os.path.join(save_path, f"{geo_accession}_{gsm.name}.json")
-    os.makedirs(output_path,exist_ok=True)
+    os.makedirs(save_path,exist_ok=True)
     try:
         with open(output_path, "w") as fp:
             json.dump(final_metadata, fp, indent=4)

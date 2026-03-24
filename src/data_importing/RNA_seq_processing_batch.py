@@ -177,7 +177,7 @@ class RNASeq_processor:
         if not os.path.exists(sbatch_script):
             print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
             return
-
+        
         cmd = [
             "sbatch",
             "--wait",
@@ -189,11 +189,19 @@ class RNASeq_processor:
             output_folder
         ]
 
+        # --- NEW HANDOFF LOGIC ---
+        # Get the current array ID to prevent parallel jobs from overwriting each other
+        task_id = os.environ.get('SLURM_ARRAY_TASK_ID', 'dev')
+        submit_script_path = f"submit_slurm_array_{task_id}.sh"
+
         try:
-            subprocess.run(cmd, check=True)
-            print("All SLURM download array jobs completed.")
-        except subprocess.CalledProcessError as e:
-            print(f"Error executing sbatch job array: {e}")
+            with open(submit_script_path, 'w') as f:
+                f.write("#!/bin/bash\n")
+                # Join the command list into a single string
+                f.write(" ".join(cmd) + "\n")
+            print(f"Apptainer finished. Generated host submission script: {submit_script_path}")
+        except Exception as e:
+            print(f"Error generating submission script: {e}")
 
     def _get_missing_or_corrupt_srrs(self, srrs: list, output_folder: str) -> list:
         """
