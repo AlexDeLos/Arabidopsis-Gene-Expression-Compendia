@@ -41,7 +41,7 @@ def load_list_from_txt(filename):
 MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'#cel"[Supplementary Files]'
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
 STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
-FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
+# FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
 
 
 # Usage
@@ -54,8 +54,8 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
     parser.add_argument("-b", "--batch_size", help="output_dir", default=2,type=int)
     parser.add_argument("--array_index", type=int, default=0, help="SLURM Array Task ID")
-    parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=True)
+    parser.add_argument("--ma", action="store_true", default=True)
+    parser.add_argument("--rna", action="store_true", default=False)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -143,7 +143,7 @@ if __name__ == "__main__":
                     tracker=RNA_tracker, 
                     download_raw=True, 
                     scan=False,
-                    run_and_delete=False, # Enable deletion to save space after batch
+                    run_and_delete=True, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
                     debug=False
                 )
