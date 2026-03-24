@@ -81,7 +81,9 @@ echo "Running RNA SEQ download and processing..."
 #     --array_index $SLURM_ARRAY_TASK_ID \
 #     --batch_size $BATCH_SIZE \
 #     --rna
-apptainer run --bind /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_importing/new_download.py \
+apptainer run --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+    /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif \
+    -u src/data_importing/new_download.py \
     -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
