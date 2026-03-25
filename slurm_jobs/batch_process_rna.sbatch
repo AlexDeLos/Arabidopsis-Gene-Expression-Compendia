@@ -14,11 +14,12 @@
 
 module purge
 module use /opt/insy/modulefiles
-# module load miniconda/3.9
+module load miniconda/3.9
 
-# # 2. Properly initialize Conda for non-interactive scripts
-# eval "$(conda shell.bash hook)"
-# conda activate download_env
+# 2. Properly initialize Conda for non-interactive scripts
+eval "$(conda shell.bash hook)"
+conda activate download_env
+
 # Load standard Python and activate your new venv
 module load python/3.9
 source /tudelft.net/staff-umbrella/GeneExpressionStorage/manager_venv/bin/activate
