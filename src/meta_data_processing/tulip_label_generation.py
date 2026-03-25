@@ -52,10 +52,8 @@ from tqdm import tqdm
 module_dir = './'
 sys.path.append(module_dir)
 
-from src.constants import (
-    LABELS, BUCKET_KEYWORDS, STORAGE_DIR, EXPERIMENT_NAME,
-    LABELS_PATH,
-)
+from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH
+from src.constants_labeling import LABEL_CONFIG, UNIQUE_LABELS, LABELS, BUCKET_KEYWORDS, EXPLICIT_KEYWORDS
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -82,33 +80,6 @@ _SAMPLE_FIELDS = [
 ]
 _STUDY_FIELDS = ["summary", "overall_design"]
 
-# ── Prompts ────────────────────────────────────────────────────────────────────
-_SYSTEM_PROMPT = """\
-You are an expert curator of Arabidopsis thaliana gene-expression metadata from NCBI GEO.
-
-You will be given raw GEO metadata for one sample and a list of canonical values
-allowed for each label axis.
-
-Your task: assign exactly ONE canonical value per label axis based on the metadata.
-
-Rules:
-1. Write the JSON object FIRST before any reasoning.
-2. Each value must be EXACTLY one string from the canonical options for that axis.
-3. If the metadata does not contain clear evidence for a label axis, assign "unspecified".
-4. Do not invent values not in the canonical options list.
-5. No markdown fences around the JSON.
-# 6. Output ONLY the information labeling information, NO EXPLANATIONS.
-7. Output ONLY in the Output format described.
-
-Output format (one key per label axis, value is the single chosen canonical string):
-{
-  "tissue":    "<canonical value or unspecified>",
-  "treatment": "<canonical value or unspecified>",
-  "medium":    "<canonical value or unspecified>",
-  "genotype":  "<canonical value or unspecified>"
-}
-"""
-
 _USER_PROMPT_TEMPLATE = """\
 === RAW METADATA ===
 {metadata_block}
@@ -120,6 +91,73 @@ Assign one canonical value per label axis and return as a JSON object.
 """
 
 
+def generate_system_prompt():
+    prompt = (
+        "You are an expert plant biology annotator. Your task is to extract standardized metadata labels "
+        "for Arabidopsis thaliana samples based on the provided GEO description.\n\n"
+        "### STRICT LABELING RULES ###\n"
+    )
+    
+    # 1. Enforce Unique Labels (Single choice) vs Multi-choice
+    for label in LABELS:
+        if label in UNIQUE_LABELS:
+            prompt += f"- For '{label}', you must pick EXACTLY ONE canonical value.\n"
+        else:
+            prompt += f"- For '{label}', you may pick one or multiple canonical values if applicable.\n"
+            
+    prompt += "\n### CANONICAL VALUES & SYNONYMS ###\n"
+    prompt += "You must map the text to the following canonical values. Use the synonyms as hints, but ONLY output the canonical value.\n"
+    
+    # 2. Dynamically build categories and check for sub-attributes
+    for label, config in LABEL_CONFIG.items():
+        prompt += f"\nCategory: {label.upper()}\n"
+        
+        # Add primary enums
+        for enum_item in config['enum']:
+            canonical = enum_item.value
+            synonyms = config['synonyms'].get(enum_item, [])
+            synonym_str = f" (Synonyms: {', '.join(synonyms)})" if synonyms else ""
+            prompt += f"  - {canonical}{synonym_str}\n"
+
+        # DYNAMIC INJECTION: Add sub-attributes if they exist in the config
+        if 'sub_attributes' in config:
+            for sub_key, sub_config in config['sub_attributes'].items():
+                prompt += f"\n  -> SUB-ATTRIBUTE REQUIREMENT FOR {label.upper()}: '{sub_key}'\n"
+                prompt += f"     {sub_config['instruction']}\n"
+                # Add the allowed values and descriptions
+                for val_enum, desc in sub_config['descriptions'].items():
+                     prompt += f"       {val_enum.value} = {desc}\n"
+
+    schema_template = {}
+    
+    for label, config in LABEL_CONFIG.items():
+        if 'sub_attributes' in config:
+            # If it has sub-attributes, expect a list of dictionaries
+            obj_schema = {"type": "string (MUST be canonical value)"}
+            for sub_key, sub_config in config['sub_attributes'].items():
+                # Grab the type_hint if provided, otherwise default to "string or integer"
+                obj_schema[sub_key] = sub_config.get('type_hint', "integer")
+            
+            schema_template[label] = [obj_schema]
+        else:
+            # If no sub-attributes, expect a flat list
+            if label in UNIQUE_LABELS:
+                schema_template[label] = ["string"]
+            else:
+                schema_template[label] = ["string", "string"]
+
+    # Convert the python dictionary into a nicely formatted JSON string
+    schema_json_str = json.dumps(schema_template, indent=2)
+
+    # Append to prompt
+    prompt += (
+        "\n### OUTPUT FORMAT ###\n"
+        "You MUST return a strictly valid JSON object. Do NOT wrap the JSON in markdown blocks or include any other text.\n"
+        "The JSON object must strictly adhere to the following schema structure:\n"
+        f"{schema_json_str}\n"
+        "If a category is not mentioned in the text, return an empty list `[]` for that key."
+    )
+    return prompt
 # ── TulipLabelGenerator ────────────────────────────────────────────────────────
 
 class TulipLabelGenerator:
@@ -169,7 +207,7 @@ class TulipLabelGenerator:
         self.canonical_options: Dict[str, List[str]] = {
             label: list(BUCKET_KEYWORDS[label]) for label in LABELS
         }
-
+        self.system_prompt = generate_system_prompt()
         os.makedirs(self.saving_path, exist_ok=True)
         logger.info(
             "TulipLabelGenerator ready — saving to %s", self.saving_path
@@ -268,7 +306,7 @@ class TulipLabelGenerator:
             response = self._client.chat.completions.create(
                 model       = self.model,
                 messages    = [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": self.system_prompt},
                     {"role": "user",   "content": prompt},
                 ],
                 max_tokens  = TULIP_MAX_TOKENS,

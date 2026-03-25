@@ -14,11 +14,17 @@
 
 module purge
 module use /opt/insy/modulefiles
-module load miniconda/3.9
+# module load miniconda/3.9
 
-# 2. Properly initialize Conda for non-interactive scripts
-eval "$(conda shell.bash hook)"
-conda activate download_env
+# # 2. Properly initialize Conda for non-interactive scripts
+# eval "$(conda shell.bash hook)"
+# conda activate download_env
+# Load standard Python and activate your new venv
+module load python/3.9
+source /tudelft.net/staff-umbrella/GeneExpressionStorage/manager_venv/bin/activate
+
+# Add your standalone Nextflow to the PATH so Python's subprocess can find it
+export PATH="/tudelft.net/staff-umbrella/GeneExpressionStorage/bin:$PATH"
 
 # Print job information
 echo "=================================================="
@@ -81,11 +87,12 @@ echo "Running RNA SEQ download and processing..."
 #     --array_index $SLURM_ARRAY_TASK_ID \
 #     --batch_size $BATCH_SIZE \
 #     --rna
-# We must bind nextflow, the SLURM command suite, the slurm config, and the munge socket
+
 apptainer run \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+    --bind $(which nextflow):/usr/local/bin/nextflow \
     /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif \
-    python3 -u src/data_importing/new_download.py \
+    -u src/data_importing/new_download.py \
     -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
