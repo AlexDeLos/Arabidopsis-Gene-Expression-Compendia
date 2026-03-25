@@ -143,7 +143,7 @@ if __name__ == "__main__":
                     tracker=RNA_tracker, 
                     download_raw=True, 
                     scan=False,
-                    run_and_delete=True, # Enable deletion to save space after batch
+                    run_and_delete=False, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
                     debug=False
                 )
