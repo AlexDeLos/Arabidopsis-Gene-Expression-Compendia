@@ -24,6 +24,7 @@ From: python:3.11-slim-bookworm
     # 1. System dependencies + R from Debian repos (no external apt source needed)
     # =========================================================================
     apt-get update && apt-get install -y --no-install-recommends \
+        default-jre-headless \
         wget \
         curl \
         which \
