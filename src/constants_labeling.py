@@ -315,6 +315,7 @@ LABEL_CONFIG = {
         'priority_cols': ['title','characteristics_ch1', 'treatment_protocol_ch1','treatment'],
         'sub_attributes': {
             'intensity': {
+                'enum': IntensityEnum,
                 'instruction': "For every treatment extracted, you must assign an intensity score based on the text.",
                 'descriptions': INTENSITY_DESCRIPTIONS
             }
@@ -335,8 +336,6 @@ LABEL_CONFIG = {
     'genotype': {
         'enum': GenotypeEnum,
         'synonyms': GENOTYPE_SYNONYMS,
-        # "ecotype", "background", "genotype" are the most reliable column triggers.
-        # "line" is intentionally excluded — too generic and appears in unrelated contexts.
         'search_triggers': ['genotype', 'ecotype', 'background', 'accession', 'strain', 'mutation'],
         'priority_cols': ['characteristics_ch1', 'title', 'source_name_ch1', 'genotype', 'ecotype']
     }
@@ -359,6 +358,7 @@ for label in LABELS:
 
     enum_cls = config['enum']
     synonym_dict = config['synonyms']
+    # sub_attributes = config['sub_attributes']
 
     # Initialize lists
     BUCKET_KEYWORDS[label] = []
@@ -381,6 +381,7 @@ for label in LABELS:
                 if syn not in EXPLICIT_KEYWORDS[label]: # Avoid dupes
                     EXPLICIT_KEYWORDS[label].append(syn)
                 CANONICAL_MAP[label][syn] = canonical_val
+    
 
 
 # Auto-generate trigger mapping for the extractor

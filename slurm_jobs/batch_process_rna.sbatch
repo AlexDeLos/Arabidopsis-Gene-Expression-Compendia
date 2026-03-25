@@ -87,16 +87,29 @@ echo "Running RNA SEQ download and processing..."
 #     --array_index $SLURM_ARRAY_TASK_ID \
 #     --batch_size $BATCH_SIZE \
 #     --rna
+echo "Work Directory is set to: $NXF_WORK"
+echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
-apptainer run \
-    --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
-    --bind $(which nextflow):/usr/local/bin/nextflow \
-    /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif \
-    -u src/data_importing/new_download.py \
+# --- RUN THE PIPELINE NATIVELY ---
+echo "Running RNA SEQ download and processing..."
+
+# Run the python script natively on the compute node.
+# Python will then trigger nextflow, which will use your .nextflow.config to wrap jobs in Apptainer.
+python3 -u src/data_importing/new_download.py \
     -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
     --rna
+# apptainer run \
+#     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+#     --bind $(which sbatch):/usr/local/bin/sbatch \
+#     --bind $(which nextflow):/usr/local/bin/nextflow \
+#     /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif \
+#     -u src/data_importing/new_download.py \
+#     -o "$BIG_STORAGE/" \
+#     --array_index $SLURM_ARRAY_TASK_ID \
+#     --batch_size $BATCH_SIZE \
+#     --rna
 
 echo "Job finished"
 echo "Date: $(date)"

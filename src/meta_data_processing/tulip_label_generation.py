@@ -93,7 +93,7 @@ Assign one canonical value per label axis and return as a JSON object.
 
 def generate_system_prompt():
     prompt = (
-        "You are an expert plant biology annotator. Your task is to extract standardized metadata labels "
+        "You are an expert plant biology experiment annotator. Your task is to extract standardized metadata labels, returning ONLY the JSON object in the specified format "
         "for Arabidopsis thaliana samples based on the provided GEO description.\n\n"
         "### STRICT LABELING RULES ###\n"
     )
@@ -131,20 +131,34 @@ def generate_system_prompt():
     schema_template = {}
     
     for label, config in LABEL_CONFIG.items():
+        # 1. Extract the canonical values directly from the Enum
+        valid_options = [e.value for e in config['enum']]
+        
+        # 2. Format them into a strict instruction string
+        # e.g., "String MUST be exactly one of: 'root', 'leaf', 'flower'..."
+        options_str = ", ".join([f"'{val}'" for val in valid_options])
+        constraint_msg_unique = f"String MUST be exactly one of: {options_str}"
+        constraint_msg = f"String MUST be a subset of: {options_str}"
+
+        # 3. Build the structure based on sub_attributes and uniqueness
         if 'sub_attributes' in config:
-            # If it has sub-attributes, expect a list of dictionaries
-            obj_schema = {"type": "string (MUST be canonical value)"}
+            # For complex labels like 'treatment' with sub_attributes
+            if label in UNIQUE_LABELS:
+                obj_schema = {"val": constraint_msg_unique}
+            else:
+                obj_schema = {"val": constraint_msg}
             for sub_key, sub_config in config['sub_attributes'].items():
-                # Grab the type_hint if provided, otherwise default to "string or integer"
-                obj_schema[sub_key] = sub_config.get('type_hint', "integer")
+                obj_schema[sub_key] = sub_config.get('type_hint', "integer or string")
             
             schema_template[label] = [obj_schema]
         else:
-            # If no sub-attributes, expect a flat list
+            # For flat list labels like 'tissue', 'medium', 'genotype'
             if label in UNIQUE_LABELS:
-                schema_template[label] = ["string"]
+                # Suggests a single-item list
+                schema_template[label] = [constraint_msg_unique]
             else:
-                schema_template[label] = ["string", "string"]
+                # Suggests a multi-item list is allowed
+                schema_template[label] = [constraint_msg]
 
     # Convert the python dictionary into a nicely formatted JSON string
     schema_json_str = json.dumps(schema_template, indent=2)
@@ -152,11 +166,12 @@ def generate_system_prompt():
     # Append to prompt
     prompt += (
         "\n### OUTPUT FORMAT ###\n"
-        "You MUST return a strictly valid JSON object. Do NOT wrap the JSON in markdown blocks or include any other text.\n"
-        "The JSON object must strictly adhere to the following schema structure:\n"
+        "You MUST return ONLY a strictly valid JSON object. Do NOT wrap the JSON in markdown blocks or include any other text.\n"
+        "The JSON object must strictly adhere to the following schema structure and allowed values:\n"
         f"{schema_json_str}\n"
         "If a category is not mentioned in the text, return an empty list `[]` for that key."
     )
+    
     return prompt
 # ── TulipLabelGenerator ────────────────────────────────────────────────────────
 
@@ -192,9 +207,10 @@ class TulipLabelGenerator:
             ) from exc
 
         self.in_folder   = in_folder
-        self.saving_path = saving_path or os.path.join(
-            STORAGE_DIR, "labels", TULIP_MODEL_NAME, EXPERIMENT_NAME
-        )
+        self.saving_path = LABELS_PATH
+        # saving_path or os.path.join(
+        #     STORAGE_DIR, "labels", TULIP_MODEL_NAME, EXPERIMENT_NAME
+        # )
         self.model   = model
         self._client = OpenAI(
             base_url = TULIP_BASE_URL,
@@ -292,8 +308,7 @@ class TulipLabelGenerator:
     def _label_sample(
         self,
         sample_metadata: Dict,
-        study_metadata:  Dict,
-    ) -> Dict[str, List[str]]:
+        study_metadata:  Dict):
         """
         Ask TULIP to assign all label axes for one sample.
         Returns a dict matching the standard pipeline output format:
@@ -302,35 +317,47 @@ class TulipLabelGenerator:
         """
         prompt = self._build_prompt(sample_metadata, study_metadata)
 
-        try:
-            response = self._client.chat.completions.create(
-                model       = self.model,
-                messages    = [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user",   "content": prompt},
-                ],
-                max_tokens  = TULIP_MAX_TOKENS,
-                temperature = 0.0,
-            )
-            msg      = response.choices[0].message
-            raw_text = msg.content or ""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self._client.chat.completions.create(
+                    model       = self.model,
+                    messages    = [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user",   "content": prompt},
+                    ],
+                    max_tokens  = TULIP_MAX_TOKENS,
+                    temperature = 0.1*attempt,
+                )
+                msg      = response.choices[0].message
+                raw_text = msg.content or ""
 
-            # Reasoning model fallback: content may be empty if token budget was
-            # spent on chain-of-thought — extract JSON from reasoning_content instead.
-            if not raw_text:
-                reasoning = getattr(msg, "reasoning_content", None) or ""
-                if reasoning:
-                    logger.debug(
-                        "content empty (finish_reason=%s); extracting from reasoning_content",
-                        response.choices[0].finish_reason,
-                    )
-                    raw_text = reasoning
+                # Reasoning model fallback: content may be empty if token budget was
+                # spent on chain-of-thought — extract JSON from reasoning_content instead.
+                if not raw_text:
+                    reasoning = getattr(msg, "reasoning_content", None) or ""
+                    if reasoning:
+                        logger.debug(
+                            "content empty (finish_reason=%s); extracting from reasoning_content",
+                            response.choices[0].finish_reason,
+                        )
+                        raw_text = reasoning
 
-            return self._parse_labels(raw_text)
+                return self._parse_labels(raw_text)
 
-        except Exception as exc:
-            logger.warning("TULIP call failed: %s", exc)
-            return {label: ["unspecified"] for label in LABELS}
+            except Exception as exc:
+                logger.warning(
+                    "TULIP call failed on attempt %d/%d: %s", 
+                    attempt + 1, max_retries, exc
+                )
+                
+                if attempt == max_retries - 1:
+                    logger.error("All %d attempts to reach TULIP failed. Falling back to default labels.", max_retries)
+                    return self._parse_labels("")  # Generates the default unclassified schema
+                
+                # Optional: Add a standard `import time` at top of file and do:
+                # time.sleep(1 * (attempt + 1)) # to give transient network blips time to resolve
+            # return {label: ["unspecified"] for label in LABELS}
 
     # ── Prompt construction ────────────────────────────────────────────────────
 
@@ -387,21 +414,106 @@ class TulipLabelGenerator:
                 try:
                     parsed = json.loads(match.group())
                 except json.JSONDecodeError:
+                    raise ValueError('invalid response')
                     logger.debug("Could not parse label JSON: %s", cleaned[:200])
+            else:
 
-        result: Dict[str, List[str]] = {}
+                    raise ValueError('invalid response')
+
+        result: Dict[str, List] = {}  # Changed List[str] to List
         for label in LABELS:
             raw_val = parsed.get(label, "unspecified")
-            validated = self._validate_label(str(raw_val), label)
-            result[label] = [validated]
+            
+            # Coerce into a list if it's a single item or single string
+            if not isinstance(raw_val, list):
+                raw_val = [raw_val] if raw_val != "unspecified" else []
+
+            validated = []
+            sub_attr_cfg = LABEL_CONFIG[label].get('sub_attributes', {})
+
+            for r in raw_val:
+                # Handle cases where the LLM might return a flat string instead of a dict
+                item_dict = r if isinstance(r, dict) else {'val': str(r)}
+                
+                # 1. Validate the primary value ('val')
+                main_val = self._validate_label(item_dict.get('val', 'unspecified'), label)
+                
+                if sub_attr_cfg:
+                    valid_item = {'val': main_val}
+                    
+                    # 2. Dynamically validate all sub-attributes
+                    for sub_key, sub_cfg in sub_attr_cfg.items():
+                        raw_sub_val = item_dict.get(sub_key)
+                        enum_cls = sub_cfg['enum']
+                        
+                        try:
+                            # Infer the expected type from the first enum value (e.g. int vs str)
+                            expected_type = type(list(enum_cls)[0].value)
+                            typed_val = expected_type(raw_sub_val)
+                            
+                            if any(typed_val == e.value for e in enum_cls):
+                                valid_item[sub_key] = typed_val
+                            else:
+                                valid_item[sub_key] = list(enum_cls)[0].value
+                        except (TypeError, ValueError, IndexError):
+                            # Fallback if the parsing fails or value is missing
+                            valid_item[sub_key] = list(enum_cls)[0].value if list(enum_cls) else "unspecified"
+                    
+                    validated.append(valid_item)
+                else:
+                    # Simple label validation without sub-attributes
+                    validated.append(main_val)
+
+            # Ensure we always return at least one entry per label
+            if not validated:
+                validated = ["unspecified"] if not sub_attr_cfg else [{"val": "unspecified", **{k: list(v['enum'])[0].value for k,v in sub_attr_cfg.items()}}]
+
+            result[label] = validated
 
         return result
+    
 
+    def _validate_sub_attribute(self, raw_value, label: str, sub_key: str):
+        """
+        Dynamically validate a sub-attribute value against its enumeration in LABEL_CONFIG.
+        Discovers type constraints and falls back to a standardized default if invalid.
+        """
+        try:
+            sub_config = LABEL_CONFIG[label]['sub_attributes'][sub_key]
+            enum_cls = sub_config['enum']
+        except KeyError:
+            return "unspecified"
+
+        allowed_values = [e.value for e in enum_cls]
+        if not allowed_values:
+            return "unspecified"
+
+        # Determine target type (e.g., int vs str) based on the first item in the Enum
+        expected_type = type(allowed_values[0])
+
+        try:
+            cleaned = raw_value
+            if isinstance(cleaned, str):
+                cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', '', cleaned).strip()
+
+            typed_val = expected_type(cleaned)
+            if typed_val in allowed_values:
+                return typed_val
+        except (ValueError, TypeError):
+            pass
+
+        # Smart fallback loop: Try to find a standardized default, or use the first enum
+        for item in enum_cls:
+            if item.name.lower() in ["unspecified", "control", "unknown"]:
+                return item.value
+
+        return allowed_values[0]
     def _validate_label(self, value: str, label: str) -> str:
         """
         Accept the value only if it matches a canonical option (case-insensitive).
         Returns "unspecified" otherwise — never stores hallucinated values.
         """
+        
         cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', '', value).strip()
         if cleaned.lower() == "unspecified":
             return "unspecified"
