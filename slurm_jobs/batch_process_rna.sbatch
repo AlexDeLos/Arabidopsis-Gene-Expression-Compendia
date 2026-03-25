@@ -2,7 +2,7 @@
 
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=6G
@@ -81,9 +81,11 @@ echo "Running RNA SEQ download and processing..."
 #     --array_index $SLURM_ARRAY_TASK_ID \
 #     --batch_size $BATCH_SIZE \
 #     --rna
-apptainer run --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+# We must bind nextflow, the SLURM command suite, the slurm config, and the munge socket
+apptainer run \
+    --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif \
-    -u src/data_importing/new_download.py \
+    python3 -u src/data_importing/new_download.py \
     -o "$BIG_STORAGE/" \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
