@@ -111,14 +111,8 @@ class RNASeq_processor:
         return []
 
                 
-    def download_fastq(self, gse, output_folder, temp_files, max_retries=2):
-        """
-        Downloads FASTQs via parallel SLURM array jobs.
-
-        FIX 2: After the first sbatch completes, any SRRs whose files are
-        missing or corrupt are collected and retried up to `max_retries`
-        times before being reported as permanently failed.
-        """
+    def download_fastq(self, gse, output_folder, temp_files):
+        """Downloads using fastq-dump via parallel SLURM array jobs."""
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
         
@@ -129,35 +123,79 @@ class RNASeq_processor:
         print(f"Fetching SRR IDs for {len(gse.gsms)} samples...")
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
         
+        # DEBUG 2: Print the raw map before filtering
         print(f"RAW SRA MAP: {sra_map}")
 
         sra_map = {k:v for k,v in sra_map.items() if v}
         
+        # DEBUG 3: Print the map after filtering
         if not sra_map:
             print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
             return
 
-        # Collect all SRRs that need downloading
-        all_srrs = [srr for srrs in sra_map.values() for srr in srrs]
+        # 1. Collect all SRRs that need downloading
+        srrs_to_download = []
+        for gsm, srrs in sra_map.items():
+            for srr in srrs:
+                existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+                if not existing_gz:
+                    srrs_to_download.append(srr)
 
-        # --- FIX 2: retry loop ---
-        pending = self._get_missing_or_corrupt_srrs(all_srrs, output_folder)
+        if not srrs_to_download:
+            print(f"All SRRs for {gse} are already downloaded.")
+            return
 
-        for attempt in range(max_retries + 1):
-            if not pending:
-                break
+        # 2. Write missing SRRs to a text file for the SLURM array to read
+        srr_list_path = os.path.join(output_folder, "srr_list.txt")
+        with open(srr_list_path, 'w') as f:
+            for srr in srrs_to_download:
+                f.write(f"{srr}\n")
 
-            if attempt > 0:
-                print(f"  [Retry {attempt}/{max_retries}] Re-downloading {len(pending)} failed SRRs: {pending}")
-                time.sleep(5 * attempt)  # brief back-off before retry
+        print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
+        sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
+        
+        if not os.path.exists(sbatch_script):
+            print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
+            return
 
-            self._run_sbatch_download(pending, output_folder, logs_folder)
-            pending = self._get_missing_or_corrupt_srrs(pending, output_folder)
+        # 3. Call sbatch and WAIT for all array jobs to finish
+        cmd = [
+            "sbatch", 
+            "--wait", # Blocks the python script until the downloads finish
+            f"--array=1-{len(srrs_to_download)}",
+            f"--output={logs_folder}/fastq_dump_%A_%a.out",
+            f"--error={logs_folder}/fastq_dump_%A_%a.err",
+            sbatch_script,
+            srr_list_path,
+            output_folder
+        ]
+        
+        try:
+            subprocess.run(cmd, check=True)
+            print("All SLURM download array jobs completed.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error executing sbatch job array: {e}")
 
-        if pending:
-            print(f"  [!] {len(pending)} SRR(s) could not be downloaded after {max_retries} retries: {pending}")
-
+        # 4. Verify post-download and check data integrity
+        for srr in srrs_to_download:
+            existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
+            
+            valid_gz = []
+            for gz_file in existing_gz:
+                gz_path = os.path.join(output_folder, gz_file)
+                try:
+                    # Run a quiet integrity check on the gzip archive
+                    subprocess.run(['gzip', '-t', '-q', gz_path], check=True, stderr=subprocess.PIPE)
+                    valid_gz.append(gz_file)
+                except subprocess.CalledProcessError:
+                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting to prevent pipeline crash.")
+                    os.remove(gz_path)
+            
+            if not valid_gz:
+                print(f"    [!] Failed to download valid files for {srr} after sbatch completion.")
+                
         print(f'Done downloading for {gse.name}')
+                
         print(f'Done downloading for {gse}')
 
     # ------------------------------------------------------------------
