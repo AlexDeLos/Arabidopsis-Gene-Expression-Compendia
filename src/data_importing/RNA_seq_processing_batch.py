@@ -580,7 +580,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
             'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
         },
     }
-    processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='apptainer,slurm')
+    processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='singularity,slurm')
     tracker_save_path = os.path.join(output_dir, "rnaseq_tracker_stats.json")
     valid_gse_ids = []
 
