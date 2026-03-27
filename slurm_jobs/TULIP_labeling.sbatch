@@ -22,7 +22,7 @@ echo "Starting TULIP label generation..."
 
 # 2. Run the Script using Apptainer
 # Make sure the file is saved as 'tulip_label_generation.py' in the target directory
-apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python3 -u src/meta_data_processing/tulip_label_generation.py
+apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/meta_data_processing/tulip_label_generation.py
 
 echo "Job finished successfully."
 echo "Date: $(date)"
