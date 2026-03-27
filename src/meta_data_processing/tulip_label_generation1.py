@@ -66,6 +66,8 @@ logging.basicConfig(
 TULIP_BASE_URL   = "https://api.tulip.tudelft.nl/chat/v1"
 TULIP_MODEL      = "chat"
 TULIP_API_KEY    = os.environ.get("TULIP_API_KEY", "DUMMY_API_KEY")
+print(TULIP_API_KEY)
+raise ValueError('Done')
 TULIP_MAX_TOKENS = 2048   # Reasoning model writes chain-of-thought before JSON
 
 # Output subfolder name — kept separate from the vector pipeline so results
@@ -395,6 +397,7 @@ class TulipLabelGenerator:
 
             max_retries = 3
             raw_text = ""
+            # labels = None
             for attempt in range(max_retries):
                 try:
                     response = self._client.chat.completions.create(
@@ -414,8 +417,8 @@ class TulipLabelGenerator:
                     # break  # success
 
 
-                    labels = self._parse_labels(raw_text) if raw_text else \
-                            self._parse_labels("")  # generates default unspecified schema
+                    labels = self._parse_labels(raw_text) # generates default unspecified schema
+                    results[sample_id] = labels
 
                 except Exception as exc:
                     logger.warning(
@@ -424,7 +427,6 @@ class TulipLabelGenerator:
                     )
                     if attempt == max_retries - 1:
                         raw_text = ""
-            results[sample_id] = labels
 
             # Append the assistant's response to history so the next sample
             # sees what was already assigned — this is the memory mechanism.
