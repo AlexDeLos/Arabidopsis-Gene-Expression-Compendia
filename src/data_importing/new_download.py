@@ -142,7 +142,7 @@ if __name__ == "__main__":
                     output_dir=f"{root_storage_dir}rnaseq_data",
                     tracker=RNA_tracker, 
                     download_raw=True, 
-                    metadata_only=True,
+                    metadata_only=False,
                     run_and_delete=False, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
                     debug=False
