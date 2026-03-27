@@ -4,8 +4,8 @@
 #SBATCH --qos=medium
 #SBATCH --time=36:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=2G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=6G
 #SBATCH --job-name=tulip_label_gen
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
 

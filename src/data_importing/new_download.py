@@ -52,10 +52,10 @@ STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] O
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
-    parser.add_argument("-b", "--batch_size", help="output_dir", default=10,type=int)
-    parser.add_argument("--array_index", type=int, default=0, help="SLURM Array Task ID")
+    parser.add_argument("-b", "--batch_size", help="output_dir", default=100,type=int)
+    parser.add_argument("--array_index", type=int, default=10, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=True)
+    parser.add_argument("--rna", action="store_true", default=False)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
