@@ -81,7 +81,7 @@ _STUDY_FIELDS = ["summary", "overall_design"]
 
 # We use XML tags to clearly separate the data payload from the system instructions.
 _USER_PROMPT_TEMPLATE = """\
-Please analyze the following GEO metadata and extract the requested labels according to the system instructions.
+Analyze the following GEO metadata and extract the requested labels according to the system instructions, provide only the JSON object requested as a response.
 
 <input>
 <sample_metadata>

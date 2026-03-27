@@ -10,7 +10,7 @@ sys.path.append(module_dir)
 from src.constants import *
 
 # Import the processing function from your other file
-from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
+# from src.data_importing.microarray_data_processing import Microarray_data_processing, Microarray_tracker,download_experiments_microarray
 from src.data_importing.RNA_seq_processing_batch import download_experiments_RNA_seq_nf_core
 from src.data_importing.get_count_matrices import download_processed_counts
 from src.data_importing.helpers.helpers import plot_tracker_results,plot_tracker_results_RNA, combine_files_microarray
@@ -52,10 +52,10 @@ STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] O
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default='./new_storage/')
-    parser.add_argument("-b", "--batch_size", help="output_dir", default=2,type=int)
+    parser.add_argument("-b", "--batch_size", help="output_dir", default=10,type=int)
     parser.add_argument("--array_index", type=int, default=0, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=False)
+    parser.add_argument("--rna", action="store_true", default=True)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -142,7 +142,7 @@ if __name__ == "__main__":
                     output_dir=f"{root_storage_dir}rnaseq_data",
                     tracker=RNA_tracker, 
                     download_raw=True, 
-                    scan=False,
+                    metadata_only=True,
                     run_and_delete=False, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
                     debug=False

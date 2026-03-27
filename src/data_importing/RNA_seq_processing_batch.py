@@ -593,7 +593,7 @@ def save_rnaseq_sample_metadata(gse_id: str, gse, output_dir: str) -> str | None
         return None
 
 
-def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, scan:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
+def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, metadata_only:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
     """
@@ -623,7 +623,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     valid_gse_ids = []
 
     # Filter list for things already processed
-    todos = [g for g in gse_list if not tracker.is_processed(g) and not tracker.is_ignored(g) and not tracker.is_error(g)]
+    todos = [g for g in gse_list if (not tracker.is_processed(g) or metadata_only) and not tracker.is_ignored(g) and not tracker.is_error(g)]
     print(f'we are going to process these studies {todos}')
     from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)
@@ -704,15 +704,10 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                             process_metadata(gse_id, gse, gsm, save_path=os.path.join(output_dir, "metadata", gse_id))
                     except Exception as e:
                         print(f"    > Metadata processing failed: {e}")
-
+                    
+                    if metadata_only:
+                        continue #TODO: test if this works, should only download the metadata, nothing more
                     # save_rnaseq_sample_metadata(gse_id, gse, output_dir)
-
-                    if debug:
-                        if len(gse.gsms) > 1:
-                            first_sample_id = list(gse.gsms.keys())[0]
-                            gse.gsms = {first_sample_id: gse.gsms[first_sample_id]}
-                            print(f"DEBUG MODE: Reduced {gse_id} to single sample: {first_sample_id}")
-
                     # 3. Download (FIX 2: retry on corruption baked into download_fastq)
                     if download_raw:
                         if not tracker.is_downloaded(gse_id):
@@ -744,7 +739,8 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 except Exception as e:
                     print(f"Error preparing {gse_id}: {e}")
                     tracker.mark_ignore(gse_id)
-
+            if metadata_only:
+                continue
             # --- PHASE 2: EXECUTE BATCH ---
             if not batch_samplesheet_rows:
                 print("Skipping batch execution (no valid samples).")

@@ -1,15 +1,15 @@
 #!/bin/bash
 
 #SBATCH --partition=general
-#SBATCH --qos=medium
-#SBATCH --time=36:00:00
+#SBATCH --qos=short
+#SBATCH --time=0:10:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=6G
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=11-19
+#SBATCH --array=0-9
 #SBATCH --export=NONE
 
 module purge
