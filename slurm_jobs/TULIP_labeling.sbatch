@@ -18,19 +18,6 @@ echo "Date: $(date)"
 echo "=================================================="
 echo ""
 
-# 1. Environment Variables
-export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-
-# Load variables from the .env file (automatically exports them)
-if [ -f .env ]; then
-    echo "Loading .env file..."
-    set -a
-    source .env
-    set +a
-else
-    echo "Warning: .env file not found!"
-fi
-
 echo "Starting TULIP label generation..."
 
 # 2. Run the Script using Apptainer
