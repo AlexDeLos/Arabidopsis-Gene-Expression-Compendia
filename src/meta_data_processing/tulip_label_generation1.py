@@ -43,6 +43,7 @@ import argparse
 import json
 import logging
 import os
+from dotenv import load_dotenv
 import re
 import sys
 from typing import Dict, List, Optional
@@ -63,11 +64,10 @@ logging.basicConfig(
 )
 
 # ── TULIP constants ────────────────────────────────────────────────────────────
+load_dotenv()
 TULIP_BASE_URL   = "https://api.tulip.tudelft.nl/chat/v1"
 TULIP_MODEL      = "chat"
-TULIP_API_KEY    = os.environ.get("TULIP_API_KEY", "DUMMY_API_KEY")
-print(TULIP_API_KEY)
-raise ValueError('Done')
+TULIP_API_KEY    = os.getenv("TULIP_API_KEY", "DUMMY_API_KEY")
 TULIP_MAX_TOKENS = 2048   # Reasoning model writes chain-of-thought before JSON
 
 # Output subfolder name — kept separate from the vector pipeline so results
