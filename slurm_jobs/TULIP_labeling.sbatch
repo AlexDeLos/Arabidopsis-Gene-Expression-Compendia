@@ -21,7 +21,10 @@ echo ""
 echo "Starting TULIP label generation..."
 
 # 2. Run the Script using Apptainer
-apptainer exec --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python -u src/meta_data_processing/tulip_label_generation1.py --in-folder "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/"
+# apptainer exec --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python -u src/meta_data_processing/tulip_label_generation1.py --in-folder "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/"
+echo "running RNA labels"
+apptainer exec --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python -u src/meta_data_processing/tulip_label_generation1.py --in-folder "/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/metadata/"
+
 
 echo "Job finished successfully."
 echo "Date: $(date)"
