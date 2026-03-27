@@ -3,7 +3,8 @@ from enum import Enum
 from typing import Dict, List, Any
 
 # 1. Define the Labels (The keys for everything)
-LABELS = ['tissue', 'treatment', 'medium', 'genotype']
+# LABELS = ['tissue', 'treatment', 'medium', 'genotype']
+LABELS = ['tissue', 'treatment', 'medium', 'ecotype','modification', 'developmental_stage']
 
 # 2. Define the Enums (The Canonical "Truth")
 class TissueEnum(str, Enum):
@@ -24,31 +25,40 @@ class TissueEnum(str, Enum):
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
 
+class DevelopmentalStageEnum(str, Enum):
+    GERMINATION = "Germination"
+    SEEDLING = "Seedling"
+    VEGETATIVE = "Vegetative"
+    BOLTING = "Bolting"
+    FLOWERING = "Flowering"
+    FRUITING = "Fruiting"
+    SENESCENCE = "Senescence"
+    UNKNOWN = "unknown"
+    UNSPECIFIED = "unspecified"
+
 class TreatmentEnum(str, Enum):
-    DROUGHT = "Drought Stress"
-    DEHYDRATION = "Dehydration Stress"
-    SALINITY = "Salinity Stress"
-    HEAT = "Heat Stress"
-    COLD = "Cold Stress"
-    CHEMICAL = "Chemical Stress"
-    NUTRIENT = "Nutrient Deficiency"
-    BIOTIC = "Biotic Stress"
-    ABIOTIC = "Abiotic Stress"
-    LOW_LIGHT = "Low Light Stress"
-    HIGH_LIGHT = "High Light Stress"
-    OTHER_LIGHT = "Other Light Stress"
+    DROUGHT = "Drought"
+    FLOOD = "Flood"
+    DEHYDRATION = "Dehydration"
+    SALINITY = "Salinity"
+    HEAT = "Heat"
+    COLD = "Cold"
+    CHEMICAL = "Chemical"
+    BIOTIC = "Biotic"
+    ABIOTIC = "Abiotic"
+    LOW_LIGHT = "Low Light"
+    HIGH_LIGHT = "High Light"
+    OTHER_LIGHT = "Other Light"
     CUT = "Cut"
-    NUTRIENT_DEFICIENCY = "Nutrient Deficiency Stress"
-    CHEMICAL_STRESS = "Chemical Stress"
-    BIOTIC_STRESS = "Biotic Stress"
-    OTHER = "Other stress"
+    NUTRIENT_DEFICIENCY = "Nutrient Deficiency"
+    OTHER = "Other"
     CONTROL = "Control"
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
 
 class MediumEnum(str, Enum):
     MS = "MS"
-    B5 = "Gamborg B5 medium"
+    GAMBORG_B5 = "Gamborg B5 medium"
     SOIL = "Soil"
     VERMICULITE = "Vermiculite"
     PERLITE = "Perlite"
@@ -58,30 +68,27 @@ class MediumEnum(str, Enum):
     AGAR = "Agar"
     UNKNOWN = "unknown"
     UNSPECIFIED = "unspecified"
-    GAMBORG_B5_MEDIUM = "Gamborg B5"
 
-class GenotypeEnum(str, Enum):
-    # Wild-type accessions
-    COL_0       = "Col-0"
-    WS          = "Ws"
-    WS_2        = "Ws-2"
-    WS_4        = "Ws-4"
-    LER         = "Ler"
-    C24         = "C24"
-    CVI         = "Cvi"
-    # Mutant / transgenic classes
-    KNOCKOUT    = "Knockout mutant"
-    KNOCKDOWN   = "Knockdown mutant"
+class EcotypeEnum(str, Enum):
+    COL_0 = "Col-0"
+    WS = "Ws"
+    WS_2 = "Ws-2"
+    WS_4 = "Ws-4"
+    LER = "Ler"
+    C24 = "C24"
+    CVI = "Cvi"
+    GENERIC_WILD_TYPE = "Wild-type (Unspecified ecotype)"
+
+class ModificationEnum(str, Enum):
+    NONE = "None (Wild-type)"
+    KNOCKOUT = "Knockout mutant"
+    KNOCKDOWN = "Knockdown mutant"
     OVEREXPRESSOR = "Overexpressor"
-    REPORTER    = "Reporter line"
-    RNAi        = "RNAi line"
-    CRISPR      = "CRISPR mutant"
-    # Catch-alls
-    WILD_TYPE   = "Wild-type"
-    MUTANT      = "Mutant"
-    TRANSGENIC  = "Transgenic"
-    UNKNOWN     = "unknown"
-    UNSPECIFIED = "unspecified"
+    REPORTER = "Reporter line"
+    RNAI = "RNAi line"
+    CRISPR = "CRISPR mutant"
+    GENERIC_MUTANT = "Mutant (Unspecified type)"
+    GENERIC_TRANSGENIC = "Transgenic (Unspecified type)"
 
 # 3. Define Synonyms (Map Canonical Enum -> List of Synonyms)
 # This replaces TreatmentEnum_alt. You can add as many variations as you want here.
@@ -134,22 +141,10 @@ TREATMENT_SYNONYMS = {
         "Phosphate deficiency", "Starvation", "Deprivation", "Absence of"
     ],
 
-    # --- Chemical / Atmospheric ---
-    TreatmentEnum.CHEMICAL_STRESS: [
-        "Hypoxia", "Anoxia", "Low oxygen", "Dexamethasone", "Ozone", 
-        "Estradiol", "Ethanol", "Methanol", "Fumigation", "Chemical treatment"
-    ],
-
-    # --- Biotic ---
-    TreatmentEnum.BIOTIC_STRESS: [
-        "Inoculated", "Infected", "Agrobacterium", "Pseudomonas syringae", 
-        "Pathogen", "Fungus", "Elicitor", "Chitin", "Flg22"
-    ],
-
     # --- Baseline ---
     TreatmentEnum.CONTROL: [
         "No stress", "Control", "Mock", "Untreated", "Normal conditions", 
-        "Standard media", "Ambient", "Vehicle control"
+        "Standard media", "Ambient", "Vehicle control", "Room temperature"
     ]
 }
 
@@ -208,9 +203,6 @@ MEDIUM_SYNONYMS = {
         "Murashige and Skoog", "MS", "MS salts", "MS medium", 
         "1/2 MS", "Half-strength MS", "0.5X MS", "MS plates", "MS agar"
     ],
-    MediumEnum.GAMBORG_B5_MEDIUM: [
-        "Gamborg's", "Gamborg B5", "B5 medium", "Gamborg's B5", "B5 salts"
-    ],
     
     # --- Physical Substrates (Solid) ---
     MediumEnum.SOIL: [
@@ -241,58 +233,17 @@ MEDIUM_SYNONYMS = {
     ]
 }
 
-GENOTYPE_SYNONYMS = {
-    # Wild-type accessions
-    GenotypeEnum.COL_0: [
-        "Columbia", "Col", "Col-0", "Columbia-0", "ecotype Col",
-        "background Col-0", "WT Col-0",
-    ],
-    GenotypeEnum.WS: [
-        "Wassilewskija", "Ws", "WS",
-    ],
-    GenotypeEnum.WS_2: ["Ws-2", "WS-2"],
-    GenotypeEnum.WS_4: ["Ws-4", "WS-4"],
-    GenotypeEnum.LER: [
-        "Landsberg erecta", "Ler", "Ler-0", "L. er",
-    ],
-    GenotypeEnum.C24: ["C24", "ecotype C24"],
-    GenotypeEnum.CVI: ["Cape Verde Islands", "Cvi", "Cvi-0"],
-
-    # Functional mutant / transgenic classes
-    GenotypeEnum.KNOCKOUT: [
-        "T-DNA insertion", "loss-of-function", "null mutant",
-        "insertion line", "SALK line", "SAIL line", "GABI-Kat",
-    ],
-    GenotypeEnum.KNOCKDOWN: [
-        "hypomorphic", "partial loss-of-function", "weak allele",
-    ],
-    GenotypeEnum.OVEREXPRESSOR: [
-        "overexpression", "35S::", "35S promoter", "OE", "OX",
-        "gain-of-function", "constitutive expression",
-    ],
-    GenotypeEnum.REPORTER: [
-        "GFP fusion", "GUS fusion", "luciferase", "reporter construct",
-        "promoter:GFP", "promoter:GUS",
-    ],
-    GenotypeEnum.RNAi: [
-        "RNAi", "RNA interference", "hairpin", "amiRNA",
-        "artificial microRNA", "gene silencing",
-    ],
-    GenotypeEnum.CRISPR: [
-        "CRISPR", "CRISPR-Cas9", "Cas9", "genome editing", "edited line",
-    ],
-
-    # Catch-alls (used when no specific accession or class is determinable)
-    GenotypeEnum.WILD_TYPE: [
-        "wild type", "wild-type", "WT", "wt", "unmodified", "non-transgenic",
-    ],
-    GenotypeEnum.MUTANT: [
-        "mutant", "loss of function", "allele", "atxxx mutant",
-    ],
-    GenotypeEnum.TRANSGENIC: [
-        "transgenic", "transformed", "stably transformed",
-    ],
-}
+DEVELOPMENTAL_SYNONYMS={
+            DevelopmentalStageEnum.GERMINATION: ['germinating', 'imbibed', 'stratified', 'stage 0'],
+            DevelopmentalStageEnum.SEEDLING: ['plantlet', 'young plant', 'days post germination', 'dpg', 'stage 1'],
+            DevelopmentalStageEnum.VEGETATIVE: ['rosette stage', 'leaf production', 'pre-flowering', 'stage 3'],
+            DevelopmentalStageEnum.BOLTING: ['stem emergence', 'inflorescence emergence', 'stage 5'],
+            DevelopmentalStageEnum.FLOWERING: ['anthesis', 'blooming', 'floral', 'stage 6'],
+            DevelopmentalStageEnum.FRUITING: ['silique development', 'seed filling', 'pod development', 'stage 8'],
+            DevelopmentalStageEnum.SENESCENCE: ['aging', 'drying', 'yellowing', 'terminal', 'stage 9'],
+            DevelopmentalStageEnum.UNKNOWN: [],
+            DevelopmentalStageEnum.UNSPECIFIED: []
+        }
 class IntensityEnum(int, Enum):
     CONTROL = 0
     MILD = 1
@@ -305,12 +256,91 @@ INTENSITY_DESCRIPTIONS = {
     IntensityEnum.MODERATE: "Moderate stress (e.g., standard stress assay conditions)",
     IntensityEnum.SEVERE: "Severe/Extreme stress (e.g., lethal temperatures, high concentration, prolonged exposure)"
 }
+DEVELOPMENTAL_STAGE_DESCRIPTIONS = {
+    DevelopmentalStageEnum.GERMINATION: "The process beginning with dry seed imbibition and ending with radicle emergence.",
+    DevelopmentalStageEnum.SEEDLING: "The early growth phase showing expanded cotyledons, prior to true rosette leaf expansion.",
+    DevelopmentalStageEnum.VEGETATIVE: "The main growth phase characterized by true rosette leaf production before the transition to flowering.",
+    DevelopmentalStageEnum.BOLTING: "The phase of rapid elongation of the primary inflorescence stem.",
+    DevelopmentalStageEnum.FLOWERING: "The reproductive period when flowers are open and anthesis occurs.",
+    DevelopmentalStageEnum.FRUITING: "The post-fertilization stage focusing on silique expansion and seed development.",
+    DevelopmentalStageEnum.SENESCENCE: "The terminal aging phase marked by chlorophyll breakdown, yellowing, and tissue death."
+}
 
+TISSUE_DESCRIPTIONS = {
+    TissueEnum.ROOT: "The below-ground portion of the plant responsible for water and nutrient uptake.",
+    TissueEnum.LEAF: "The primary photosynthetic organ, including cotyledons, rosette leaves, and cauline leaves.",
+    TissueEnum.FLOWER: "The reproductive structure, including petals, sepals, stamens, and carpels.",
+    TissueEnum.SHOOT: "The entire above-ground portion of the plant, including stems, leaves, and reproductive organs.",
+    TissueEnum.ROSETTE: "The circular, basal arrangement of leaves that forms before the plant bolts.",
+    TissueEnum.BUD: "An undeveloped or embryonic shoot, often referring to floral or apical meristems.",
+    TissueEnum.WHOLE_PLANT: "The entire organism, including both aerial and subterranean parts.",
+    TissueEnum.SILIQUE: "The seed-bearing fruit capsule typical of Arabidopsis and other Brassicaceae.",
+    TissueEnum.CALLUS: "An unorganized mass of undifferentiated, actively dividing cells grown in vitro.",
+    TissueEnum.SEEDLING: "A very young plant newly emerged from a seed, typically encompassing the cotyledon stage.",
+    TissueEnum.SEED: "The mature fertilized ovule containing the embryo, endosperm, and seed coat.",
+    TissueEnum.STEM: "The main structural axis of the plant, including the hypocotyl and the inflorescence stalk.",
+    TissueEnum.POLLEN: "The male microgametophytes produced in the anther.",
+    TissueEnum.CELL_CULTURE: "Cells grown in liquid suspension or on solid media, often as protoplasts or undifferentiated cell lines."
+}
+TREATMENT_DESCRIPTIONS = {
+    TreatmentEnum.DROUGHT: "Insufficient water availability in the growth medium (e.g., withholding water from soil).",
+    TreatmentEnum.FLOOD: "Excessive water application leading to complete or partial submergence and root hypoxia.",
+    TreatmentEnum.DEHYDRATION: "Removal of water from the plant tissue itself, often by placing excised plants in dry air.",
+    TreatmentEnum.SALINITY: "Exposure to high concentrations of salts, typically NaCl, causing osmotic and ionic stress.",
+    TreatmentEnum.HEAT: "Exposure to temperatures significantly above the optimal growth range (e.g., >30°C).",
+    TreatmentEnum.COLD: "Exposure to low, non-freezing chilling temperatures or freezing temperatures.",
+    TreatmentEnum.CHEMICAL: "Exposure to exogenous chemicals, hormones, toxins, gases (e.g., ozone, hypoxia), or chemical elicitors.",
+    TreatmentEnum.BIOTIC: "Interaction with living organisms, including pathogens, herbivores, or application of pathogen-associated molecular patterns (e.g., flg22).",
+    TreatmentEnum.ABIOTIC: "A generic designation for a non-living environmental stressor when the specific type (e.g., heat, cold) is unspecified.",
+    TreatmentEnum.LOW_LIGHT: "Exposure to darkness, shading, or suboptimal light intensity.",
+    TreatmentEnum.HIGH_LIGHT: "Exposure to excessively high light intensity or damaging UV radiation.",
+    TreatmentEnum.OTHER_LIGHT: "Specific light quality treatments (e.g., red, blue, far-red) or photoperiod changes.",
+    TreatmentEnum.CUT: "Mechanical damage, wounding, or physical excision of plant tissues.",
+    TreatmentEnum.NUTRIENT_DEFICIENCY: "Growth in a medium lacking one or more essential macro- or micro-nutrients (e.g., -N, -P, -Fe).",
+    TreatmentEnum.OTHER: "A specified treatment or stress condition that does not fit into any of the standard canonical categories.",
+    TreatmentEnum.CONTROL: "Standard, optimal, unperturbed growth conditions. Used as the baseline for comparison.",
+}
+
+MEDIUM_DESCRIPTIONS = {
+    MediumEnum.MS: "Murashige and Skoog medium, a standard synthetic nutrient mixture for plant tissue culture.",
+    MediumEnum.GAMBORG_B5: "Gamborg's B5 medium, a specific synthetic basal salt mixture for in vitro culture.",
+    MediumEnum.SOIL: "Natural or commercial potting mixes consisting of organic and inorganic matter.",
+    MediumEnum.VERMICULITE: "A hydrous phyllosilicate mineral substrate used for aeration and moisture retention.",
+    MediumEnum.PERLITE: "An amorphous volcanic glass substrate used to improve aeration and drainage.",
+    MediumEnum.SAND: "Granular material composed of finely divided rock and mineral particles.",
+    MediumEnum.HYDROPONIC: "Liquid nutrient solution setups where roots are completely submerged or bathed in liquid without soil.",
+    MediumEnum.LIQUID: "General liquid broth or suspension medium without a gelling agent.",
+    MediumEnum.AGAR: "Any solid or semi-solid medium gelled with agar, agarose, or phytagel."
+}
+
+ECOTYPE_DESCRIPTIONS = {
+    EcotypeEnum.COL_0: "Columbia-0 (Col-0), the standard reference accession.",
+    EcotypeEnum.WS: "Wassilewskija (Ws) general ecotype.",
+    EcotypeEnum.WS_2: "Wassilewskija-2 (Ws-2) sub-line.",
+    EcotypeEnum.WS_4: "Wassilewskija-4 (Ws-4) sub-line.",
+    EcotypeEnum.LER: "Landsberg erecta (Ler) ecotype.",
+    EcotypeEnum.C24: "C24 ecotype.",
+    EcotypeEnum.CVI: "Cape Verde Islands (Cvi) ecotype.",
+    EcotypeEnum.GENERIC_WILD_TYPE: "Used when the text mentions 'wild-type' but does not specify which ecotype (e.g., Col-0, Ler) was used."
+}
+
+MODIFICATION_DESCRIPTIONS = {
+    ModificationEnum.NONE: "The plant has no genetic modifications; it is a true wild-type baseline.",
+    ModificationEnum.KNOCKOUT: "A complete loss-of-function mutation, usually via T-DNA insertion.",
+    ModificationEnum.KNOCKDOWN: "Reduced, but not eliminated, gene expression (e.g., weak hypomorphic allele).",
+    ModificationEnum.OVEREXPRESSOR: "Engineered to express a gene at high levels (e.g., using a 35S promoter).",
+    ModificationEnum.REPORTER: "Expressing a visual/quantifiable marker (e.g., GFP, GUS, Luciferase).",
+    ModificationEnum.RNAI: "Utilizing RNA interference or artificial microRNAs to silence transcripts.",
+    ModificationEnum.CRISPR: "A targeted mutation or edit generated using CRISPR/Cas technology.",
+    ModificationEnum.GENERIC_MUTANT: "A plant with a genetic alteration, but the exact mechanism (e.g., knockout, point mutation) is not stated.",
+    ModificationEnum.GENERIC_TRANSGENIC: "A plant carrying introduced foreign DNA, but the specific function (e.g., reporter, overexpressor) is not stated."
+}
 # 4. Master Configuration (The "Registry")
 LABEL_CONFIG = {
     'treatment': {
         'enum': TreatmentEnum,
         'synonyms': TREATMENT_SYNONYMS,
+        'descriptions': TREATMENT_DESCRIPTIONS,
         'search_triggers': ['treatment', 'treated', 'stress', 'condition', 'exposure'],
         'priority_cols': ['title','characteristics_ch1', 'treatment_protocol_ch1','treatment'],
         'sub_attributes': {
@@ -324,21 +354,37 @@ LABEL_CONFIG = {
     'tissue': {
         'enum': TissueEnum,
         'synonyms': TISSUE_SYNONYMS,
+        'descriptions': TISSUE_DESCRIPTIONS,
         'search_triggers': ['tissue', 'organ', 'source', 'derived from','cell'],
         'priority_cols': ['title','source_name_ch1', 'characteristics_ch1','tissue']
     },
     'medium': {
         'enum': MediumEnum,
         'synonyms': MEDIUM_SYNONYMS,
+        'descriptions': MEDIUM_DESCRIPTIONS,
         'search_triggers': ['medium', 'growth medium', 'substrate'],
         'priority_cols': ['titel','growth_protocol_ch1', 'characteristics_ch1','medium']
     },
-    'genotype': {
-        'enum': GenotypeEnum,
-        'synonyms': GENOTYPE_SYNONYMS,
+    'ecotype': {
+        'enum': EcotypeEnum,
+        'synonyms': {},
+        'descriptions': ECOTYPE_DESCRIPTIONS,
         'search_triggers': ['genotype', 'ecotype', 'background', 'accession', 'strain', 'mutation'],
         'priority_cols': ['characteristics_ch1', 'title', 'source_name_ch1', 'genotype', 'ecotype']
-    }
+    },
+    'modification': {
+        'enum': EcotypeEnum,
+        'synonyms': {},
+        'descriptions': MODIFICATION_DESCRIPTIONS,
+        'search_triggers': ['genotype', 'ecotype', 'background', 'accession', 'strain', 'mutation'],
+        'priority_cols': ['characteristics_ch1', 'title', 'source_name_ch1', 'genotype', 'ecotype']
+    },
+    'developmental_stage': {
+        'enum': DevelopmentalStageEnum,
+        'search_triggers': ['stage', 'development', 'age', 'days old', 'weeks old', 'dpg', 'das', 'boyes'],
+        'synonyms': DEVELOPMENTAL_SYNONYMS,
+        'descriptions': DEVELOPMENTAL_STAGE_DESCRIPTIONS,
+    },
 }
 
 # 5. Auto-Generate Dictionaries
@@ -389,7 +435,8 @@ ALL_TRIGGERS = {label: config['search_triggers'] + EXPLICIT_KEYWORDS[label]
                 for label, config in LABEL_CONFIG.items()}
 
 # Define which categories should strictly have only ONE label
-UNIQUE_LABELS = ['tissue', 'medium', 'genotype']
+# UNIQUE_LABELS = ['tissue', 'medium', 'genotype']
+UNIQUE_LABELS = ['tissue', 'medium', 'genotype', 'developmental_stage']
 
 # Map each category to its Control value. 
 # Assuming your enums are imported here, use `.value` to get the string.

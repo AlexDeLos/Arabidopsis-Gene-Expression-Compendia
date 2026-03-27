@@ -72,7 +72,6 @@ TULIP_MAX_TOKENS = 2048   # Reasoning model writes chain-of-thought before JSON
 # don't overwrite each other and can be compared side-by-side.
 TULIP_MODEL_NAME = "tulip_llm"
 
-# Metadata fields forwarded to TULIP, in priority order.
 _SAMPLE_FIELDS = [
     "title", "source_name_ch1", "characteristics_ch1",
     "description", "molecule_ch1", "extract_protocol_ch1",
@@ -80,99 +79,100 @@ _SAMPLE_FIELDS = [
 ]
 _STUDY_FIELDS = ["summary", "overall_design"]
 
+# We use XML tags to clearly separate the data payload from the system instructions.
 _USER_PROMPT_TEMPLATE = """\
-=== RAW METADATA ===
-{metadata_block}
+Please analyze the following GEO metadata and extract the requested labels according to the system instructions.
 
-=== CANONICAL OPTIONS ===
-{options_block}
+<input>
+<sample_metadata>
+{sample_block}
+</sample_metadata>
 
-Assign one canonical value per label axis and return as a JSON object.
+<study_context>
+{study_block}
+</study_context>
+</input>
 """
-
+import json
 
 def generate_system_prompt():
     prompt = (
-        "You are an expert plant biology experiment annotator. Your task is to extract standardized metadata labels, returning ONLY the JSON object in the specified format "
-        "for Arabidopsis thaliana samples based on the provided GEO description.\n\n"
-        "### STRICT LABELING RULES ###\n"
+        "<context>You are an expert plant biology experiment annotator. Extract standardized metadata labels "
+        "for Arabidopsis thaliana samples based on the provided GEO description. It is crucial you keep your decision concise and to the point, DO NOT ADD EXPLANATIONS\n</context>\n"
+        "<instructions>\n"
+        "1. Map the text to the exact canonical values provided in the <ontology>. Use the provided definitions to guide your categorization.\n"
+        "2. Return ONLY a strictly valid JSON object. Do NOT wrap the JSON in markdown blocks (e.g., ```json) or include text.\n"
+        "3. The response will be automatically parsed by a JSON parser  .\n"
+        "</instructions>\n\n"
+        "<rules>\n"
     )
     
-    # 1. Enforce Unique Labels (Single choice) vs Multi-choice
+    # 1. Enforce Unique Labels & Globalize Fallbacks
     for label in LABELS:
         if label in UNIQUE_LABELS:
-            prompt += f"- For '{label}', you must pick EXACTLY ONE canonical value.\n"
+            prompt += f"- '{label}': EXACTLY ONE canonical value.\n"
         else:
-            prompt += f"- For '{label}', you may pick one or multiple canonical values if applicable.\n"
+            prompt += f"- '{label}': ONE OR MULTIPLE canonical values.\n"
             
-    prompt += "\n### CANONICAL VALUES & SYNONYMS ###\n"
-    prompt += "You must map the text to the following canonical values. Use the synonyms as hints, but ONLY output the canonical value.\n"
-    
-    # 2. Dynamically build categories and check for sub-attributes
+    prompt += "- FALLBACK: If a category is missing/unclear, output 'unspecified'. If explicitly stated as unknown, output 'unknown'.\n"
+    prompt += "</rules>\n\n"
+            
+    # 2. Dynamically build ontology using Definitions
+    prompt += "<ontology>\n"
     for label, config in LABEL_CONFIG.items():
-        prompt += f"\nCategory: {label.upper()}\n"
+        prompt += f"  <{label}>\n"
         
-        # Add primary enums
         for enum_item in config['enum']:
             canonical = enum_item.value
-            synonyms = config['synonyms'].get(enum_item, [])
-            synonym_str = f" (Synonyms: {', '.join(synonyms)})" if synonyms else ""
-            prompt += f"  - {canonical}{synonym_str}\n"
-
-        # DYNAMIC INJECTION: Add sub-attributes if they exist in the config
-        if 'sub_attributes' in config:
-            for sub_key, sub_config in config['sub_attributes'].items():
-                prompt += f"\n  -> SUB-ATTRIBUTE REQUIREMENT FOR {label.upper()}: '{sub_key}'\n"
-                prompt += f"     {sub_config['instruction']}\n"
-                # Add the allowed values and descriptions
-                for val_enum, desc in sub_config['descriptions'].items():
-                     prompt += f"       {val_enum.value} = {desc}\n"
-
-    schema_template = {}
-    
-    for label, config in LABEL_CONFIG.items():
-        # 1. Extract the canonical values directly from the Enum
-        valid_options = [e.value for e in config['enum']]
-        
-        # 2. Format them into a strict instruction string
-        # e.g., "String MUST be exactly one of: 'root', 'leaf', 'flower'..."
-        options_str = ", ".join([f"'{val}'" for val in valid_options])
-        constraint_msg_unique = f"String MUST be exactly one of: {options_str}"
-        constraint_msg = f"String MUST be a subset of: {options_str}"
-
-        # 3. Build the structure based on sub_attributes and uniqueness
-        if 'sub_attributes' in config:
-            # For complex labels like 'treatment' with sub_attributes
-            if label in UNIQUE_LABELS:
-                obj_schema = {"val": constraint_msg_unique}
-            else:
-                obj_schema = {"val": constraint_msg}
-            for sub_key, sub_config in config['sub_attributes'].items():
-                obj_schema[sub_key] = sub_config.get('type_hint', "integer or string")
             
+            # Skip printing unknown/unspecified since we made them global rules
+            if canonical.lower() in ['unknown', 'unspecified']:
+                continue
+                
+            # Fetch the definition instead of synonyms
+            descriptions_dict = config.get('descriptions', {})
+            description = descriptions_dict.get(enum_item, "")
+            
+            # Format cleanly: "- Canonical - Definition"
+            if description:
+                prompt += f"    - {canonical} - {description}\n"
+            else:
+                prompt += f"    - {canonical}\n"
+
+        # Handle Sub-Attributes (like Treatment Intensity)
+        if 'sub_attributes' in config:
+            for sub_key, sub_config in config['sub_attributes'].items():
+                prompt += f"\n    <sub_attribute name='{sub_key}'>\n"
+                prompt += f"      {sub_config['instruction']}\n"
+                for val_enum, desc in sub_config['descriptions'].items():
+                     val_str = getattr(val_enum, 'value', val_enum)
+                     prompt += f"        - {val_str} = {desc}\n"
+                prompt += f"    </sub_attribute>\n"
+                
+        prompt += f"  </{label}>\n"
+    prompt += "</ontology>\n\n"
+
+    # 3. Output Format
+    prompt += "<output_format>\n"
+    
+    schema_template = {}
+    for label, config in LABEL_CONFIG.items():
+        if 'sub_attributes' in config:
+            obj_schema = {"val": f"CANONICAL_{label.upper()}"}
+            for sub_key, sub_config in config['sub_attributes'].items():
+                obj_schema[sub_key] = sub_config.get('type_hint', "integer") 
             schema_template[label] = [obj_schema]
         else:
-            # For flat list labels like 'tissue', 'medium', 'genotype'
-            if label in UNIQUE_LABELS:
-                # Suggests a single-item list
-                schema_template[label] = [constraint_msg_unique]
-            else:
-                # Suggests a multi-item list is allowed
-                schema_template[label] = [constraint_msg]
+            schema_template[label] = [f"CANONICAL_{label.upper()}"]
 
-    # Convert the python dictionary into a nicely formatted JSON string
     schema_json_str = json.dumps(schema_template, indent=2)
-
-    # Append to prompt
-    prompt += (
-        "\n### OUTPUT FORMAT ###\n"
-        "You MUST return ONLY a strictly valid JSON object. Do NOT wrap the JSON in markdown blocks or include any other text.\n"
-        "The JSON object must strictly adhere to the following schema structure and allowed values:\n"
-        f"{schema_json_str}\n"
-        "If a category is not mentioned in the text, return an empty list `[]` for that key."
-    )
+    prompt += f"{schema_json_str}\n"
+    prompt += "</output_format>\n\n"
+    prompt += "FINAL REMINDER: Output ONLY valid JSON."
     
     return prompt
+
+
 # ── TulipLabelGenerator ────────────────────────────────────────────────────────
 
 class TulipLabelGenerator:
@@ -362,37 +362,46 @@ class TulipLabelGenerator:
     # ── Prompt construction ────────────────────────────────────────────────────
 
     def _build_prompt(self, sample_metadata: Dict, study_metadata: Dict) -> str:
-        # Metadata block — sample fields first, abbreviated study context appended
-        meta_lines = []
+        # --- Format Sample Metadata ---
+        sample_lines = []
         for field in _SAMPLE_FIELDS:
             val = sample_metadata.get(field)
             if not val:
                 continue
+            
+            # Format lists cleanly rather than duplicating the field name
             if isinstance(val, list):
-                for item in val:
-                    if item:
-                        meta_lines.append(f"  {field}: {item}")
+                clean_val = "; ".join([str(item).strip() for item in val if item])
+                if clean_val:
+                    sample_lines.append(f"  [{field.upper()}]: {clean_val}")
             else:
-                meta_lines.append(f"  {field}: {val}")
+                sample_lines.append(f"  [{field.upper()}]: {str(val).strip()}")
 
+        sample_block = "\n".join(sample_lines) if sample_lines else "  (No sample metadata available)"
+
+        # --- Format Study Metadata (Context) ---
+        study_lines = []
         for field in _STUDY_FIELDS:
-            val = str(study_metadata.get(field, "")).strip()
+            # Some GEO fields come back as lists, ensure we handle them safely
+            val = study_metadata.get(field, "")
+            if isinstance(val, list):
+                val = " ".join([str(v) for v in val])
+            else:
+                val = str(val).strip()
+
             if val:
-                truncated = val[:400] + ("..." if len(val) > 400 else "")
-                meta_lines.append(f"  study_{field}: {truncated}")
+                # 400 characters is too short for GEO abstracts where the treatment protocol 
+                # is often described at the very end. 1500 is much safer for modern LLMs.
+                truncated = val[:1500] + ("..." if len(val) > 1500 else "")
+                study_lines.append(f"  [{field.upper()}]: {truncated}")
 
-        metadata_block = "\n".join(meta_lines) if meta_lines else "  (no metadata available)"
+        study_block = "\n".join(study_lines) if study_lines else "  (No study context available)"
 
-        # Options block — one line per label axis
-        options_lines = [
-            f"  {label}: {', '.join(self.canonical_options.get(label, []))}"
-            for label in LABELS
-        ]
-        options_block = "\n".join(options_lines)
-
+        # Options block is intentionally removed here because the System Prompt 
+        # now handles the entire ontology, rules, and JSON schema.
         return _USER_PROMPT_TEMPLATE.format(
-            metadata_block = metadata_block,
-            options_block  = options_block,
+            sample_block=sample_block,
+            study_block=study_block,
         )
 
     # ── Response parsing ───────────────────────────────────────────────────────
