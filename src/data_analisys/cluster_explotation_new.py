@@ -15,6 +15,7 @@ module_dir = './'
 sys.path.append(module_dir)
 
 from src.constants import *
+from src.constants_labeling import LABELS as LABEL_AXES  # new label schema (6 axes + sub-attributes)
 from src.data_analisys.utils.cluster_exploration_utils_2 import (
     prepare_data_structure, align_labels_to_data, 
     run_pca, run_umap, run_tsne
@@ -46,6 +47,25 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
 
     first_stage = stages[0]
     categories = list(meta_dicts[first_stage].columns)
+
+    # Guard: if any column still contains list/dict values (e.g. treatment was not
+    # yet flattened upstream), coerce them to their string representation so the
+    # visualiser gets clean flat values for colour-by and legend building.
+    def _flatten_cell(v) -> str:
+        if isinstance(v, list):
+            if not v: return "unspecified"
+            first = v[0]
+            if isinstance(first, dict):
+                return str(first.get("val", "unspecified"))
+            return str(first)
+        if isinstance(v, dict):
+            return str(v.get("val", "unspecified"))
+        return str(v) if v is not None else "unspecified"
+
+    meta_dicts = {
+        stage: df.apply(lambda col: col.map(_flatten_cell))
+        for stage, df in meta_dicts.items()
+    }
 
     # --- Build a stable, vivid color palette ---
     PALETTE = [
@@ -740,21 +760,78 @@ def run_exploration_on_dataframe(
     print(f"  >>> Using standard PCA preprocessing for {experiment_name}...")
     df_aligned = prepare_data_structure(data_df)
 
-    categories = ['treatment', 'tissue', 'medium','study_id']
+    # Use all new label axes plus study_id.
+    # 'treatment_intensity' is derived from the treatment sub-attribute and added
+    # as a synthetic flat category so it can be used for colour/metric evaluation
+    # without changing the labels_dict structure.
+    base_categories = list(LABEL_AXES) + ['study_id']
     
     X_base, _, _, _ = align_labels_to_data(df_aligned, labels_dict, 'study_id')
     
-    meta_df = pd.DataFrame({
-        c: align_labels_to_data(df_aligned, labels_dict, c)[1] 
-        for c in categories
-    })
+    # Build meta_df — flatten treatment dicts into two separate columns:
+    #   'treatment'          → val string  (e.g. "Heat")
+    #   'treatment_intensity' → int 0-3    (e.g. 2)
+    raw_meta = {}
+    for c in base_categories:
+        raw_meta[c] = align_labels_to_data(df_aligned, labels_dict, c)[1]
+
+    meta_df = pd.DataFrame(raw_meta)
+
+    # Flatten treatment: each cell may be a list of dicts ({"val":..., "intensity":...})
+    # or a plain string (from the old pipeline). Normalise to flat strings/ints.
+    def extract_treatment_val(cell) -> str:
+        """Return the primary treatment val as a flat string."""
+        if isinstance(cell, list):
+            if not cell:
+                return "unspecified"
+            first = cell[0]
+            if isinstance(first, dict):
+                return str(first.get("val", "unspecified"))
+            return str(first)
+        if isinstance(cell, dict):
+            return str(cell.get("val", "unspecified"))
+        return str(cell) if cell is not None else "unspecified"
+
+    def extract_treatment_intensity(cell) -> str:
+        """Return the primary treatment intensity as a string label (for categorical colouring)."""
+        intensity_labels = {0: "Control (0)", 1: "Mild (1)", 2: "Moderate (2)", 3: "Severe (3)"}
+        if isinstance(cell, list):
+            if not cell:
+                return "unspecified"
+            first = cell[0]
+            if isinstance(first, dict):
+                return intensity_labels.get(int(first.get("intensity", 0)), "unspecified")
+            return "unspecified"
+        if isinstance(cell, dict):
+            return intensity_labels.get(int(cell.get("intensity", 0)), "unspecified")
+        return "unspecified"
+
+    if "treatment" in meta_df.columns:
+        meta_df["treatment_intensity"] = meta_df["treatment"].apply(extract_treatment_intensity)
+        meta_df["treatment"]           = meta_df["treatment"].apply(extract_treatment_val)
+
+    # Full category list for visualization (treatment_intensity added as synthetic axis)
+    categories = [c for c in base_categories if c != "treatment"] + \
+                 ["treatment", "treatment_intensity"]
+    # Ensure study_id is last (used for batch correction metric but not interesting for colouring)
+    if "study_id" in categories:
+        categories = [c for c in categories if c != "study_id"] + ["study_id"]
+
+    # Ensure all derived columns exist in meta_df
+    for c in categories:
+        if c not in meta_df.columns:
+            meta_df[c] = "unspecified"
 
     results_summary = []
 
+    # Valid-value exclusions — applies to any label axis
+    INVALID_VALUES = {'unknown', 'unspecified', 'none', 'nan', 'Unknown',
+                      'Unspecified', 'None', 'nan'}
+
     for cat in categories:
         print(f"\n[Metrics: {cat.upper()}]")
-        text_labels_np = np.array(meta_df[cat].tolist())
-        valid_mask = ~np.isin(text_labels_np, ['unknown', 'unspecified', 'None', 'nan'])
+        text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
+        valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
         X_metric = X_base[valid_mask]
         text_labels_metric = text_labels_np[valid_mask]
@@ -766,7 +843,6 @@ def run_exploration_on_dataframe(
             print(f"  Not enough valid samples/classes for {cat}.")
             sil_score, ari_score, knn_purity, var_explained, batch_asw = [np.nan] * 5
         else:
-            # X_rep_metric, _ = run_pca(X_metric, n_components=min(50, X_metric.shape[0]-1))
             X_rep_metric = X_metric
             sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
             
@@ -800,7 +876,8 @@ def run_exploration_on_dataframe(
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     
-    return res_df, embeddings_out, meta_df
+    # Return meta_df restricted to the visualization categories (not all raw columns)
+    return res_df, embeddings_out, meta_df[categories]
 
 
 # ==========================================
@@ -814,7 +891,7 @@ if __name__ == "__main__":
     all_metas = {}
     
     print("Loading Labels Map...")
-    labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABELS).to_dict() 
+    labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
     
     stages = ['filter', 'imputed', 'study_corrected', 'rankin']
     

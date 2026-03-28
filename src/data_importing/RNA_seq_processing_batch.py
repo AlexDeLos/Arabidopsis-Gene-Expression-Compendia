@@ -625,7 +625,16 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
 
     # Filter list for things already processed
     todos = [g for g in gse_list if (not tracker.is_processed(g) or metadata_only) and not tracker.is_ignored(g) and not tracker.is_error(g)]
-    print(f'we are going to process these studies {todos}')
+
+    skipped_processed = [g for g in gse_list if tracker.is_processed(g) and not metadata_only]
+    skipped_ignored   = [g for g in gse_list if tracker.is_ignored(g)]
+    skipped_error     = [g for g in gse_list if tracker.is_error(g)]
+
+    print(f'To process ({len(todos)}): {todos}')
+    print(f'Skipped — already processed ({len(skipped_processed)}): {skipped_processed}')
+    print(f'Skipped — ignored ({len(skipped_ignored)}): {skipped_ignored}')
+    print(f'Skipped — error ({len(skipped_error)}): {skipped_error}')
+
     from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)
     
@@ -690,9 +699,10 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"No SRA data for {gse_id}")
                         tracker.mark_ignore(gse_id); continue
                     if len(gse.gsms) < 5: # type: ignore
+                        print('We are ignoring this study because it is < 5')
                         tracker.mark_ignore(gse_id); continue
 
-                    # --- FIX 1: technology compatibility check ---
+                    # --- technology compatibility check ---
                     compatible, reason = is_study_compatible(gse)
                     if not compatible:
                         print(f"  [!] Skipping {gse_id}: {reason}")
@@ -718,7 +728,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                                 print(f"Download completed for {gse_id}")
                             except Exception as e:
                                 print(f"Download failed for {gse_id}: {e}")
-                                tracker.mark_ignore(gse_id)
+                                tracker.mark_error(gse_id)  # transient failure — allow retry
                                 shutil.rmtree(fastq_folder, ignore_errors=True)
                                 continue
 
@@ -739,7 +749,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 
                 except Exception as e:
                     print(f"Error preparing {gse_id}: {e}")
-                    tracker.mark_ignore(gse_id)
+                    tracker.mark_error(gse_id)  # transient failure — allow retry
             if metadata_only:
                 continue
             # --- PHASE 2: EXECUTE BATCH ---
