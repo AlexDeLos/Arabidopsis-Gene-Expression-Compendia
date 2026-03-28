@@ -175,6 +175,7 @@ class RNASeq_processor:
             print("All SLURM download array jobs completed.")
         except subprocess.CalledProcessError as e:
             print(f"Error executing sbatch job array: {e}")
+            raise  # propagate so caller marks study as error (retryable), not downloaded
 
         # 4. Verify post-download and check data integrity
         for srr in srrs_to_download:
