@@ -16,15 +16,19 @@ sys.path.append(module_dir)
 
 from src.constants import *
 from src.constants_labeling import LABELS as LABEL_AXES  # new label schema (6 axes + sub-attributes)
-from src.data_analisys.utils.cluster_exploration_utils_2 import (
-    prepare_data_structure, align_labels_to_data, 
-    run_pca, run_umap, run_tsne
+from src.data_analisys.utils.cluster_exploration_utils_final import (
+    load_labels_study, 
+    make_df_from_labels, 
+    get_study,
+    prepare_data_structure, 
+    align_labels_to_data, 
+    run_pca, 
+    run_umap, 
+    run_tsne,
+    calculate_asw_batch_within_biology,
+    variance_explained_by_label,
+    plot_metrics_comparison
 )
-from src.data_analisys.utils.cluster_exploration_utils import *
-# Ensure plot_metrics_comparison matches your exact function signature
-from src.data_analisys.cluster_explotation import plot_metrics_comparison,calculate_asw_batch_within_biology,variance_explained_by_label
-
-
 # ==========================================
 # --- VISUALIZATION FUNCTIONS ---
 # ==========================================
@@ -749,104 +753,64 @@ def run_exploration_on_dataframe(
     data_df: pd.DataFrame, 
     labels_dict: dict, 
     experiment_name: str,
-    output_folder: str,
-    gene_length_dict: dict = None,
-    target_vocab: list = None,
-    ortholog_map: dict = None
+    output_folder: str
 ):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     print(f"  >>> Using standard PCA preprocessing for {experiment_name}...")
     df_aligned = prepare_data_structure(data_df)
+    
+    # Define X_base for metric calculations
+    X_base = df_aligned.values
 
-    # Use all new label axes plus study_id.
-    # 'treatment_intensity' is derived from the treatment sub-attribute and added
-    # as a synthetic flat category so it can be used for colour/metric evaluation
-    # without changing the labels_dict structure.
-    base_categories = list(LABEL_AXES) + ['study_id']
+    # Dynamically grab all axes available in the parsed labels_dict 
+    # (this now automatically includes 'treatment_intensity'!)
+    available_axes = list(labels_dict.keys())
+    if 'study_id' not in available_axes:
+        available_axes.append('study_id')
     
-    X_base, _, _, _ = align_labels_to_data(df_aligned, labels_dict, 'study_id')
-    
-    # Build meta_df — flatten treatment dicts into two separate columns:
-    #   'treatment'          → val string  (e.g. "Heat")
-    #   'treatment_intensity' → int 0-3    (e.g. 2)
+    # Build meta_df simply and cleanly
     raw_meta = {}
-    for c in base_categories:
-        raw_meta[c] = align_labels_to_data(df_aligned, labels_dict, c)[1]
+    for axis in available_axes:
+        # No more [1] index, the function returns the list directly
+        raw_meta[axis] = align_labels_to_data(df_aligned, labels_dict, axis)
 
-    meta_df = pd.DataFrame(raw_meta)
-
-    # Flatten treatment: each cell may be a list of dicts ({"val":..., "intensity":...})
-    # or a plain string (from the old pipeline). Normalise to flat strings/ints.
-    def extract_treatment_val(cell) -> str:
-        """Return the primary treatment val as a flat string."""
-        if isinstance(cell, list):
-            if not cell:
-                return "unspecified"
-            first = cell[0]
-            if isinstance(first, dict):
-                return str(first.get("val", "unspecified"))
-            return str(first)
-        if isinstance(cell, dict):
-            return str(cell.get("val", "unspecified"))
-        return str(cell) if cell is not None else "unspecified"
-
-    def extract_treatment_intensity(cell) -> str:
-        """Return the primary treatment intensity as a string label (for categorical colouring)."""
-        intensity_labels = {0: "Control (0)", 1: "Mild (1)", 2: "Moderate (2)", 3: "Severe (3)"}
-        if isinstance(cell, list):
-            if not cell:
-                return "unspecified"
-            first = cell[0]
-            if isinstance(first, dict):
-                return intensity_labels.get(int(first.get("intensity", 0)), "unspecified")
-            return "unspecified"
-        if isinstance(cell, dict):
-            return intensity_labels.get(int(cell.get("intensity", 0)), "unspecified")
-        return "unspecified"
-
-    if "treatment" in meta_df.columns:
-        meta_df["treatment_intensity"] = meta_df["treatment"].apply(extract_treatment_intensity)
-        meta_df["treatment"]           = meta_df["treatment"].apply(extract_treatment_val)
-
-    # Full category list for visualization (treatment_intensity added as synthetic axis)
-    categories = [c for c in base_categories if c != "treatment"] + \
-                 ["treatment", "treatment_intensity"]
-    # Ensure study_id is last (used for batch correction metric but not interesting for colouring)
-    if "study_id" in categories:
-        categories = [c for c in categories if c != "study_id"] + ["study_id"]
-
-    # Ensure all derived columns exist in meta_df
-    for c in categories:
-        if c not in meta_df.columns:
-            meta_df[c] = "unspecified"
+    meta_df = pd.DataFrame(raw_meta, index=df_aligned.index)
 
     results_summary = []
 
     # Valid-value exclusions — applies to any label axis
-    INVALID_VALUES = {'unknown', 'unspecified', 'none', 'nan', 'Unknown',
-                      'Unspecified', 'None', 'nan'}
+    INVALID_VALUES = {'unknown', 'unspecified', 'none', 'nan', 'Unknown', 'Unspecified', 'None', ''}
 
-    for cat in categories:
+    # Calculate metrics for every axis (excluding study_id for general scores)
+    metric_categories = [c for c in available_axes if c != 'study_id']
+
+    for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
         text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
         valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
         X_metric = X_base[valid_mask]
         text_labels_metric = text_labels_np[valid_mask]
-        batch_text_labels_metric = meta_df['study_id'].values[valid_mask]
+        batch_text_labels_metric = np.array(meta_df['study_id'].tolist(), dtype=str)[valid_mask]
 
-        unique_classes, num_labels_metric = np.unique(text_labels_metric, return_inverse=True)
+        unique_classes = np.unique(text_labels_metric)
+        
+        # Convert text labels to numeric codes for sklearn metrics
+        if len(unique_classes) > 0:
+            num_labels_metric = pd.Series(text_labels_metric).astype('category').cat.codes.values
+        else:
+            num_labels_metric = []
 
         if X_metric.shape[0] < 5 or len(unique_classes) < 2:
             print(f"  Not enough valid samples/classes for {cat}.")
-            sil_score, ari_score, knn_purity, var_explained, batch_asw = [np.nan] * 5
+            sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
         else:
             X_rep_metric = X_metric
             sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
             
-            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42).fit(X_rep_metric)
+            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init='auto').fit(X_rep_metric)
             ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
 
             knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
@@ -857,27 +821,32 @@ def run_exploration_on_dataframe(
             
             print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
-        results_summary.append({
-            'Category': cat, 'Silhouette': sil_score, 'ARI': ari_score, 
-            'KNN_Purity': knn_purity, 'Variance_Explained': var_explained, 
-            'Batch_ASW_within_Bio': batch_asw
-        })
+        # Format strictly for the plot_metrics_comparison (long-format DataFrame)
+        for metric_name, val in [
+            ('Silhouette', sil_score), ('ARI', ari_score), 
+            ('KNN_Purity', knn_purity), ('Variance_Explained', var_explained), 
+            ('Batch_ASW_within_Bio', batch_asw)
+        ]:
+            results_summary.append({
+                'Label_Axis': cat, 
+                'Metric': metric_name,
+                'Value': val
+            })
 
     print(f"\nGenerating standard UMAP & TSNE for {experiment_name}...")
     
-    X_rep_full, _ = run_pca(X_base, n_components=min(50, X_base.shape[0]-1))
+    # Run PCA first to feed into UMAP/TSNE
+    pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0]-1, df_aligned.shape[1]-1))
         
     embeddings_out = {}
-    
     for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne)]:
-        emb = run_func(X_rep_full)
+        emb = run_func(pca_embedding)
         embeddings_out[method] = emb
         
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     
-    # Return meta_df restricted to the visualization categories (not all raw columns)
-    return res_df, embeddings_out, meta_df[categories]
+    return res_df, embeddings_out, meta_df
 
 
 # ==========================================
@@ -891,7 +860,8 @@ if __name__ == "__main__":
     all_metas = {}
     
     print("Loading Labels Map...")
-    labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
+    labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
+    # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
     
     stages = ['filter', 'imputed', 'study_corrected', 'rankin']
     
@@ -901,7 +871,7 @@ if __name__ == "__main__":
         if os.path.exists(data_path):
             print(f"\n{'='*50}\nProcessing {file}\n{'='*50}")
             df = pd.read_csv(data_path, index_col=0)
-            
+            df = df.iloc[:, :200]
             print("  Cleaning sample IDs...")
             df.columns = [c.split('.')[0].upper() for c in df.columns]
 
@@ -912,7 +882,12 @@ if __name__ == "__main__":
             count_filled = 0
             for sample in df.columns:
                 if sample not in labels_map['study_id']:
-                    study_val = get_study(sample)
+                    # Look up the sample in the map's index; default to "Unknown_Study" if missing
+                    if sample in SAMPLE_STUDY_MAP.index:
+                        study_val = str(SAMPLE_STUDY_MAP.at[sample, 'StudyID'])
+                    else:
+                        study_val = "Unknown_Study"
+                    
                     labels_map['study_id'][sample.upper()] = study_val
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
@@ -936,7 +911,7 @@ if __name__ == "__main__":
 
     # Generate the Comparison Plots 
     if len(all_metrics) > 1:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_4/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_29_3/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
@@ -944,6 +919,7 @@ if __name__ == "__main__":
         plot_metrics_comparison(
             metrics_dict=all_metrics, 
             metadata_df=pd.DataFrame(labels_map),
+            bio_targets = LABEL_AXES,
             output_folder=comparison_output_dir
         )
         
