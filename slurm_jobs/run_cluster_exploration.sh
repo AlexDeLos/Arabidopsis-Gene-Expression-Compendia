@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cluster_exploration
-#SBATCH --output=/tudelft.net/staff-umbrella/GeneExpressionStorage/logs/cluster_exploration_%j.out
-#SBATCH --error=/tudelft.net/staff-umbrella/GeneExpressionStorage/logs/cluster_exploration_%j.err
+#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 #SBATCH --time=01:00:00
 #SBATCH --mem=26G
 #SBATCH --cpus-per-task=4
