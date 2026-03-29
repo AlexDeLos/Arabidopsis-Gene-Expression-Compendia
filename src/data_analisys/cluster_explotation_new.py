@@ -872,7 +872,7 @@ if __name__ == "__main__":
         if os.path.exists(data_path):
             print(f"\n{'='*50}\nProcessing {file}\n{'='*50}")
             df = pd.read_csv(data_path, index_col=0)
-            df = df.iloc[:, :200]
+            # df = df.iloc[:, :200]
             print("  Cleaning sample IDs...")
             df.columns = [c.split('.')[0].upper() for c in df.columns]
 
