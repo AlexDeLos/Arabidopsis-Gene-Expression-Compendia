@@ -9,7 +9,7 @@
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --array=19
+#SBATCH --array=10-19
 #SBATCH --export=NONE
 
 module purge
