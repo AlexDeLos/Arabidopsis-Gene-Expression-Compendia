@@ -72,7 +72,7 @@ From: python:3.11-slim-bookworm
     # =========================================================================
     pip install --upgrade pip setuptools wheel
 
-    pip install numpy pandas scipy matplotlib plotly scikit-learn tqdm python-dotenv seaborn polars openai debugpy
+    pip install numpy pandas scipy matplotlib plotly scikit-learn tqdm python-dotenv seaborn polars openai debugpy umap-learn
 
     # PyTorch with CUDA 12.1 (bundles its own CUDA runtime)
     pip install torch --index-url https://download.pytorch.org/whl/cu121
