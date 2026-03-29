@@ -40,7 +40,7 @@ apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:${REPO}" \
     "${SIF}" \
-    python /src/data_analisys/cluster_explotation_new.py
+    python src/data_analisys/cluster_explotation_new.py
 
 EXIT_CODE=$?
 echo "========================================"
