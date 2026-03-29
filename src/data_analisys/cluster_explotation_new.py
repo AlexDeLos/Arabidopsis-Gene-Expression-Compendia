@@ -784,7 +784,7 @@ def run_exploration_on_dataframe(
     INVALID_VALUES = {'unknown', 'unspecified', 'none', 'nan', 'Unknown', 'Unspecified', 'None', ''}
 
     # Calculate metrics for every axis (excluding study_id for general scores)
-    metric_categories = [c for c in available_axes if c != 'study_id']
+    metric_categories = available_axes# [c for c in available_axes if c != 'study_id']
 
     for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
@@ -862,9 +862,10 @@ if __name__ == "__main__":
     print("Loading Labels Map...")
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
-    
-    stages = ['filter', 'imputed', 'study_corrected', 'rankin']
-    
+    if RNA_MA:
+      stages = ['Salmon_RNAseq_Combined']
+    else:
+      stages = ['filter', 'study_corrected', 'rankin']
     for file in stages:
         data_path = f'{STORAGE_DIR}/final_data/{file}.csv'
         
@@ -910,7 +911,8 @@ if __name__ == "__main__":
             print(f"Error: Data file not found at {data_path}")
 
     # Generate the Comparison Plots 
-    if len(all_metrics) > 1:
+    # if len(all_metrics) > 1:
+    if True:
         comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_29_3/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         

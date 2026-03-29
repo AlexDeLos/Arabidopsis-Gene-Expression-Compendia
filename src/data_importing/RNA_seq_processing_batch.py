@@ -865,3 +865,133 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"  Leaving {gse_id} as downloaded (collateral, will retry).")
 
     return valid_gse_ids
+
+
+import os
+import pandas as pd
+from typing import Tuple, Dict, Union, Callable
+
+def combine_files_rnaseq(
+    folder: str, 
+    new_file_name: str, 
+    new_file_location: str, 
+    combine_genes: bool = False, 
+    combination_method: Union[str, Callable] = 'mean'
+) -> Tuple[pd.DataFrame, Dict[str, str]]:
+    """
+    Combines individual GSE RNA-seq TSV files (from star_salmon) into a single large expression matrix
+    and generates a mapping of Samples to Study IDs.
+    
+    Args:
+        folder (str): Root directory containing GSE subfolders (e.g., processed_rnaseq).
+        new_file_name (str): Output filename (e.g. 'RMA_RNAseq_Combined.csv').
+        new_file_location (str): Output directory.
+        combine_genes (bool): If True, merges 'Gene.1', 'Gene.2' into 'Gene'.
+        combination_method (str or callable): Method to merge overlapping values.
+
+    Returns:
+        Tuple[pd.DataFrame, Dict]: (The combined expression dataframe, Dictionary {SampleID: StudyID})
+    """
+    
+    # 1. Setup Output Directory
+    if not os.path.exists(new_file_location):
+        try:
+            os.makedirs(new_file_location)
+        except OSError as e:
+            print(f"Error creating directory {new_file_location}: {e}")
+            raise e
+
+    dataframes = []
+    sample_to_study_map = {} # Dictionary to store Sample -> Study relationship
+    
+    print(f"Scanning '{folder}' for processed RNA-seq files...")
+
+    # 2. Iterate over the folder structure
+    # We look directly at the items in the root folder to identify Study IDs
+    for d in os.listdir(folder):
+        study_folder = os.path.join(folder, d)
+        
+        # Ensure it's a directory (ignores hidden files or loose files)
+        if os.path.isdir(study_folder):
+            study_id = d 
+            
+            # Target the specific nf-core/rnaseq star_salmon output file
+            expected_tsv_name = "salmon.merged.gene_counts.tsv"
+            file_path = os.path.join(study_folder, "star_salmon", expected_tsv_name)
+            
+            if os.path.exists(file_path):
+                print(f"  - Found counts for Study: {study_id}")
+                try:
+                    # RNA-seq files are typically tab-separated
+                    df = pd.read_csv(file_path, sep='\t', index_col=0)
+                    
+                    # Optional: Drop the 'gene_name' column if it exists alongside 'gene_id'
+                    # nf-core sometimes includes 'gene_name' as column 1. We just want sample columns.
+                    if 'gene_name' in df.columns:
+                        df = df.drop(columns=['gene_name'])
+                    
+                    # Requirement: Set all genes to full capitalization
+                    df.index = df.index.str.upper()
+                    
+                    # Local deduplication
+                    if df.index.duplicated().any():
+                        df = df.groupby(df.index).mean()
+                    
+                    # --- NEW LOGIC: Map Samples to Study ---
+                    # df.columns contains the Sample IDs (e.g., SRR / GSM)
+                    for sample_id in df.columns:
+                        sample_to_study_map[sample_id] = study_id
+                    # ---------------------------------------
+
+                    dataframes.append(df)
+                    
+                except Exception as e:
+                    print(f"    ! Error reading {expected_tsv_name} in {study_id}: {e}")
+
+    if not dataframes:
+        print("No valid TSV files found to combine.")
+        raise ValueError("No valid TSV files found to combine.")
+
+    # 3. Combine Dataframes
+    print(f"\nMerging {len(dataframes)} datasets... (This may take a moment)")
+    
+    combined_df = pd.concat(dataframes, axis=1, join='outer', sort=True)
+    
+    # 4. Optional: Combine Gene Variants (Gene.1 -> Gene)
+    if combine_genes:
+        print(f"  - Consolidating gene variants (e.g., 'Gene.1' -> 'Gene') using method: {combination_method}...")
+        cleaned_index = combined_df.index.str.split('.').str[0]
+        combined_df.index = cleaned_index
+        combined_df = combined_df.groupby(combined_df.index).agg(combination_method)
+
+    elif combined_df.index.duplicated().any():
+        print("  - resolving duplicate indices in final merge (using mean)...")
+        combined_df = combined_df.groupby(combined_df.index).mean()
+
+    # 5. Save Data Matrix
+    output_path = os.path.join(new_file_location, new_file_name)
+    print(f"Saving combined matrix to: {output_path}")
+    
+    try:
+        # Save as CSV (or adapt to sep='\t' if you prefer a .tsv output)
+        combined_df.to_csv(output_path)
+        print("SUCCESS: Data matrix saved.")
+        print(f"Final Dimensions: {combined_df.shape[0]} Genes x {combined_df.shape[1]} Samples")
+    except Exception as e:
+        print(f"Error saving data file: {e}")
+
+    # 6. Save Sample Map
+    base_name = os.path.splitext(new_file_name)[0]
+    map_filename = f"{base_name}_sample_map.csv"
+    map_output_path = os.path.join(new_file_location, map_filename)
+    
+    print(f"Saving sample map to: {map_output_path}")
+    try:
+        map_df = pd.DataFrame.from_dict(sample_to_study_map, orient='index', columns=['StudyID'])
+        map_df.index.name = 'SampleID'
+        map_df.to_csv(map_output_path)
+        print("SUCCESS: Sample map saved.")
+    except Exception as e:
+        print(f"Error saving map file: {e}")
+        
+    return combined_df, sample_to_study_map

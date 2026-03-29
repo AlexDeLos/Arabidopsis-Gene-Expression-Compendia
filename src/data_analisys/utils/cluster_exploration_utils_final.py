@@ -4,10 +4,12 @@ import json
 import glob
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import seaborn as sns
 from scipy.stats import chi2_contingency
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.model_selection import KFold
 
 import umap
 from sklearn.decomposition import PCA
@@ -16,7 +18,99 @@ from sklearn.metrics import silhouette_score
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import LabelEncoder
 
+import urllib.error
+import time
+import re
+from Bio import Entrez
+from src.constants import RNA_MA  # Pull in your new constant
 
+Entrez.email = "alexdelossanto@tudelft.nl"
+
+# --- GLOBAL CACHE --- 
+# Prevents querying the exact same GSM across Tissue, Treatment, Medium, etc.
+# --- PERSISTENT GLOBAL CACHE --- 
+CACHE_FILE = "srr_mapping_cache.json"
+
+def load_srr_cache() -> dict:
+    """Loads the previously saved SRR mappings from disk."""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"    [!] Warning: Could not load SRR cache: {e}")
+            return {}
+    return {}
+
+def save_srr_cache():
+    """Saves the current SRR mappings to disk."""
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(SRR_CACHE, f, indent=4)
+    except Exception as e:
+        print(f"    [!] Warning: Could not save SRR cache: {e}")
+
+# Initialize the cache in memory when the module loads
+SRR_CACHE = load_srr_cache()
+
+def get_srr_ids(gsm_id: str, max_retries=5) -> list:
+    gsm_id = gsm_id.strip().upper()
+    
+    # Return immediately if we already fetched this GSM ID earlier
+    if gsm_id in SRR_CACHE:
+        return SRR_CACHE[gsm_id]
+        
+    print(f"    [Cache Miss] Fetching SRR for {gsm_id} from NCBI...")
+    
+    for attempt in range(max_retries):
+        try:
+            # 1. Proactive Rate Limiting (ensures < 3 requests per second)
+            time.sleep(0.4) 
+            
+            handle = Entrez.esearch(db="sra", term=gsm_id)
+            record = Entrez.read(handle)
+            handle.close()
+            
+            if not record['IdList']:
+                SRR_CACHE[gsm_id] = []
+                save_srr_cache() # Save the empty result so we don't try again next run
+                return []
+    
+            handle = Entrez.esummary(db="sra", id=",".join(record['IdList']))
+            summaries = Entrez.read(handle)
+            handle.close()
+            
+            run_ids = []
+            for summary in summaries:
+                run_ids.extend(re.findall(r'acc="([A-Z0-9]+)"', summary.get('Runs', '')))
+            
+            res = list(set(run_ids))
+            
+            # Save to memory and immediately write to disk
+            SRR_CACHE[gsm_id] = res 
+            save_srr_cache()        
+            
+            return res
+        
+        except urllib.error.HTTPError as e:
+            # 2. Reactive Backoff: If we still hit the limit, wait and retry
+            if e.code == 429:
+                wait_time = 2 ** attempt  # Waits 1s, 2s, 4s, 8s, 16s...
+                print(f"    [!] HTTP 429 (Too Many Requests) for {gsm_id}. Waiting {wait_time}s before retry {attempt+1}/{max_retries}...")
+                time.sleep(wait_time)
+            else:
+                print(f"    [!] HTTP Error {e.code} for {gsm_id}. Skipping.")
+                SRR_CACHE[gsm_id] = []
+                save_srr_cache()
+                return []
+        except Exception as e:
+            print(f"    [!] Connection error for {gsm_id}: {e}. Retrying in 5s...")
+            time.sleep(5)
+            
+    print(f"    [!] Failed to retrieve SRR for {gsm_id} after {max_retries} retries.")
+    SRR_CACHE[gsm_id] = []
+    save_srr_cache()
+    return []
 # =============================================================================
 # 1. DATA AND LABEL PREPARATION (Updated for TULIP LLM Format)
 # =============================================================================
@@ -48,7 +142,18 @@ def load_labels_study(labels_dir: str) -> dict:
         with open(file, 'r') as f:
             try:
                 data = json.load(f)
-                aggregated_data.update(data)
+                
+                # --- NEW LOGIC: Handle both Lists and Dictionaries ---
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and 'id' in item:
+                            # Extract the 'id' to use as the key, and remove it from the values
+                            item_id = item.pop('id')
+                            aggregated_data[item_id] = item
+                elif isinstance(data, dict):
+                    aggregated_data.update(data)
+                # -----------------------------------------------------
+                
             except json.JSONDecodeError:
                 print(f"  ! Warning: Could not parse {file}")
 
@@ -143,6 +248,7 @@ def align_labels_to_data(df: pd.DataFrame, labels_dict: dict, label_category: st
     """
     Aligns the dataframe samples with the labels dictionary.
     Includes logic to fallback to Upper Case keys and handle missing samples.
+    Dynamically maps GSM -> SRR if RNA_MA is True.
     """
     if label_category in labels_dict:
         sample_to_label_map = labels_dict[label_category]
@@ -152,15 +258,39 @@ def align_labels_to_data(df: pd.DataFrame, labels_dict: dict, label_category: st
         print(f"    ! Warning: Category '{label_category}' not found. All samples will be 'unspecified'.")
         sample_to_label_map = {}
 
+    # -------------------------------------------------------------------------
+    # --- RNA-SEQ LOGIC: Translate the GSM label keys to SRR keys dynamically
+    # -------------------------------------------------------------------------
+    if RNA_MA and sample_to_label_map:
+        mapped_dict = {}
+        for gsm_key, label_val in sample_to_label_map.items():
+            gsm_str = str(gsm_key).upper()
+            
+            if gsm_str.startswith("GSM"):
+                # Fetch SRR runs for this GSM (returns instantly if cached)
+                srr_list = get_srr_ids(gsm_str)
+                for srr in srr_list:
+                    mapped_dict[srr] = label_val
+            else:
+                mapped_dict[gsm_str] = label_val
+                
+        # Overwrite map with our new SRR-keyed map
+        sample_to_label_map = mapped_dict
+    # -------------------------------------------------------------------------
+
     cleaned_labels = []
     for s in df.index:
-        s_upper = str(s).upper()
+        # Handles potential variations in index string (e.g., SRR123456_1)
+        if RNA_MA:
+            s_upper = str(s).upper().split('_')[1]
+        else:
+            s_upper = str(s).upper()
+        
         # Look for upper case first, then exact match, fallback to 'unspecified'
         label = sample_to_label_map.get(s_upper, sample_to_label_map.get(s, 'unspecified'))
         cleaned_labels.append(label)
         
     return cleaned_labels
-
 
 # =============================================================================
 # 2. DIMENSIONALITY REDUCTION
@@ -180,10 +310,21 @@ def run_umap(pca_embedding, n_components=2):
 
 def run_tsne(pca_embedding, n_components=2):
     print(f"  Running t-SNE (n_components={n_components})...")
+    
     # Dynamically adjust perplexity based on sample size
     perplexity = min(30, max(5, pca_embedding.shape[0] // 3))
-    tsne = TSNE(n_components=n_components, random_state=42, perplexity=perplexity)
+    
+    tsne = TSNE(
+        n_components=n_components, 
+        random_state=42, 
+        perplexity=perplexity,
+        init='pca',      # More stable and faster convergence than 'random'
+        verbose=1,       # Prints progress iterations to the console so you know it isn't frozen
+        n_jobs=1         # Forces a single thread to prevent VS Code debugger deadlocks
+    )
+    print('done building TSNE')
     embedding = tsne.fit_transform(pca_embedding)
+    print('done embeding TSNE')
     return embedding
 
 
@@ -245,6 +386,43 @@ def variance_explained_by_label(data, labels) -> float:
     except Exception:
         return 0.0
 
+
+def calculate_cramers_v(series1: pd.Series, series2: pd.Series) -> float:
+    contingency_table = pd.crosstab(series1, series2)
+    if contingency_table.empty or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
+        return 0.0
+        
+    chi2, _, _, _ = chi2_contingency(contingency_table)
+    n = contingency_table.sum().sum()
+    min_dim = min(contingency_table.shape) - 1
+    
+    if min_dim == 0 or n == 0:
+        return 0.0
+    return np.sqrt(chi2 / (n * min_dim))
+
+def calculate_multilabel_association(study_series: pd.Series, multilabel_series: pd.Series) -> float:
+    clean_labels = multilabel_series.apply(
+        lambda x: list(x) if isinstance(x, (list, tuple, set)) else ([str(x)] if pd.notna(x) else [])
+    ).tolist()
+    
+    mlb = MultiLabelBinarizer()
+    binary_matrix = mlb.fit_transform(clean_labels)
+    
+    if binary_matrix.shape[1] == 0:
+        return 0.0
+        
+    v_scores = []
+    for i, label in enumerate(mlb.classes_):
+        binary_col = binary_matrix[:, i]
+        if len(np.unique(binary_col)) < 2:
+            continue
+        v = calculate_cramers_v(study_series, binary_col)
+        v_scores.append(v)
+        
+    if not v_scores:
+        return 0.0
+    return float(np.mean(v_scores))
+
 def calculate_cramers_v(series1: pd.Series, series2: pd.Series) -> float:
     contingency_table = pd.crosstab(series1, series2)
     if contingency_table.empty or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
@@ -284,7 +462,7 @@ def calculate_multilabel_association(study_series: pd.Series, multilabel_series:
 def plot_metrics_comparison(metrics_dict: dict, 
                             metadata_df: pd.DataFrame, 
                             output_folder: str,
-                            bio_targets,
+                            bio_targets: list,
                             experiment_name: str = "Normalization_Comparison"):
     
     print(f"\n[Generating Metric Comparison Plots...]")
@@ -294,13 +472,24 @@ def plot_metrics_comparison(metrics_dict: dict,
     combined_data = []
     for stage_name, df in metrics_dict.items():
         df_copy = df.copy()
+        
+        # If the dataframe is in long format, pivot it back to wide format for Seaborn
+        if 'Metric' in df_copy.columns and 'Value' in df_copy.columns:
+            df_copy = df_copy.pivot(index='Label_Axis', columns='Metric', values='Value').reset_index()
+            df_copy = df_copy.rename(columns={'Label_Axis': 'Category'})
+            
         df_copy['Stage'] = stage_name
         combined_data.append(df_copy)
     
     plot_df = pd.concat(combined_data, ignore_index=True)
 
+    # --- DEFINE BACKGROUND COLORS ---
+    unique_categories = plot_df['Category'].unique()
+    # Use a pastel palette so it doesn't clash with the main bar colors
+    bg_palette = sns.color_palette("Pastel1", n_colors=len(unique_categories))
+    bg_color_dict = dict(zip(unique_categories, bg_palette))
+
     confounding_data = []
-    
     if 'study_id' in metadata_df.columns:
         for target in bio_targets:
             if target in metadata_df.columns:
@@ -322,33 +511,36 @@ def plot_metrics_comparison(metrics_dict: dict,
 
     sns.set_theme(style="whitegrid", context="talk")
     fig, axes = plt.subplots(2, 3, figsize=(24, 12))
-    fig.suptitle('Batch Correction Evaluation & Confounding Check\n(Calculated exclusively on valid known labels)', fontsize=20, fontweight='bold', y=0.99)
+    
+    # Moved the title up slightly to make room for the new legend
+    fig.suptitle('Batch Correction Evaluation & Confounding Check\n(Calculated exclusively on valid known labels)', fontsize=20, fontweight='bold', y=0.98)
 
-    sns.barplot(data=plot_df, x='Category', y='Variance_Explained', hue='Stage', ax=axes[0, 0], palette='Set2')
+    # Set zorder=3 for barplots so they appear ON TOP of the background bands
+    sns.barplot(data=plot_df, x='Category', y='Variance_Explained', hue='Stage', ax=axes[0, 0], palette='Set2', zorder=3)
     axes[0, 0].set_title('A. Variance Explained (Higher = More Influence)')
     axes[0, 0].set_ylabel('R² Score')
 
-    sns.barplot(data=plot_df, x='Category', y='KNN_Purity', hue='Stage', ax=axes[0, 1], palette='Set2')
+    sns.barplot(data=plot_df, x='Category', y='KNN_Purity', hue='Stage', ax=axes[0, 1], palette='Set2', zorder=3)
     axes[0, 1].set_title('B. KNN Purity (Higher = Better Local Grouping)')
     axes[0, 1].set_ylabel('Purity Score')
     axes[0, 1].set_ylim(0, 1.1)
 
     bio_only_df = plot_df[plot_df['Category'] != 'study_id']
-    sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[0, 2], palette='Set2')
+    sns.barplot(data=bio_only_df, x='Category', y='Batch_ASW_within_Bio', hue='Stage', ax=axes[0, 2], palette='Set2', zorder=3)
     axes[0, 2].set_title('C. Batch ASW within Bio (Lower = +Study Mixing)')
     axes[0, 2].set_ylabel('Silhouette Score of Batch')
 
-    sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 0], palette='Set2')
+    sns.barplot(data=plot_df, x='Category', y='ARI', hue='Stage', ax=axes[1, 0], palette='Set2', zorder=3)
     axes[1, 0].set_title('D. Adjusted Rand Index (Align. w. clutsers)')
     axes[1, 0].set_ylabel('ARI Score')
 
-    sns.barplot(data=plot_df, x='Category', y='Silhouette', hue='Stage', ax=axes[1, 1], palette='Set2')
+    sns.barplot(data=plot_df, x='Category', y='Silhouette', hue='Stage', ax=axes[1, 1], palette='Set2', zorder=3)
     axes[1, 1].set_title('E. Silhouette Score (Higher = Tighter Clusters)')
     axes[1, 1].set_ylabel('Silhouette Score')
 
     ax_conf = axes[1, 2]
     if not confounding_df.empty:
-        sns.barplot(data=confounding_df, x='Variable', y='Cramers_V', ax=ax_conf, color=sns.color_palette("deep")[0])
+        sns.barplot(data=confounding_df, x='Variable', y='Cramers_V', ax=ax_conf, color=sns.color_palette("deep")[0], zorder=3)
         ax_conf.set_title('F. Inherent Confounding: Study ID vs. Biology')
         ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)")
         ax_conf.set_ylim(0, 1.1)
@@ -362,16 +554,47 @@ def plot_metrics_comparison(metrics_dict: dict,
         ax_conf.text(0.5, 0.5, "Metadata missing or insufficient data\nfor confounding check.", ha='center', va='center')
         ax_conf.set_title('F. Inherent Confounding Check')
 
+    # --- APPLY BACKGROUNDS & REMOVE X-LABELS ---
     active_axes = axes.flatten()
     for i, ax in enumerate(active_axes):
         ax.set_xlabel('')
+        
+        # Get the categories from the current axes to paint backgrounds
+        ticks = [t.get_text() for t in ax.get_xticklabels()]
+        
+        for idx, tick_text in enumerate(ticks):
+            # Normalization to match Plot F's capitalized 'Variable' names back to base categories
+            clean_name = tick_text.replace(" (Missing)", "").lower()
+            match_cat = next((c for c in unique_categories if c.lower() == clean_name), None)
+            
+            if match_cat:
+                # Add a vertical shaded band behind the bars
+                ax.axvspan(idx - 0.5, idx + 0.5, color=bg_color_dict[match_cat], alpha=0.4, zorder=0)
+
+        # Clear out the text on the X-axis completely
+        ax.set_xticks([]) 
+        ax.grid(True, axis='y', zorder=1) # Ensure Y gridlines stay visible
+
+        # Handle the existing 'Stage' legend
         if ax.get_legend() is not None:
             if i == 0: 
                 ax.legend(title='Pipeline Stage', loc='upper right', bbox_to_anchor=(1.0, 1.05))
             else:
                 ax.get_legend().remove()
 
-    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+    # --- ADD THE NEW SECONDARY CATEGORY LEGEND ---
+    category_patches = [
+        mpatches.Patch(color=color, alpha=0.4, label=cat.replace('_', ' ').capitalize()) 
+        for cat, color in bg_color_dict.items()
+    ]
+    
+    # Place it centrally at the very top, under the main title
+    fig.legend(handles=category_patches, title='Label Type (Background Group)', 
+               loc='upper center', ncol=len(unique_categories), 
+               bbox_to_anchor=(0.5, 0.93), frameon=True, fontsize=12)
+
+    # Adjusted top rect boundary (0.88 instead of 0.96) to make space for the new legend
+    plt.tight_layout(rect=[0, 0.03, 1, 0.88])
     
     output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
     try:

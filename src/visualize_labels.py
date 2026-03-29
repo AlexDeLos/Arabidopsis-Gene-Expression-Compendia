@@ -1,9 +1,12 @@
 import os
 import json
 import ast
+import sys
+import matplotlib
+# Force matplotlib to use a non-interactive backend so it doesn't crash looking for a GUI
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 from collections import Counter
-import sys
 
 # Ensure the script can find your src modules if run from the root directory
 sys.path.append(os.path.abspath('./'))
@@ -23,8 +26,15 @@ def load_all_labels(labels_dir):
             with open(file_path, 'r') as f:
                 try:
                     study_data = json.load(f)
-                    for sample_id, sample_data in study_data.items():
-                        all_samples.append(sample_data)
+                    
+                    # Fix: Safely handle both Lists and Dictionaries
+                    if isinstance(study_data, dict):
+                        # Extract the sample data from the dictionary values
+                        all_samples.extend(study_data.values())
+                    elif isinstance(study_data, list):
+                        # If it's already a list of samples, just extend
+                        all_samples.extend(study_data)
+                        
                 except Exception as e:
                     print(f"Error reading {file_path}: {e}")
                     
@@ -47,6 +57,10 @@ def aggregate_label_counts(samples, label_category):
     ignore_keys = {"value", "confidence", "reasoning", "evidence", "explanation", "source"}
 
     for sample in samples:
+        # Some items in list might not be dicts if formatting is off, handle safely
+        if not isinstance(sample, dict):
+            continue
+            
         raw_items = sample.get(label_category, [])
         
         # NORMALIZATION: Prevent iterating over dict keys or single strings
@@ -143,7 +157,7 @@ if __name__ == '__main__':
         ax.spines['right'].set_visible(False)
         plt.tight_layout()
         
-        save_path = os.path.join(output_dir, f'{label}_distribution.png')
+        save_path = os.path.join(output_dir, f'RNA_{label}_distribution.png')
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"Saved plot: {save_path}")
