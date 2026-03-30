@@ -369,7 +369,7 @@ def normalize_all_with_covariates():
     print("Finished! Saved to fully_normalized_with_covariates.csv")
 
 
-def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_threshold: float = 0.95):
+def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_threshold: float = 0.95, out_path: str | None = None):
     """
     Approximates the Rank-in algorithm for cross-platform transcriptomic data integration
     (Microarray & RNA-seq) as described by Tang et al., 2021.
@@ -377,6 +377,7 @@ def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_thre
     :param df: pandas DataFrame of raw expression data (rows = genes, columns = samples).
     :param n_bins: Number of groups to partition the sorted genes into (default is 100, per the paper).
     :param variance_threshold: The amount of cumulative variance to retain during SVD reconstruction.
+    :param out_path: Optional path to save the result CSV. If None, defaults to PROCESSED_DATA_FOLDER/rankin.csv.
     :return: A pandas DataFrame containing the Rank-in adjusted expression matrix.
     """
     print(f"\n[Rank-in] Step 1: Transforming raw expression into internal relative rankings ({n_bins} bins)...")
@@ -424,8 +425,10 @@ def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_thre
     ).add(gene_means, axis=0)
     
     print("[Rank-in] Normalization complete.")
-    adjusted_df.to_csv(PROCESSED_DATA_FOLDER+'rankin.csv')
+    save_to = out_path if out_path is not None else PROCESSED_DATA_FOLDER + 'rankin.csv'
+    adjusted_df.to_csv(save_to)
     return adjusted_df
+
 if __name__ == '__main__':
     # run_preprocessing()
     df = pd.read_csv(PROCESSED_DATA_FOLDER+'imputed.csv',index_col=0)

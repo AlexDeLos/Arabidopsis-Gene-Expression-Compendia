@@ -33,6 +33,8 @@ from rpy2.robjects.conversion import localconverter
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *   # provides STORAGE_DIR, COMBINED_DATA_OUTPUT_FILE, etc.
+from src.data_importing.data_norm_and_analisys import run_rank_in_normalization
+from src.data_importing.data_norm_and_analisys import run_rank_in_normalization
 
 # ---------------------------------------------------------------------------
 # Paths  (edit RNASEQ_DATA_DIR / RNASEQ_FIGURES_DIR in src/constants.py
@@ -231,61 +233,10 @@ def run_combat_seq(
 
 
 # ---------------------------------------------------------------------------
-# 3. Rank-in normalization  (same algorithm as microarray pipeline)
+# 3. Rank-in normalization — imported from data_norm_and_analisys.py
 # ---------------------------------------------------------------------------
-
-def run_rank_in_normalization(
-    df: pd.DataFrame,
-    n_bins: int = 100,
-    variance_threshold: float = 0.95,
-    out_path: str | None = None,
-) -> pd.DataFrame:
-    """
-    Rank-in normalization (Tang et al. 2021).
-    Operates on log-transformed data or corrected counts — not raw integers.
-
-    Parameters
-    ----------
-    df                 : genes × samples expression matrix
-    n_bins             : rank bins  (default 100, per paper)
-    variance_threshold : cumulative SVD variance to retain  (default 0.95)
-    out_path           : if given, saves result to this CSV path
-    """
-    print(f"\n[Rank-in] Step 1: Intra-sample rank transformation ({n_bins} bins)...")
-    rank_matrix  = df.rank(pct=True, method='average')
-    binned_matrix = pd.DataFrame(
-        np.ceil(rank_matrix.values * n_bins),
-        index=df.index, columns=df.columns,
-    )
-
-    print("[Rank-in] Step 2: Centering for SVD...")
-    gene_means      = binned_matrix.mean(axis=1)
-    binned_centered = binned_matrix.sub(gene_means, axis=0)
-    X               = binned_centered.T   # (samples × genes) for sklearn
-
-    print("[Rank-in] Step 3: SVD to filter platform noise...")
-    max_k    = min(X.shape) - 1
-    svd_test = TruncatedSVD(n_components=max_k, random_state=42)
-    svd_test.fit(X)
-    cumvar   = np.cumsum(svd_test.explained_variance_ratio_)
-    optimal_k = int(np.argmax(cumvar >= variance_threshold) + 1)
-    print(f"  -> Using {optimal_k} SVD components to retain {variance_threshold*100:.0f}% variance.")
-
-    svd_final     = TruncatedSVD(n_components=optimal_k, random_state=42)
-    X_reduced     = svd_final.fit_transform(X)
-    X_reconstructed = svd_final.inverse_transform(X_reduced)
-
-    adjusted_df = pd.DataFrame(
-        X_reconstructed.T,
-        index=binned_matrix.index,
-        columns=binned_matrix.columns,
-    ).add(gene_means, axis=0)
-
-    print("[Rank-in] Done.")
-    if out_path:
-        adjusted_df.to_csv(out_path)
-        print(f"  -> Saved to {out_path}")
-    return adjusted_df
+# run_rank_in_normalization is shared with the microarray pipeline.
+# It expects a pd.DataFrame, so np.log1p output must be wrapped back into one.
 
 
 # ---------------------------------------------------------------------------
@@ -352,12 +303,16 @@ def run_rnaseq_preprocessing():
     else:
         print("\nRunning Rank-in normalization on ComBat-seq output...")
 
-        # Log1p transform the corrected counts before Rank-in
-        # (Rank-in was designed for log-space expression values)
-        log_df = np.log1p(combat_df.clip(lower=0))
+        # Log1p-transform corrected counts before Rank-in.
+        # np.log1p returns an ndarray so we reconstruct the DataFrame explicitly.
+        log_df = pd.DataFrame(
+            np.log1p(combat_df.clip(lower=0).values),
+            index=combat_df.index,
+            columns=combat_df.columns,
+        )
 
         rankin_df = run_rank_in_normalization(
-            log_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path
+            df=log_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path
         )
         print(f"Saved Rank-in result → {rankin_path}")
 
