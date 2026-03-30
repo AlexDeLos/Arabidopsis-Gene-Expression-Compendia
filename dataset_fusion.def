@@ -80,7 +80,9 @@ From: python:3.11-slim-bookworm
     pip install sentence-transformers spacy transformers huggingface-hub
     python -m spacy download en_core_web_sm
 
-    pip install biopython GEOparse mygene goatools rpy2
+    # rpy2 3.6+ requires R symbols (R_getVar, R_ParentEnv) not present in R 4.3.
+    # Pin to the last 3.5.x release which is ABI-compatible with Debian bookworm's R 4.3.
+    pip install biopython GEOparse mygene goatools "rpy2==3.5.16"
 
     # =========================================================================
     # 4. Verify
