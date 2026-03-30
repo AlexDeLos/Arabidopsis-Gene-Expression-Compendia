@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=cluster_exploration
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --time=01:00:00
+#SBATCH --time=10:00:00
 #SBATCH --mem=26G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=general
@@ -24,7 +24,6 @@ echo "Job ID      : ${SLURM_JOB_ID}"
 echo "Node        : $(hostname)"
 echo "Started     : $(date)"
 echo "SIF         : ${SIF}"
-echo "Repo        : ${REPO}"
 echo "========================================"
 
 # Verify the .sif file is reachable from this compute node before attempting exec.

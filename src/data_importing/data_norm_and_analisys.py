@@ -18,7 +18,7 @@ from rpy2.robjects.packages import importr
 module_dir = './'
 sys.path.append(module_dir)
 from src.constants import *
-from src.data_analisys.utils.cluster_exploration_utils import *
+from src.data_analisys.utils.cluster_exploration_utils_final import *
 
 def plot_filtering_summary(df_before, df_after, output_path):
     """
