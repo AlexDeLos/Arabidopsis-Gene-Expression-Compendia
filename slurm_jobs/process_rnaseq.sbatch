@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cluster_exploration
+#SBATCH --job-name=rna_processing
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 #SBATCH --qos=medium
 #SBATCH --time=4:00:00

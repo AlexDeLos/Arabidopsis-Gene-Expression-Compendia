@@ -10,7 +10,7 @@ from collections import Counter
 
 # Ensure the script can find your src modules if run from the root directory
 sys.path.append(os.path.abspath('./'))
-from src.constants import LABELS_PATH, FIGURES_DIR
+from src.constants import LABELS_PATH, FIGURES_DIR, RNA_MA
 from src.constants_labeling import LABELS
 
 def load_all_labels(labels_dir):
@@ -125,7 +125,7 @@ if __name__ == '__main__':
         print("No samples found. Exiting.")
         sys.exit(0)
 
-    output_dir = os.path.join(FIGURES_DIR, "label_distributions")
+    output_dir = os.path.join(FIGURES_DIR, f"label_distributions_{'RNA' if RNA_MA else 'Microarray'}")
     os.makedirs(output_dir, exist_ok=True)
 
     for label in LABELS:
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         ax.spines['right'].set_visible(False)
         plt.tight_layout()
         
-        save_path = os.path.join(output_dir, f'RNA_{label}_distribution.png')
+        save_path = os.path.join(output_dir, f'{'RNA' if RNA_MA else 'Microarray'}_{label}_distribution.png')
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"Saved plot: {save_path}")
