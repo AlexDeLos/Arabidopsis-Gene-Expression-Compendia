@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=cluster_exploration
 #SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --qos=medium
 #SBATCH --time=10:00:00
 #SBATCH --mem=26G
 #SBATCH --cpus-per-task=4
