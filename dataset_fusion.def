@@ -57,7 +57,8 @@ From: python:3.11-slim-bookworm
         gzip \
         r-bioc-biobase \
         r-bioc-oligo \
-        r-bioc-limma
+        r-bioc-limma \
+        r-bioc-sva
 
     rm -rf /var/lib/apt/lists/*
 
