@@ -447,6 +447,9 @@ class RNASeq_processor:
 
 
 # --- BATCH HELPER FUNCTIONS ---
+import json
+import glob
+import shutil
 
 def split_merged_counts(batch_results_dir, study_map, output_root):
     merged_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
