@@ -98,12 +98,16 @@ if __name__ == "__main__":
     def read_id(path):
         with open(path, 'r') as f:
                 return (f.read().strip())
+    def save_id_list(data_list, path):
+        with open(path, 'w') as f:
+            # This writes "GSE123\nGSE456\nGSE789" to the file
+            f.write(','.join(data_list))
     if run_rna_seq:
         print('Running RNA SEQ')
         file_tracker_loc = f"{root_storage_dir}rnaseq_data/file_tracker/"
         
         # Load your IDs
-        rnaseq_ids: list[str] = eval(read_id('./study_ids/RNA_seq_ids.txt'))
+        rnaseq_ids: list[str] = eval("['"+read_id('./study_ids/RNA_seq_ids.txt').replace(',',"','")+"']")
         # query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
         # --- BATCH CONFIGURATION ---

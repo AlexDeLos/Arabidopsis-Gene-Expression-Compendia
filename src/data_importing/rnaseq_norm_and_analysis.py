@@ -93,8 +93,8 @@ def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, outp
         (fig.add_subplot(gs[1, 0]), df_before, 'Before'),
         (fig.add_subplot(gs[1, 1]), df_after,  'After'),
     ]:
-        ax.imshow(df.isna(), aspect='auto', cmap='viridis', interpolation='nearest')
-        pct = (df.isna().sum().sum() / df.size) * 100
+        ax.imshow((df.isna() | (df == 0)), aspect='auto', cmap='viridis', interpolation='nearest')
+        pct = ((df.isna() | (df == 0)).sum().sum() / df.size) * 100
         ax.set_title(f'Missingness {label}\n({pct:.1f}% missing)')
         ax.set_xlabel('Samples'); ax.set_ylabel('Genes')
 
@@ -247,7 +247,7 @@ def run_rnaseq_preprocessing():
         )
         filtered_df.to_csv(filter_path)
         print(f"Saved filtered matrix → {filter_path}")
-
+    return
     # ── Stage 2: ComBat-seq ──────────────────────────────────────────────────
     if os.path.exists(combat_seq_path):
         print("Loading cached combat_seq.csv...")

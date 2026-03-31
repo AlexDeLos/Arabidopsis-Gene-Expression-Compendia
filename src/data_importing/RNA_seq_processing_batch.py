@@ -460,7 +460,6 @@ def split_merged_counts(batch_results_dir, study_map, output_root):
     df = pd.read_csv(merged_file, sep='\t')
 
     # Only keep meta columns that actually exist in the dataframe
-    # pseudo-alignment produces 'gene_id' only; full alignment adds 'gene_name'
     meta_cols = [c for c in ['gene_id', 'gene_name'] if c in df.columns]
 
     saved = []
@@ -473,14 +472,67 @@ def split_merged_counts(batch_results_dir, study_map, output_root):
 
         study_out = os.path.join(output_root, "processed_rnaseq", gse_id)
         os.makedirs(os.path.join(study_out, "star_salmon"), exist_ok=True)
+        
+        # --- NEW: Create a folder to hold the raw JSON files ---
+        meta_out_dir = os.path.join(study_out, "salmon_metadata")
+        os.makedirs(meta_out_dir, exist_ok=True)
 
+        # 1. Save a record of the batch directory
+        batch_record_file = os.path.join(study_out, "batch_info.txt")
+        with open(batch_record_file, "w") as f:
+            f.write(f"Origin_Batch_Directory: {batch_results_dir}\n")
+
+        # 2. Extract metrics AND copy the raw JSON files
+        coverage_data = []
+        salmon_base_dir = os.path.join(batch_results_dir, "salmon")
+        
+        for sample_col in study_cols:
+            n_processed = "unspecified"
+            n_mapped = "unspecified"
+            pct_mapped = "unspecified"
+            
+            sample_folders = glob.glob(os.path.join(salmon_base_dir, f"*{sample_col}*"))
+            
+            if sample_folders:
+                meta_path = os.path.join(sample_folders[0], "aux_info", "meta_info.json")
+                if os.path.exists(meta_path):
+                    
+                    # A) Copy the entire JSON file into the study directory
+                    target_json = os.path.join(meta_out_dir, f"{sample_col}_meta_info.json")
+                    shutil.copy2(meta_path, target_json)
+                    
+                    # B) Extract key metrics for the summary CSV
+                    try:
+                        with open(meta_path, 'r') as f:
+                            meta_json = json.load(f)
+                            n_processed = meta_json.get("num_processed", "unspecified")
+                            n_mapped = meta_json.get("num_mapped", "unspecified")
+                            pct_mapped = meta_json.get("percent_mapped", "unspecified")
+                    except Exception as e:
+                        print(f"  Warning: Could not read meta_info for {sample_col}: {e}")
+            
+            coverage_data.append({
+                "Sample": sample_col, 
+                "Total_Reads_Processed": n_processed,
+                "Reads_Mapped": n_mapped,
+                "Percent_Mapped": pct_mapped
+            })
+            
+        # Save coverage to a CSV
+        coverage_df = pd.DataFrame(coverage_data)
+        coverage_file = os.path.join(study_out, "sample_coverage.csv")
+        coverage_df.to_csv(coverage_file, index=False)
+
+        # 3. Save the Count Matrix
         study_df = df[meta_cols + study_cols]
         target_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_counts.tsv")
         study_df.to_csv(target_file, sep='\t', index=False)
+        
         print(f"  Saved {gse_id} counts to {target_file}")
+        print(f"  Saved full Salmon metadata to {meta_out_dir}/")
         saved.append(gse_id)
 
-    return saved  # return list of saved GSEs instead of bare True
+    return saved
 
 def chunk_list(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -697,6 +749,9 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
 
                     if not check_metadata_for_sra_boolean(gse):
                         print(f"No SRA data for {gse_id}")
+                        tracker.mark_ignore(gse_id); continue
+                    if len(gse.metadata.get("type", [])) > 1:
+                        print(f"Skipping {gse.name}: Contains multiple experiment types.")
                         tracker.mark_ignore(gse_id); continue
                     if len(gse.gsms) < 5: # type: ignore
                         print('We are ignoring this study because it is < 5')
