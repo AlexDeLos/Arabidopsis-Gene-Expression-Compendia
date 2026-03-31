@@ -24,9 +24,8 @@ if CLUSTER_RUN:
 COMBINED_DATA_OUTPUT_FILE = f'{PROCESSED_DATA_FOLDER}RMA_Microarray_Combined.csv'
 CORE_DATA_DIR = './data/core_data/'
 SOFT_PATH = f'{CORE_DATA_DIR}old_geo_downloads/'
-FIGURES_DIR = f'./outputs/{EXPERIMENT_NAME}/'
-if RNA_MA:
-    FIGURES_DIR = FIGURES_DIR+"_RNA"
+FIGURES_DIR = f'./outputs/{EXPERIMENT_NAME}{"_RNA" if RNA_MA else ""}/'
+
 FILTERING_FIGURES = f'{FIGURES_DIR}filter_figures/{EXPERIMENT_NAME}/'
 CLUSTER_EXPLORATION_FIGURES_DIR=f'{FIGURES_DIR}exploration_figures/'
 MODEL = 'TULIP_1.2'

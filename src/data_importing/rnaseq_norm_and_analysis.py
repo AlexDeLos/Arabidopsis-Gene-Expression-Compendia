@@ -106,53 +106,32 @@ def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, outp
 
 def run_filtering(
     raw_df: pd.DataFrame,
-    zero_as_nan: bool = True,
-    gene_nan_pct: float = 20.0,
-    sample_nan_pct: float = 20.0,
-    min_count_threshold: int = 10,
-    min_samples_expressed: float = 0.1,
+    sample_nan_pct: float = 20.0
 ) -> pd.DataFrame:
     """
-    RNA-seq-aware filtering:
+    RNA-seq sample filtering:
 
-    1. Genes with total count < min_count_threshold across ALL samples → drop.
-       (These are almost certainly un-expressed / mapping artefacts.)
-    2. Genes expressed (count > 0) in fewer than min_samples_expressed fraction
-       of samples → drop.  (Prevents extremely sparse genes from inflating zeros.)
-    3. Zero → NaN  (if zero_as_nan=True), then standard NaN-% thresholds.
+    Removes samples (columns) if they have a value of NaN or 0 in more than 
+    `sample_nan_pct`% of the genes. Does NOT filter out any genes.
 
     Parameters
     ----------
-    raw_df               : genes × samples count matrix (integer or float counts)
-    zero_as_nan          : treat 0 as missing after the count-based filters above
-    gene_nan_pct         : max % NaN per gene   (row) to keep  [default 20]
-    sample_nan_pct       : max % NaN per sample (col) to keep  [default 20]
-    min_count_threshold  : drop genes whose row-sum < this value [default 10]
-    min_samples_expressed: fraction of samples that must have count > 0 [default 0.1]
+    raw_df         : genes × samples count matrix (integer or float counts)
+    sample_nan_pct : max % of (0 or NaN) per sample (col) to keep [default 20.0]
     """
     print(f"  [Filter] Input: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    # --- a. Low-count gene filter (count domain, before NaN conversion) ---
-    row_sums = raw_df.sum(axis=1)
-    raw_df = raw_df.loc[row_sums >= min_count_threshold]
-    print(f"  [Filter] After total-count filter (≥{min_count_threshold}): {raw_df.shape[0]} genes")
+    # 1. Identify which cells are either exactly 0 or NaN
+    is_zero_or_nan = raw_df.isna() | (raw_df == 0)
 
-    # --- b. Low-prevalence gene filter ---
-    min_samples = int(np.ceil(min_samples_expressed * raw_df.shape[1]))
-    expressed   = (raw_df > 0).sum(axis=1)
-    raw_df = raw_df.loc[expressed >= min_samples]
-    print(f"  [Filter] After prevalence filter (expressed in ≥{min_samples_expressed*100:.0f}% samples): {raw_df.shape[0]} genes")
+    # 2. Calculate the percentage of these values per sample (column)
+    invalid_pct_per_sample = is_zero_or_nan.mean() * 100
 
-    # --- c. Zero → NaN ---
-    if zero_as_nan:
-        raw_df = raw_df.replace(0, np.nan)
+    # 3. Keep only the samples that fall below or equal to the threshold
+    raw_df = raw_df.loc[:, invalid_pct_per_sample <= sample_nan_pct]
 
-    # --- d. NaN-% filters ---
-    nan_genes   = raw_df.isna().mean(axis=1) * 100
-    raw_df      = raw_df.loc[nan_genes <= gene_nan_pct]
-    nan_samples = raw_df.isna().mean() * 100
-    raw_df      = raw_df[raw_df.columns[nan_samples <= sample_nan_pct]]
-    print(f"  [Filter] After NaN filters: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
+    print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
+    
     return raw_df
 
 

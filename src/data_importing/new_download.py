@@ -40,8 +40,6 @@ def load_list_from_txt(filename):
 
 MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'#cel"[Supplementary Files]'
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
-STRESS_QUERY = ' AND ("stress"[Title] OR "response"[Title] OR "abiotic"[Title] OR "biotic"[Title])'
-# FULL_QUERY_RNA = RNASEQ_QUERY + STRESS_QUERY
 
 
 # Usage
