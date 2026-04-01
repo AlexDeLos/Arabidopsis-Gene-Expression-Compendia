@@ -4,7 +4,7 @@ from typing import Dict
 #NEED TO CHANGE
 GLOBAL_DIR_PATH = F'{os.getcwd()}/'
 CLUSTER_RUN = GLOBAL_DIR_PATH !='/home/alex/Documents/GitHub/Dataset_fusion_Microarray/'
-EXPERIMENT_NAME = '4.5'
+EXPERIMENT_NAME = '5.0'
 
 if CLUSTER_RUN:
     STORAGE_DIR ='/tudelft.net/staff-umbrella/GeneExpressionStorage/'
