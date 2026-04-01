@@ -36,10 +36,21 @@ unset NXF_JAVA_HOME
 
 # Define your base storage paths
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-# export BIG_STORAGE_temp='/tmp/alexdelossanto/'
-# mkdir -p $BIG_STORAGE_temp
-export NXF_WORK="$BIG_STORAGE/work"
-mkdir -p "$NXF_WORK"
+
+#working:
+# export NXF_WORK="$BIG_STORAGE/work"
+# mkdir -p "$NXF_WORK"
+#temp (testing):
+# Create a unique local scratch directory for THIS specific array job
+export LOCAL_SCRATCH="/tmp/nxf_scratch_${USER}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+mkdir -p "$LOCAL_SCRATCH"
+
+# Point Nextflow's work and temp directories to the local node's disk
+export NXF_WORK="$LOCAL_SCRATCH/work"
+export NXF_TEMP="$LOCAL_SCRATCH/temp"
+mkdir -p "$NXF_WORK" "$NXF_TEMP"
+
+echo "Local Nextflow Work Directory is set to: $NXF_WORK"
 
 # ==========================================
 # --- THE FINAL SINGULARITY CACHE FIX ---

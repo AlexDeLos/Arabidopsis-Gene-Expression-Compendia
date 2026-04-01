@@ -110,6 +110,8 @@ if __name__ == "__main__":
         rnaseq_ids: list[str] = eval("['"+read_id('./study_ids/RNA_seq_ids.txt').replace(',',"','")+"']")
         # query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
+        #TODO: change this to that we filter out all files that are being tried or tried???
+
         # --- BATCH CONFIGURATION ---
         BATCH_SIZE:int = int(args.batch_size)
         RNA_tracker = FileTracker(file_tracker_loc)

@@ -3,6 +3,8 @@ import subprocess
 import shutil
 import csv
 import re
+import glob
+import json
 import pandas as pd
 from tqdm import tqdm
 import GEOparse
@@ -380,8 +382,8 @@ class RNASeq_processor:
             "--outdir", batch_out_dir,
             "--pseudo_aligner", "salmon",
             "--skip_alignment",
-            "--fasta",        refs['fasta'],
-            "--gtf",          refs['gtf'],
+            "--fasta", refs['fasta'],
+            "--gtf", refs['gtf'],
             "--salmon_index", refs['salmon_index'],
             "--gtf_group_features_type", "mRNA",
             "--skip_biotype_qc",
@@ -447,19 +449,23 @@ class RNASeq_processor:
 
 
 # --- BATCH HELPER FUNCTIONS ---
-import json
-import glob
-import shutil
 
-def split_merged_counts(batch_results_dir, study_map, output_root):
+def split_merged_counts(batch_results_dir, study_map, output_root, batch_id=None):
+    # nf-core rnaseq with --skip_alignment outputs to star_salmon/;
+    # salmon-only runs output to salmon/. Check both, prefer star_salmon.
     merged_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
+    salmon_subdir = "star_salmon"
     if not os.path.exists(merged_file):
         merged_file = os.path.join(batch_results_dir, "salmon", "salmon.merged.gene_counts.tsv")
+        salmon_subdir = "salmon"
     if not os.path.exists(merged_file):
         print("Error: Merged count file not found in batch output.")
         return False
 
-    print("Demultiplexing batch results...")
+    # salmon metadata JSONs live in the same subdir as the merged counts
+    salmon_base_dir = os.path.join(batch_results_dir, salmon_subdir)
+
+    print(f"Demultiplexing batch results from {salmon_subdir}/...")
     df = pd.read_csv(merged_file, sep='\t')
 
     # Only keep meta columns that actually exist in the dataframe
@@ -475,53 +481,58 @@ def split_merged_counts(batch_results_dir, study_map, output_root):
 
         study_out = os.path.join(output_root, "processed_rnaseq", gse_id)
         os.makedirs(os.path.join(study_out, "star_salmon"), exist_ok=True)
-        
-        # --- NEW: Create a folder to hold the raw JSON files ---
+
         meta_out_dir = os.path.join(study_out, "salmon_metadata")
         os.makedirs(meta_out_dir, exist_ok=True)
 
-        # 1. Save a record of the batch directory
+        # 1. Write a richer batch_info.txt that survives batch dir deletion
         batch_record_file = os.path.join(study_out, "batch_info.txt")
         with open(batch_record_file, "w") as f:
-            f.write(f"Origin_Batch_Directory: {batch_results_dir}\n")
+            f.write(f"Batch_ID:                {batch_id or 'unknown'}\n")
+            f.write(f"Origin_Batch_Directory:  {batch_results_dir}\n")
+            f.write(f"Salmon_Subdir:           {salmon_subdir}\n")
+            f.write(f"Studies_In_Batch:        {', '.join(study_map.keys())}\n")
+            f.write(f"Samples_This_Study:      {', '.join(study_cols)}\n")
+            f.write(f"Timestamp_UTC:           {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
 
         # 2. Extract metrics AND copy the raw JSON files
         coverage_data = []
-        salmon_base_dir = os.path.join(batch_results_dir, "salmon")
-        
         for sample_col in study_cols:
             n_processed = "unspecified"
             n_mapped = "unspecified"
             pct_mapped = "unspecified"
-            
+
+            # Search in the correct subdir (star_salmon OR salmon)
             sample_folders = glob.glob(os.path.join(salmon_base_dir, f"*{sample_col}*"))
-            
+
             if sample_folders:
                 meta_path = os.path.join(sample_folders[0], "aux_info", "meta_info.json")
                 if os.path.exists(meta_path):
-                    
                     # A) Copy the entire JSON file into the study directory
                     target_json = os.path.join(meta_out_dir, f"{sample_col}_meta_info.json")
                     shutil.copy2(meta_path, target_json)
-                    
+
                     # B) Extract key metrics for the summary CSV
                     try:
-                        with open(meta_path, 'r') as f:
-                            meta_json = json.load(f)
+                        with open(meta_path, 'r') as fh:
+                            meta_json = json.load(fh)
                             n_processed = meta_json.get("num_processed", "unspecified")
                             n_mapped = meta_json.get("num_mapped", "unspecified")
                             pct_mapped = meta_json.get("percent_mapped", "unspecified")
                     except Exception as e:
                         print(f"  Warning: Could not read meta_info for {sample_col}: {e}")
-            
+            else:
+                print(f"  Warning: No salmon output folder found for sample {sample_col}")
+
             coverage_data.append({
-                "Sample": sample_col, 
-                "Total_Reads_Processed": n_processed,
-                "Reads_Mapped": n_mapped,
-                "Percent_Mapped": pct_mapped
+                "Sample":                 sample_col,
+                "Total_Reads_Processed":  n_processed,
+                "Reads_Mapped":           n_mapped,
+                "Percent_Mapped":         pct_mapped,
+                "Batch_ID":               batch_id or "unknown",
             })
-            
-        # Save coverage to a CSV
+
+        # Save coverage CSV
         coverage_df = pd.DataFrame(coverage_data)
         coverage_file = os.path.join(study_out, "sample_coverage.csv")
         coverage_df.to_csv(coverage_file, index=False)
@@ -530,9 +541,9 @@ def split_merged_counts(batch_results_dir, study_map, output_root):
         study_df = df[meta_cols + study_cols]
         target_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_counts.tsv")
         study_df.to_csv(target_file, sep='\t', index=False)
-        
+
         print(f"  Saved {gse_id} counts to {target_file}")
-        print(f"  Saved full Salmon metadata to {meta_out_dir}/")
+        print(f"  Saved coverage + Salmon metadata to {study_out}/")
         saved.append(gse_id)
 
     return saved
@@ -815,8 +826,18 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                 print("Skipping batch execution (no valid samples).")
                 continue
 
-            batch_id = f"batch_{ecotype}_{batch[0]}_{len(batch)}"
-            batch_dir = os.path.join(output_dir, "batch_processing", batch_id)
+            # Build a collision-proof batch ID.
+            # Format: batch_{ecotype}_{slurm_array_task_id}_{utc_timestamp}_{batch_index}
+            # - SLURM_ARRAY_TASK_ID differentiates parallel array jobs
+            # - UTC timestamp (to-the-second) makes it unique even if the same
+            #   array task re-runs (e.g. after a failure)
+            # - batch_index (position within this task's ecotype loop) handles
+            #   the case where one task processes multiple ecotype groups
+            slurm_task   = os.environ.get('SLURM_ARRAY_TASK_ID', 'local')
+            utc_ts       = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
+            batch_index  = sum(len(v) for v in ecotype_groups.values() if v is not gse_ids_for_ecotype)
+            batch_id     = f"batch_{ecotype}_{slurm_task}_{utc_ts}_{batch_index:02d}"
+            batch_dir    = os.path.join(output_dir, "batch_processing", batch_id)
             os.makedirs(batch_dir, exist_ok=True)
             
             samplesheet_path = os.path.join(batch_dir, "samplesheet.csv")
@@ -845,7 +866,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"  [!] All samples for {gse_id} were removed — marking as error.")
                         tracker.mark_error(gse_id)
 
-                split_success = split_merged_counts(batch_dir, effective_study_map, output_dir)
+                split_success = split_merged_counts(batch_dir, effective_study_map, output_dir, batch_id=batch_id)
                 # split_success is a list of saved GSE IDs, or False if merged file not found
 
                 if split_success is not False:

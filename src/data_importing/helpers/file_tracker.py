@@ -26,7 +26,7 @@ class FileTracker:
     def get_status(self, gse_id):
         path = self._get_file_path(gse_id)
         if not os.path.exists(path):
-            return STATUS_NOT_TRIED
+            return -1
         try:
             with open(path, 'r') as f:
                 return int(f.read().strip())
@@ -39,13 +39,16 @@ class FileTracker:
             f.write(str(status_code))
 
     # --- MISSING BOOLEAN CHECKS ---
+    def is_locked(self, gse_id):
+        return self.get_status(gse_id) == STATUS_LOCKED
+
     def is_processed(self, gse_id):
         return self.get_status(gse_id) == STATUS_PROCESSED
 
     def is_downloaded(self, gse_id):
-        # Checks if status is Downloaded OR Processed (since processed implies downloaded)
+        # Checks if status is Downloaded OR Processed (since processed implies downloaded) Not true if run and delete == true
         s = self.get_status(gse_id)
-        return s == STATUS_DOWNLOADED or s == STATUS_PROCESSED
+        return s == STATUS_DOWNLOADED #or s == STATUS_PROCESSED
 
     def is_ignored(self, gse_id):
         return self.get_status(gse_id) == STATUS_IGNORE

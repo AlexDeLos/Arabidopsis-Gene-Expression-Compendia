@@ -22,7 +22,7 @@ def monitor_tracker(tracker_dir):
 
     # --- COUNTERS ---
     stats = {
-        STATUS_NOT_TRIED: 0,
+        STATUS_LOCKED: 0,
         STATUS_DOWNLOADED: 0,
         STATUS_PROCESSED: 0,
         STATUS_IGNORE: 0,
@@ -107,7 +107,7 @@ def monitor_tracker(tracker_dir):
     print_bar("IGNORED (3)", stats[STATUS_IGNORE], total_processed)
     print_bar("ERRORS  (4)", stats[STATUS_ERROR], total_processed)
     print_bar("DOWNLD  (1)", stats[STATUS_DOWNLOADED], total_processed)
-    print_bar("PENDING (0)", stats[STATUS_NOT_TRIED], total_processed)
+    print_bar("PENDING (0)", stats[STATUS_LOCKED], total_processed)
 
     # 2. SPEED ESTIMATION
     print(f"\n--- CLUSTER SPEED ---")
