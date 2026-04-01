@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=general
+#SBATCH --partition=ewi-insy
 #SBATCH --qos=medium
 #SBATCH --time=36:00:00
 #SBATCH --ntasks=1
