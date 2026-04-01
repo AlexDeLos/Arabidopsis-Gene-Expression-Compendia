@@ -132,7 +132,8 @@ if __name__ == "__main__":
             if start_idx < len(target_list):
                 # Slice the list to get the batch
                 current_batch = target_list[start_idx : end_idx]
-                
+                # for id in current_batch:
+                #     RNA_tracker.set_status(id,0)
                 print(f"--- ARRAY JOB #{args.array_index} ---")
                 print(f"Processing batch of {len(current_batch)} studies")
                 print(f"Range: {start_idx} to {end_idx}")
