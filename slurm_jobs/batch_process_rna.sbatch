@@ -1,10 +1,9 @@
 #!/bin/bash
 
 #SBATCH --partition=ewi-insy
-#SBATCH --qos=medium
 #SBATCH --time=36:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=6G
 #SBATCH --mail-type=END
 #SBATCH --job-name=batch_RNA_seq_processing
