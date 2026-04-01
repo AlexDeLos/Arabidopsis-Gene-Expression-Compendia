@@ -36,7 +36,7 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-apptainer exec \
+srun apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:${REPO}" \
     "${SIF}" \

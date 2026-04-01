@@ -40,7 +40,7 @@ echo "Gethering data..."
 # python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' --ma
 # 4. Run the Script
 echo "Starting analysis..."
-apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_importing/data_norm_and_analisys.py
+srun apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_importing/data_norm_and_analisys.py
 
 echo "Job finished successfully."
 echo "Date: $(date)"
