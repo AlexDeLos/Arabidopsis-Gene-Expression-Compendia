@@ -236,3 +236,4 @@ my_env_packed.tar.gz
 /.vscode
 debug_run.sh
 apptainer_python.sh
+*.png

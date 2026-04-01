@@ -37,52 +37,56 @@ unset NXF_JAVA_HOME
 # Define your base storage paths
 export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 
-#working:
-# export NXF_WORK="$BIG_STORAGE/work"
-# mkdir -p "$NXF_WORK"
-#temp (testing):
-# Create a unique local scratch directory for THIS specific array job
-export LOCAL_SCRATCH="/tmp/nxf_scratch_${USER}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
-mkdir -p "$LOCAL_SCRATCH"
+# =============================================================================
+# WORK DIR STRATEGY
+# =============================================================================
+# NXF_WORK *must* be on shared storage (umbrella) — NOT /tmp.
+#
+# Reason: Nextflow with SLURM executor submits each process as a separate
+# SLURM job. Those jobs can land on ANY compute node. /tmp is node-local:
+# a job on node B cannot read files written to /tmp on node A.
+# Using /tmp for NXF_WORK causes every sub-job to fail immediately with
+# "terminated by external system" and exit status "-" (SLURM kills it
+# because the work directory doesn't exist on the assigned node).
+#
+# Per-job subdirectory prevents parallel array tasks from colliding in work/.
+# cleanup = true in .nextflow.config deletes successful task files automatically.
+# The Python run_and_delete logic deletes FASTQs after each batch succeeds.
+# These two together keep storage from growing uncontrollably.
+export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+mkdir -p "$NXF_WORK"
 
-# Point Nextflow's work and temp directories to the local node's disk
-export NXF_WORK="$LOCAL_SCRATCH/work"
-export NXF_TEMP="$LOCAL_SCRATCH/temp"
-mkdir -p "$NXF_WORK" "$NXF_TEMP"
+echo "Nextflow Work Directory: $NXF_WORK"
 
-echo "Local Nextflow Work Directory is set to: $NXF_WORK"
-
-# ==========================================
-# --- THE FINAL SINGULARITY CACHE FIX ---
-# ==========================================
-# Define your new home-based cache directory
-# "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
-# 1. FINAL IMAGES -> Shared Umbrella Storage
-# Nextflow will put the compiled .img files here so all nodes can use them.
-export MY_SHARED_IMAGES='/home/nfs/alexdelossanto/singularity_cache'
-mkdir -p "$MY_SHARED_IMAGES"
-export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_IMAGES"
-
-# Increase timeout so the 10 waiting jobs don't crash while the 1st job downloads
+# =============================================================================
+# SINGULARITY / APPTAINER CACHE
+# =============================================================================
+# Singularity image cache (.img files) -> shared home dir so all nodes reuse
+# the same pulled images. Shared across jobs — intentionally NOT per-job.
+export NXF_SINGULARITY_CACHEDIR="/home/nfs/alexdelossanto/singularity_cache"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 export NXF_SINGULARITY_PULLTIMEOUT="120m"
 
-# 2. TEMPORARY LAYERS -> Local Compute Node Storage (/tmp)
-export LOCAL_TEMP_CACHE="/tmp/apptainer_cache_$USER"
-mkdir -p "$LOCAL_TEMP_CACHE"
+# Apptainer TMPDIR for SIF building -> /tmp is fine here because SIF builds
+# happen on the login/submit node, not inside the sub-jobs. The nodev issue
+# only matters on compute nodes; if you still hit it, change to:
+#   /home/nfs/alexdelossanto/apptainer_tmp
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
+export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
+mkdir -p "$APPTAINER_TMPDIR"
 
-export SINGULARITY_CACHEDIR="$LOCAL_TEMP_CACHE"
-export APPTAINER_CACHEDIR="$LOCAL_TEMP_CACHE"
-export SINGULARITY_TMPDIR="$LOCAL_TEMP_CACHE"
-export APPTAINER_TMPDIR="$LOCAL_TEMP_CACHE"
+# Layer/blob cache for Singularity pulls -> /tmp is fine (node-local, ephemeral)
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}"
+export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
+mkdir -p "$APPTAINER_CACHEDIR"
 
-# Prevent host Conda paths from bleeding into the container
+# Pass TMPDIR and CACHEDIR into sub-jobs so they inherit the correct values
 export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
-# Define Batch Size
 BATCH_SIZE=10
-echo "Work Directory is set to: $NXF_WORK"
+echo "Work Directory: $NXF_WORK"
 echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
 # --- RUN THE PIPELINE ---
@@ -92,6 +96,20 @@ python3 -u src/data_importing/new_download.py \
     --array_index $SLURM_ARRAY_TASK_ID \
     --batch_size $BATCH_SIZE \
     --rna
+PIPELINE_EXIT=$?
 
-echo "Job finished"
+# =============================================================================
+# POST-RUN CLEANUP
+# Remove the per-job work directory after the job finishes.
+# cleanup = true in .nextflow.config already deletes files for successful tasks
+# during the run; this catches anything left over (failed task dirs, metadata).
+# Comment this out if you need to debug a failed run.
+# =============================================================================
+if [ -d "$NXF_WORK" ]; then
+    echo "Cleaning up work directory: $NXF_WORK"
+    rm -rf "$NXF_WORK"
+fi
+
+echo "Job finished with exit code $PIPELINE_EXIT"
 echo "Date: $(date)"
+exit $PIPELINE_EXIT
