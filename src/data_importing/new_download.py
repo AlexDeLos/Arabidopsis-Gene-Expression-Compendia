@@ -40,7 +40,19 @@ def load_list_from_txt(filename):
 
 MICROARRAY_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by array"[DataSet Type] AND "GSE"[Entry Type]'#cel"[Supplementary Files]'
 RNASEQ_QUERY = '"Arabidopsis thaliana"[Organism] AND "Expression profiling by high throughput sequencing"[DataSet Type] AND "GSE"[Entry Type]'
-
+RNASEQ_QUERY = (
+    '"Arabidopsis thaliana"[Organism] AND '
+    '"Expression profiling by high throughput sequencing"[DataSet Type] AND '
+    '"GSE"[Entry Type] '
+    'NOT ('
+        '"Non-coding RNA profiling by high throughput sequencing"[DataSet Type] OR '
+        '"Methylation profiling by high throughput sequencing"[DataSet Type] OR '
+        '"Genome binding/occupancy profiling by high throughput sequencing"[DataSet Type] OR '
+        '"Genome variation profiling by high throughput sequencing"[DataSet Type] OR '
+        '"Expression profiling by array"[DataSet Type] OR '
+        '"Other"[DataSet Type]'
+    ')'
+)
 
 # Usage
 # ids = ['GSE77815', 'GSE44053'] # Your list
@@ -53,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", help="output_dir", default=100,type=int)
     parser.add_argument("--array_index", type=int, default=10, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=False)
+    parser.add_argument("--rna", action="store_true", default=True)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -108,7 +120,7 @@ if __name__ == "__main__":
         
         # Load your IDs
         rnaseq_ids: list[str] = eval("['"+read_id('./study_ids/RNA_seq_ids.txt').replace(',',"','")+"']")
-        # query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
+        query_ids = search_geo_accessions(RNASEQ_QUERY, max_results=200000, filter_organism="Arabidopsis thaliana")
         
         #TODO: change this to that we filter out all files that are being tried or tried???
 
