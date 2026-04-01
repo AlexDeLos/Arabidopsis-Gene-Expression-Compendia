@@ -3,14 +3,27 @@
 monitor_jobs.py — RNA-seq pipeline SLURM job monitor
 =====================================================
 Watches one or more SLURM array job log files, parses study/batch state in
-real-time, and writes a self-refreshing HTML dashboard.
+real-time, cross-references against the FileTracker on disk, and writes a
+self-refreshing HTML dashboard.
 
 Usage:
     python3 monitor_jobs.py 12348004 12351666
-    python3 monitor_jobs.py 12348004 --log-dir /home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm
+    python3 monitor_jobs.py 12348004 --log-dir ~/Dataset_fusion_Microarray/logs_slurm
+    python3 monitor_jobs.py 12348004 --tracker-dir /tudelft.net/.../rnaseq_data/file_tracker
     python3 monitor_jobs.py 12348004 --once          # single snapshot, no loop
     python3 monitor_jobs.py 12348004 --interval 30   # refresh every 30s (default 20)
     python3 monitor_jobs.py 12348004 --out dashboard.html
+
+Tracker vs log comparison
+--------------------------
+The FileTracker (.txt files, one per GSE) is the ground truth written by the
+pipeline. The log is the in-progress narrative which can be stale or truncated.
+Discrepancies are highlighted as warnings in the dashboard:
+
+  LOG says processed  + TRACKER says downloaded → tracker write may have failed
+  LOG says error      + TRACKER says processed  → stale log from a previous run
+  LOG says ignore     + TRACKER says not_tried  → mark_ignore may have silently failed
+  TRACKER has studies + no log entry at all     → studies processed by a prior job
 """
 
 import argparse
@@ -22,6 +35,110 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TRACKER READING
+# Read FileTracker state directly from .txt files — no project imports needed.
+# One file per GSE: contains a single integer matching STATUS_* constants.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Mirrors src/constants.py — do not import from the project to keep this script
+# fully standalone.
+_TRACKER_INT_TO_NAME = {
+    0: "not_tried",
+    1: "downloaded",
+    2: "processed",
+    3: "ignore",
+    4: "error",
+}
+
+# Maps tracker state name → (log state name it aligns with, display label, color)
+TRACKER_STATES = {
+    "not_tried":  ("#475569", "Not tried"),
+    "downloaded": ("#a78bfa", "Downloaded"),
+    "processed":  ("#4ade80", "✓ Processed"),
+    "ignore":     ("#94a3b8", "Ignored"),
+    "error":      ("#f87171", "Error"),
+    "unknown":    ("#334155", "Unknown"),
+}
+
+# Log state → closest equivalent tracker state (for comparison)
+_LOG_TO_TRACKER_EQUIV = {
+    "processed":   "processed",
+    "samplesheet": "downloaded",   # samplesheet done = still downloaded in tracker
+    "downloaded":  "downloaded",
+    "processing":  "downloaded",   # mid-flight; tracker might say downloaded already
+    "no_fastq":    "ignore",
+    "ignore":      "ignore",
+    "skip_compat": "ignore",
+    "error":       "error",
+    "unknown":     "not_tried",
+}
+
+# Discrepancy rules: (log_equiv, tracker_state) → warning message
+# Only pairs that actually indicate a real problem are listed.
+_DISCREPANCY_RULES = {
+    ("processed",  "downloaded"): "Log says processed but tracker still shows downloaded — tracker write may have failed",
+    ("processed",  "not_tried"):  "Log says processed but tracker shows not_tried — very unexpected",
+    ("processed",  "error"):      "Log says processed but tracker shows error — stale log or race condition",
+    ("error",      "processed"):  "Log says error but tracker shows processed — log is stale from a prior run",
+    ("ignore",     "not_tried"):  "Log says ignored but tracker not updated — mark_ignore may have failed",
+    ("ignore",     "error"):      "Log says ignored but tracker shows error — minor inconsistency",
+    ("downloaded", "processed"):  "Log says still downloading but tracker already shows processed — log may be from older job",
+}
+
+
+def read_tracker_dir(tracker_dir: str) -> dict:
+    """
+    Read all GSExxx.txt files from the tracker directory.
+    Returns {gse_id: tracker_state_name}.
+    Does not raise — returns empty dict if directory doesn't exist.
+    """
+    states = {}
+    if not tracker_dir or not os.path.isdir(tracker_dir):
+        return states
+    for fname in os.listdir(tracker_dir):
+        if not fname.startswith("GSE") or not fname.endswith(".txt"):
+            continue
+        gse_id = fname[:-4]  # strip .txt
+        path = os.path.join(tracker_dir, fname)
+        try:
+            with open(path, "r") as fh:
+                raw = fh.read().strip()
+            try:
+                code = int(raw)
+                states[gse_id] = _TRACKER_INT_TO_NAME.get(code, "unknown")
+            except ValueError:
+                # Some entries are written as "ignore" or "error" strings
+                states[gse_id] = raw if raw in _TRACKER_INT_TO_NAME.values() else "unknown"
+        except OSError:
+            states[gse_id] = "unknown"
+    return states
+
+
+def compare_log_vs_tracker(log_studies: dict, tracker_states: dict) -> list:
+    """
+    Cross-reference per-study log states against tracker states.
+    Returns a list of discrepancy dicts:
+        {gse_id, log_state, tracker_state, message}
+    """
+    discrepancies = []
+    for gse_id, log_state in log_studies.items():
+        tracker_state = tracker_states.get(gse_id)
+        if tracker_state is None:
+            # Study appears in log but has no tracker file yet — not a problem
+            # if the job is still running; only flag if job is finished
+            continue
+        log_equiv = _LOG_TO_TRACKER_EQUIV.get(log_state, "unknown")
+        key = (log_equiv, tracker_state)
+        if key in _DISCREPANCY_RULES:
+            discrepancies.append({
+                "gse_id":        gse_id,
+                "log_state":     log_state,
+                "tracker_state": tracker_state,
+                "message":       _DISCREPANCY_RULES[key],
+            })
+    return discrepancies
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOG PARSING
@@ -244,12 +361,56 @@ def _state_counts(studies_dict):
     return counts
 
 
-def generate_html(all_results: list, refresh_s: int, generated_at: str) -> str:
+def generate_html(all_results: list, refresh_s: int, generated_at: str,
+                  tracker_states: dict | None = None) -> str:
     total_studies_all = sum(len(r["studies"]) for r in all_results)
     total_processed   = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
     total_errors      = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
     total_ignored     = sum(1 for r in all_results for s in r["studies"].values() if s in ("ignore", "skip_compat", "no_fastq"))
     active_jobs       = sum(1 for r in all_results if not r["finished"])
+
+    # ── TRACKER SIDEBAR ──────────────────────────────────────────────────────
+    # Aggregate tracker states globally — this is the ground truth view
+    tracker_states = tracker_states or {}
+    tracker_counts = defaultdict(int)
+    for state in tracker_states.values():
+        tracker_counts[state] += 1
+    tracker_total = len(tracker_states)
+
+    tracker_sidebar_html = ""
+    if tracker_states:
+        tk_legend = ""
+        for state, (color, label) in TRACKER_STATES.items():
+            n = tracker_counts.get(state, 0)
+            if n == 0:
+                continue
+            pct = n / tracker_total * 100 if tracker_total else 0
+            tk_legend += f'''
+            <div class="legend-item">
+              <span class="legend-dot" style="background:{color}"></span>
+              <span class="legend-label">{label}</span>
+              <span class="legend-count">{n}</span>
+            </div>
+            <div class="tk-bar-row">
+              <div class="tk-bar"><div class="tk-bar-fill" style="width:{pct:.1f}%;background:{color}"></div></div>
+              <span class="tk-pct">{pct:.0f}%</span>
+            </div>'''
+
+        # Count discrepancies across all jobs
+        total_discrepancies = sum(
+            len(compare_log_vs_tracker(r["studies"], tracker_states))
+            for r in all_results
+        )
+        disc_badge = ""
+        if total_discrepancies:
+            disc_badge = f'<div class="disc-total">⚠ {total_discrepancies} discrepanc{"y" if total_discrepancies==1 else "ies"} found</div>'
+
+        tracker_sidebar_html = f'''
+        <div class="sidebar-card">
+          <div class="sidebar-title">Tracker on disk ({tracker_total} GSEs)</div>
+          {disc_badge}
+          {tk_legend}
+        </div>'''
 
     # Aggregate state counts across all results
     agg_states = defaultdict(int)
@@ -322,20 +483,49 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str) -> str:
         if r.get("nodev_error"):
             nodev_warn = '<div class="inline-warn">⚠ /tmp nodev error — set APPTAINER_TMPDIR</div>'
 
-        # Study rows
+        # Study rows — with tracker comparison column
         study_rows = ""
+        discrepancies = compare_log_vs_tracker(r["studies"], tracker_states)
+        disc_by_gse = {d["gse_id"]: d for d in discrepancies}
+
         for gse_id in r.get("study_order", r["studies"].keys()):
-            state = r["studies"].get(gse_id, "unknown")
-            color, label = STUDY_STATES.get(state, STUDY_STATES["unknown"])
+            log_state = r["studies"].get(gse_id, "unknown")
+            log_color, log_label = STUDY_STATES.get(log_state, STUDY_STATES["unknown"])
             retries = r["retries"].get(gse_id, [])
             retry_html = ""
             if retries:
                 retry_html = f'<span class="retry-tag">{retries[-1]}</span>'
+
+            # Tracker column
+            tk_state = tracker_states.get(gse_id)
+            if tk_state:
+                tk_color, tk_label = TRACKER_STATES.get(tk_state, TRACKER_STATES["unknown"])
+                tracker_cell = f'<span class="state-pill" style="--c:{tk_color}">{tk_label}</span>'
+            elif tracker_states:
+                # Tracker dir was given but this GSE has no file yet
+                tracker_cell = '<span class="muted small">no file</span>'
+            else:
+                tracker_cell = ""  # no tracker dir given
+
+            # Discrepancy warning
+            disc = disc_by_gse.get(gse_id)
+            disc_cell = ""
+            if disc:
+                disc_cell = f'<td class="disc-cell" title="{disc["message"]}">⚠</td>'
+            elif tracker_states:
+                disc_cell = "<td></td>"
+
+            tracker_col = f"<td>{tracker_cell}</td>{disc_cell}" if tracker_states else ""
+
             study_rows += f'''
-            <tr>
+            <tr{"" if not disc else ' class="row-warn"'}>
               <td class="mono">{gse_id}</td>
-              <td><span class="state-pill" style="--c:{color}">{label}</span>{retry_html}</td>
+              <td><span class="state-pill" style="--c:{log_color}">{log_label}</span>{retry_html}</td>
+              {tracker_col}
             </tr>'''
+
+        # Studies table header
+        extra_headers = "<th>Tracker</th><th></th>" if tracker_states else ""
 
         # Batch rows
         batch_rows = ""
@@ -387,7 +577,11 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str) -> str:
           <div class="section-grid">
             <div>
               <div class="sub-title">Studies ({n_total})</div>
-              <table class="inner-table">{study_rows}</table>
+              <table class="inner-table">
+                <thead><tr><th>GSE</th><th>Log</th>{extra_headers}</tr></thead>
+                <tbody>{study_rows}</tbody>
+              </table>
+              {f'<div class="disc-summary">⚠ {len(discrepancies)} discrepanc{"y" if len(discrepancies)==1 else "ies"} — hover ⚠ for details</div>' if discrepancies else ""}
             </div>
             <div>
               <div class="sub-title">Nextflow Batches ({len(r.get("batches",{}))})</div>
@@ -475,6 +669,16 @@ header{{padding:28px 40px 22px;border-bottom:1px solid var(--border);display:fle
 .error-line{{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:#f87171;border-radius:5px;padding:7px 10px;font-size:12px;font-family:var(--mono)}}
 .inline-warn{{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:#f59e0b;border-radius:5px;padding:7px 10px;font-size:12px}}
 .refresh-note{{font-size:11px;color:var(--muted);font-family:var(--mono);text-align:center;padding-bottom:20px}}
+/* ── TRACKER ── */
+.tk-bar-row{{display:flex;align-items:center;gap:6px;margin:-2px 0 6px 17px}}
+.tk-bar{{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}}
+.tk-bar-fill{{height:100%;border-radius:2px;transition:width .4s}}
+.tk-pct{{font-family:var(--mono);font-size:9px;color:var(--muted);min-width:24px;text-align:right}}
+.disc-total{{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b;border-radius:5px;padding:5px 9px;font-size:11px;font-family:var(--mono);margin-bottom:10px}}
+.disc-summary{{font-size:11px;color:#f59e0b;font-family:var(--mono);margin-top:6px;padding:4px 6px;background:rgba(245,158,11,.08);border-radius:4px}}
+.disc-cell{{color:#f59e0b;font-size:13px;cursor:help;text-align:center;width:20px}}
+.row-warn td{{background:rgba(245,158,11,.04)}}
+.inner-table thead th{{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--border)}}
 </style>
 </head>
 <body>
@@ -506,6 +710,7 @@ header{{padding:28px 40px 22px;border-bottom:1px solid var(--border);display:fle
       </div>
       {legend_html}
     </div>
+    {tracker_sidebar_html}
   </aside>
 
   <main class="jobs-col">
@@ -536,6 +741,11 @@ def main():
              "~/Dataset_fusion_Microarray/logs_slurm"
     )
     parser.add_argument(
+        "--tracker-dir", default=None,
+        help="Path to the FileTracker directory (contains GSExxx.txt files). "
+             "Defaults to /tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker"
+    )
+    parser.add_argument(
         "--out", default="pipeline_monitor.html",
         help="Output HTML file (default: pipeline_monitor.html)"
     )
@@ -552,20 +762,30 @@ def main():
     log_dir = args.log_dir or os.path.expanduser(
         "~/Dataset_fusion_Microarray/logs_slurm"
     )
+    tracker_dir = args.tracker_dir or (
+        "/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker"
+    )
 
     if not os.path.isdir(log_dir):
         print(f"Error: log directory not found: {log_dir}", file=sys.stderr)
         print("Use --log-dir to specify the correct path.", file=sys.stderr)
         sys.exit(1)
 
+    if not os.path.isdir(tracker_dir):
+        print(f"Warning: tracker directory not found: {tracker_dir}", file=sys.stderr)
+        print("Continuing without tracker comparison. Use --tracker-dir to specify.", file=sys.stderr)
+        tracker_dir = None
+
     print(f"Monitoring job IDs: {args.job_ids}")
     print(f"Log directory:      {log_dir}")
+    print(f"Tracker directory:  {tracker_dir or '(not found — skipping comparison)'}")
     print(f"Output:             {args.out}")
     print(f"Refresh interval:   {args.interval}s")
     print()
 
     while True:
         log_files = find_log_files(args.job_ids, log_dir)
+        tracker_states = read_tracker_dir(tracker_dir) if tracker_dir else {}
 
         if not log_files:
             print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] "
@@ -577,21 +797,29 @@ def main():
                 results.append(r)
 
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            html = generate_html(results, args.interval, now_str)
+            html = generate_html(results, args.interval, now_str,
+                                 tracker_states=tracker_states)
 
             with open(args.out, "w") as fh:
                 fh.write(html)
 
-            # Print quick summary to terminal
+            # Count discrepancies for terminal summary
+            total_disc = sum(
+                len(compare_log_vs_tracker(r["studies"], tracker_states))
+                for r in results
+            )
+
             total   = sum(len(r["studies"]) for r in results)
             done    = sum(1 for r in results for s in r["studies"].values() if s == "processed")
             errors  = sum(1 for r in results for s in r["studies"].values() if s == "error")
             running = sum(1 for r in results if not r["finished"])
+            disc_str = f" | ⚠ {total_disc} discrepancies" if total_disc else ""
             print(
                 f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] "
-                f"{len(results)} tasks | {total} studies | "
+                f"{len(results)} tasks | {total} studies (log) | "
+                f"{len(tracker_states)} studies (tracker) | "
                 f"✓ {done} processed | ✗ {errors} errors | "
-                f"⟳ {running} running → {args.out}"
+                f"⟳ {running} running{disc_str} → {args.out}"
             )
 
         if args.once:
