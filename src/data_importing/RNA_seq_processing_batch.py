@@ -453,12 +453,16 @@ class RNASeq_processor:
 def split_merged_counts(batch_results_dir, study_map, output_root, batch_id=None):
     # nf-core rnaseq with --skip_alignment outputs to star_salmon/;
     # salmon-only runs output to salmon/. Check both, prefer star_salmon.
-    merged_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
+    merged_counts_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_counts.tsv")
+    merged_tpm_file = os.path.join(batch_results_dir, "star_salmon", "salmon.merged.gene_tpm.tsv")
     salmon_subdir = "star_salmon"
-    if not os.path.exists(merged_file):
-        merged_file = os.path.join(batch_results_dir, "salmon", "salmon.merged.gene_counts.tsv")
+    
+    if not os.path.exists(merged_counts_file):
+        merged_counts_file = os.path.join(batch_results_dir, "salmon", "salmon.merged.gene_counts.tsv")
+        merged_tpm_file = os.path.join(batch_results_dir, "salmon", "salmon.merged.gene_tpm.tsv")
         salmon_subdir = "salmon"
-    if not os.path.exists(merged_file):
+        
+    if not os.path.exists(merged_counts_file):
         print("Error: Merged count file not found in batch output.")
         return False
 
@@ -466,14 +470,21 @@ def split_merged_counts(batch_results_dir, study_map, output_root, batch_id=None
     salmon_base_dir = os.path.join(batch_results_dir, salmon_subdir)
 
     print(f"Demultiplexing batch results from {salmon_subdir}/...")
-    df = pd.read_csv(merged_file, sep='\t')
+    df_counts = pd.read_csv(merged_counts_file, sep='\t')
+    
+    # Load TPM data if it exists
+    df_tpm = None
+    if os.path.exists(merged_tpm_file):
+        df_tpm = pd.read_csv(merged_tpm_file, sep='\t')
+    else:
+        print("  [!] Warning: Merged TPM file not found in batch output.")
 
     # Only keep meta columns that actually exist in the dataframe
-    meta_cols = [c for c in ['gene_id', 'gene_name'] if c in df.columns]
+    meta_cols = [c for c in ['gene_id', 'gene_name'] if c in df_counts.columns]
 
     saved = []
     for gse_id, samples in study_map.items():
-        study_cols = [c for c in df.columns if c in samples]
+        study_cols = [c for c in df_counts.columns if c in samples]
 
         if not study_cols:
             print(f"  Warning: No samples found in results for {gse_id}")
@@ -538,11 +549,20 @@ def split_merged_counts(batch_results_dir, study_map, output_root, batch_id=None
         coverage_df.to_csv(coverage_file, index=False)
 
         # 3. Save the Count Matrix
-        study_df = df[meta_cols + study_cols]
-        target_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_counts.tsv")
-        study_df.to_csv(target_file, sep='\t', index=False)
+        study_df_counts = df_counts[meta_cols + study_cols]
+        target_counts_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_counts.tsv")
+        study_df_counts.to_csv(target_counts_file, sep='\t', index=False)
 
-        print(f"  Saved {gse_id} counts to {target_file}")
+        # 4. Save the TPM Matrix (NEW)
+        if df_tpm is not None:
+            # We use the same study_cols because the samples are identical across both matrices
+            study_df_tpm = df_tpm[meta_cols + study_cols]
+            target_tpm_file = os.path.join(study_out, "star_salmon", "salmon.merged.gene_tpm.tsv")
+            study_df_tpm.to_csv(target_tpm_file, sep='\t', index=False)
+            print(f"  Saved {gse_id} counts AND TPM matrices to {study_out}/star_salmon/")
+        else:
+            print(f"  Saved {gse_id} counts to {target_counts_file} (TPM was missing)")
+            
         print(f"  Saved coverage + Salmon metadata to {study_out}/")
         saved.append(gse_id)
 
@@ -897,7 +917,10 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                             for name in files:
                                 filepath = os.path.join(root, name)
                                 keep = (name == "deseq2.plots.pdf" and "deseq2_qc" in root) or \
-                                       (name == "meta_info.json" and "aux_info" in root)
+                                       (name == "meta_info.json" and "aux_info" in root) or \
+                                       (name == "multiqc_report.html") or \
+                                       ("software_versions" in name) or \
+                                       (name in ["salmon.merged.transcript_counts.tsv", "salmon.merged.transcript_tpm.tsv"])
                                 if not keep:
                                     try:
                                         os.remove(filepath)
