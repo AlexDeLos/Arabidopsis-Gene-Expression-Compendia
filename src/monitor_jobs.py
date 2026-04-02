@@ -404,7 +404,7 @@ def _state_counts(studies_dict):
 
 
 def generate_html(all_results: list, refresh_s: int, generated_at: str,
-                  tracker_states: dict | None = None) -> str:
+                  tracker_states = None) -> str:
     total_studies_all = sum(len(r["studies"]) for r in all_results)
     total_processed   = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
     total_errors      = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
