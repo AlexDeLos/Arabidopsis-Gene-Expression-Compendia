@@ -5,13 +5,14 @@ import os
 
 # 1. Configuration
 INPUT_FILE = "new_storage/final_data/Salmon_RNAseq_Combined.csv"
-OUTPUT_PLOT = "mathematical_study_evaluation.png"
+
 
 def read_id(path):
     with open(path, 'r') as f:
         return f.read().strip()
 
 def evaluate_distributions():
+    OUTPUT_PLOT = "mathematical_study_evaluation.png"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
@@ -145,6 +146,122 @@ def evaluate_distributions():
     plt.tight_layout()
     plt.savefig(OUTPUT_PLOT, dpi=300)
     print(f"Plot successfully saved to {OUTPUT_PLOT}")
+    
+
+def evaluate_distributions_samples():
+    OUTPUT_PLOT = "mathematical_distribution_evaluation.png"
+    if not os.path.exists(INPUT_FILE):
+        print(f"Error: Could not find {INPUT_FILE}")
+        return
+
+    print(f"Loading data from {INPUT_FILE}...")
+    df = pd.read_csv(INPUT_FILE, index_col=0)
+    
+    try:
+        rnaseq_ids = eval("['" + read_id('./study_ids/RNA_seq_ids.txt').replace(',', "','") + "']")
+        valid_columns = [col for col in df.columns if col.split('_')[0] in rnaseq_ids]
+        df = df[valid_columns]
+    except Exception as e:
+        print(f"Could not filter by ID list (using all columns): {e}")
+
+    df = df.select_dtypes(include=[np.number])
+    print(f"Loaded matrix with {df.shape[0]} genes and {df.shape[1]} samples.")
+
+    # 2. Log Transformation
+    print("Applying log1p transformation...")
+    df_log = np.log1p(df)
+
+    # 3. Mathematical Evaluation using Quantiles
+    print("Calculating quantiles and mathematical distances...")
+    # Calculate percentiles from 0 to 100 for every sample
+    percentiles = np.linspace(0, 100, 100)
+    
+    # Create an array to hold the quantiles: shape (n_samples, 100)
+    quantile_matrix = np.zeros((df_log.shape[1], len(percentiles)))
+    
+    for i, col in enumerate(df_log.columns):
+        quantile_matrix[i, :] = np.percentile(df_log[col].dropna(), percentiles)
+        
+    # The "Reference Distribution" is the median of all sample quantiles
+    reference_quantiles = np.median(quantile_matrix, axis=0)
+    
+    # Calculate distance: Mean Absolute Error between sample quantiles and reference
+    # This is an approximation of the 1-Wasserstein Distance for 1D distributions
+    distances = np.mean(np.abs(quantile_matrix - reference_quantiles), axis=1)
+    
+    # Identify outliers mathematically
+    num_outliers = min(5, df_log.shape[1])
+    outlier_indices = np.argsort(distances)[-num_outliers:]
+    
+    # Calculate bands for plotting
+    p05_quantiles = np.percentile(quantile_matrix, 5, axis=0)
+    p95_quantiles = np.percentile(quantile_matrix, 95, axis=0)
+
+    # 4. Plotting a 3-Panel Dashboard
+    print("Generating dashboard...")
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # --- PANEL 1: Q-Q Plot ---
+    ax = axes[0]
+    ax.fill_between(reference_quantiles, p05_quantiles, p95_quantiles, color='#4c72b0', alpha=0.3, label='90% Sample Range')
+    ax.plot(reference_quantiles, reference_quantiles, color='black', linestyle='--', linewidth=2, label='Perfect Match (y=x)')
+    
+    # Plot mathematical outliers
+    for i, idx in enumerate(outlier_indices):
+        ax.plot(reference_quantiles, quantile_matrix[idx, :], color='red', alpha=0.8, 
+                label=f'Outlier: {df_log.columns[idx]}' if i < 3 else None)
+
+    ax.set_title("Quantile-Quantile (Q-Q) Plot", fontsize=14)
+    ax.set_xlabel("Reference Quantiles (Median)", fontsize=12)
+    ax.set_ylabel("Sample Quantiles", fontsize=12)
+    ax.legend(loc='upper left')
+    ax.grid(True, alpha=0.3)
+
+    # --- PANEL 2: Distribution of Distances ---
+    ax = axes[1]
+    ax.hist(distances, bins=50, color='#003366', edgecolor='black', alpha=0.7)
+    
+    # Mark the cutoff for outliers
+    outlier_threshold = distances[outlier_indices[0]] # Lowest distance among the top outliers
+    ax.axvline(outlier_threshold, color='red', linestyle='--', label=f'Top {num_outliers} Outlier Threshold')
+    
+    ax.set_title("Sample Deviation from Reference", fontsize=14)
+    ax.set_xlabel("Distance from Median Distribution", fontsize=12)
+    ax.set_ylabel("Number of Samples", fontsize=12)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # --- PANEL 3: Standard Density (for intuition) ---
+    ax = axes[2]
+    # Re-calculate standard histogram for plotting
+    max_val = df_log.max().max()
+    bins = np.linspace(0, max_val, 100)
+    bin_centers = 0.5 * (bins[1:] + bins[:-1])
+    hist_matrix = np.zeros((df_log.shape[1], len(bins)-1))
+    
+    for i, col in enumerate(df_log.columns):
+        hist_matrix[i, :], _ = np.histogram(df_log[col].dropna(), bins=bins, density=True)
+    
+    median_hist = np.median(hist_matrix, axis=0)
+    p05_hist = np.percentile(hist_matrix, 5, axis=0)
+    p95_hist = np.percentile(hist_matrix, 95, axis=0)
+
+    ax.fill_between(bin_centers, p05_hist, p95_hist, color='#4c72b0', alpha=0.3)
+    ax.plot(bin_centers, median_hist, color='#003366', linewidth=2)
+    
+    # Plot same outliers in red for visual connection
+    for idx in outlier_indices:
+        ax.plot(bin_centers, hist_matrix[idx, :], color='red', alpha=0.8, linewidth=1.5)
+
+    ax.set_title("Expression Density Overlay", fontsize=14)
+    ax.set_xlabel("Expression Level (log1p)", fontsize=12)
+    ax.set_ylabel("Density", fontsize=12)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(OUTPUT_PLOT, dpi=300)
+    print(f"Plot successfully saved to {OUTPUT_PLOT}")
 
 if __name__ == "__main__":
+    evaluate_distributions_samples()
     evaluate_distributions()
