@@ -33,8 +33,40 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TIME UTILITIES
+# ──────────────────────────────────────────────────────────────────────────────
+
+# The log timestamps come from bash `date`, e.g. "Wed Apr  1 14:07:51 CEST 2026"
+# strptime doesn't handle timezone abbreviations reliably, so we strip the
+# timezone name and parse the rest as local time. Since both start and end come
+# from the same node we only need the difference, so the absolute TZ doesn't matter.
+_DATE_FMT = "%a %b %d %H:%M:%S %Y"
+_RE_TZ_NAME = re.compile(r"\s+[A-Z]{2,5}\s+")  # e.g. " CEST " or " UTC "
+
+def _parse_log_timestamp(ts: str):
+    """Parse a bash `date` string into a datetime, or return None."""
+    if not ts:
+        return None
+    try:
+        clean = _RE_TZ_NAME.sub(" ", ts).strip()
+        return datetime.strptime(clean, _DATE_FMT)
+    except ValueError:
+        return None
+
+def _format_duration(seconds: float) -> str:
+    """Format elapsed seconds as a human-readable string, e.g. '2h 14m' or '37m 05s'."""
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, s   = divmod(rem, 60)
+    if h > 0:
+        return f"{h}h {m:02d}m"
+    if m > 0:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TRACKER READING
@@ -199,6 +231,7 @@ def parse_log_file(path: str) -> dict:
         "node":         None,
         "start_time":   None,
         "end_time":     None,
+        "duration_secs": None,   # computed after parsing; None if job still running
         "finished":     False,
         "studies":      {},   # gse_id -> state string
         "study_order":  [],   # ordered list of gse_ids seen
@@ -324,6 +357,15 @@ def parse_log_file(path: str) -> dict:
     except Exception as e:
         result["errors"].append(f"Failed to read {path}: {e}")
 
+    # Compute duration from timestamps
+    t_start = _parse_log_timestamp(result["start_time"])
+    t_end   = _parse_log_timestamp(result["end_time"])
+    if t_start and t_end:
+        result["duration_secs"] = (t_end - t_start).total_seconds()
+    elif t_start and not result["finished"]:
+        # Job still running — compute elapsed time against now
+        result["duration_secs"] = (datetime.now() - t_start).total_seconds()
+
     return result
 
 
@@ -362,7 +404,7 @@ def _state_counts(studies_dict):
 
 
 def generate_html(all_results: list, refresh_s: int, generated_at: str,
-                  tracker_states= None) -> str:
+                  tracker_states: dict | None = None) -> str:
     total_studies_all = sum(len(r["studies"]) for r in all_results)
     total_processed   = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
     total_errors      = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
@@ -479,6 +521,17 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
         status_badge = ('<span class="badge badge-green">Finished</span>' if finished
                         else '<span class="badge badge-blue anim-pulse">Running</span>')
 
+        # Duration display
+        dur_secs = r.get("duration_secs")
+        if dur_secs is not None:
+            dur_str = _format_duration(dur_secs)
+            if finished:
+                duration_html = f'<span class="duration-chip dur-done">⏱ {dur_str}</span>'
+            else:
+                duration_html = f'<span class="duration-chip dur-live">⟳ {dur_str} elapsed</span>'
+        else:
+            duration_html = ""
+
         nodev_warn = ""
         if r.get("nodev_error"):
             nodev_warn = '<div class="inline-warn">⚠ /tmp nodev error — set APPTAINER_TMPDIR</div>'
@@ -562,11 +615,11 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
               <span class="job-title">Job {r.get("job_id","?")} · Array task {r.get("array_index","?")}</span>
               <span class="job-node">{r.get("node","")}</span>
             </div>
-            <div>{status_badge}</div>
+            <div style="display:flex;align-items:center;gap:8px">{duration_html}{status_badge}</div>
           </div>
           <div class="job-meta mono small">
             {path_name}<br>
-            Started: {r.get("start_time","—")} &nbsp;·&nbsp; Ended: {r.get("end_time","—") if finished else "still running"}
+            Started: {r.get("start_time","—")} &nbsp;·&nbsp; {"Ended: " + r.get("end_time","—") if finished else "still running"}
           </div>
           {nodev_warn}
           {bar_html}
@@ -679,6 +732,10 @@ header{{padding:28px 40px 22px;border-bottom:1px solid var(--border);display:fle
 .disc-cell{{color:#f59e0b;font-size:13px;cursor:help;text-align:center;width:20px}}
 .row-warn td{{background:rgba(245,158,11,.04)}}
 .inner-table thead th{{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--border)}}
+/* ── DURATION ── */
+.duration-chip{{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 10px;border-radius:4px;white-space:nowrap}}
+.dur-done{{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.25)}}
+.dur-live{{background:rgba(96,165,250,.12);color:#60a5fa;border:1px solid rgba(96,165,250,.25);animation:pulse 2s infinite}}
 </style>
 </head>
 <body>

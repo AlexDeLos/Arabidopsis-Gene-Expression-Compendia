@@ -7,8 +7,11 @@ import os
 # 1. Configuration
 INPUT_FILE = "new_storage/final_data/Salmon_RNAseq_Combined.csv"
 OUTPUT_PLOT = "sample_distributions_histogram.png"
-MAX_SAMPLES_TO_PLOT = 30  # Change this if you want to plot more/fewer samples
-
+MAX_SAMPLES_TO_PLOT = 3000  # Change this if you want to plot more/fewer samples
+def read_id(path):
+    with open(path, 'r') as f:
+            return (f.read().strip())
+    
 def plot_distributions():
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
@@ -18,6 +21,12 @@ def plot_distributions():
     # Assuming the first column contains Gene IDs, so we set it as the index
     df = pd.read_csv(INPUT_FILE, index_col=0)
     
+    rnaseq_ids: list[str] = eval("['"+read_id('./study_ids/RNA_seq_ids.txt').replace(',',"','")+"']")
+    
+    # Filter columns: keep only those whose study ID (before the first '_') is in rnaseq_ids
+    valid_columns = [col for col in df.columns if col.split('_')[0] in rnaseq_ids]
+    df = df[valid_columns]
+
     # Drop any metadata columns if they exist (keep only numeric data)
     df = df.select_dtypes(include=[np.number])
     
