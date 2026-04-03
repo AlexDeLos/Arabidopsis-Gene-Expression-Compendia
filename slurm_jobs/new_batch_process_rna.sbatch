@@ -23,70 +23,36 @@ echo "=================================================="
 unset JAVA_HOME
 unset NXF_JAVA_HOME
 
-SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif
+BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+SIF="$BIG_STORAGE/dataset_fusion.sif"
+NF_BIN="$BIG_STORAGE/bin"
 
-# Define your base storage paths
-export STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+export NXF_SINGULARITY_CACHEDIR="/home/nfs/alexdelossanto/singularity_cache"
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
+export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
+mkdir -p "$NXF_WORK"
 
-#working:
-# export NXF_WORK="$STORAGE/work"
-# mkdir -p "$NXF_WORK"
-#temp (testing):
-# Create a unique local scratch directory for THIS specific array job
-export LOCAL_SCRATCH="/tmp/nxf_scratch_${USER}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
-mkdir -p "$LOCAL_SCRATCH"
-
-# Point Nextflow's work and temp directories to the local node's disk
-export NXF_WORK="$LOCAL_SCRATCH/work"
-export NXF_TEMP="$LOCAL_SCRATCH/temp"
-mkdir -p "$NXF_WORK" "$NXF_TEMP"
-
-echo "Local Nextflow Work Directory is set to: $NXF_WORK"
-
-# ==========================================
-# --- THE FINAL SINGULARITY CACHE FIX ---
-# ==========================================
-# Define your new home-based cache directory
-# "/home/nfs/alexdelossanto/Dataset_fusion_Microarray/singularity_cache"
-# 1. FINAL IMAGES -> Shared Umbrella Storage
-# Nextflow will put the compiled .img files here so all nodes can use them.
-export MY_SHARED_IMAGES='/home/nfs/alexdelossanto/singularity_cache'
-mkdir -p "$MY_SHARED_IMAGES"
-export NXF_SINGULARITY_CACHEDIR="$MY_SHARED_IMAGES"
-
-# Increase timeout so the 10 waiting jobs don't crash while the 1st job downloads
-export NXF_SINGULARITY_PULLTIMEOUT="120m"
-
-# 2. TEMPORARY LAYERS -> Local Compute Node Storage (/tmp)
-export LOCAL_TEMP_CACHE="/tmp/apptainer_cache_$USER"
-mkdir -p "$LOCAL_TEMP_CACHE"
-
-export SINGULARITY_CACHEDIR="$LOCAL_TEMP_CACHE"
-export APPTAINER_CACHEDIR="$LOCAL_TEMP_CACHE"
-export SINGULARITY_TMPDIR="$LOCAL_TEMP_CACHE"
-export APPTAINER_TMPDIR="$LOCAL_TEMP_CACHE"
-
-# Prevent host Conda paths from bleeding into the container
-export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-
-# Define Batch Size
-BATCH_SIZE=10
-echo "Work Directory is set to: $NXF_WORK"
-echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
-
-# --- RUN THE PIPELINE ---
-echo "Running RNA SEQ download and processing..."
-srun apptainer exec \
-    --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:${REPO}" \
-    "${SIF}" \
+# ── Run Python INSIDE the container ──
+apptainer exec \
+    --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+    --bind /home/nfs/alexdelossanto:/home/nfs/alexdelossanto \
+    --bind /usr/bin/sbatch:/usr/bin/sbatch \          # host sbatch
+    --bind /usr/bin/squeue:/usr/bin/squeue \          # host squeue (used by NF)
+    --bind /usr/bin/scancel:/usr/bin/scancel \
+    --bind "$NF_BIN/nextflow":/usr/local/bin/nextflow \ # host nextflow
+    --env NXF_WORK="$NXF_WORK" \
+    --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
+    --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
+    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
+    --env SLURM_JOB_ID="$SLURM_JOB_ID" \
+    --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
+    --env PATH="/usr/local/bin:/usr/bin:/bin:$NF_BIN" \
+    "$SIF" \
     python3 -u src/data_importing/new_download.py \
-    -o "$STORAGE/" \
-    --array_index $SLURM_ARRAY_TASK_ID \
-    --batch_size $BATCH_SIZE \
-    --rna
+        -o "$BIG_STORAGE/" \
+        --array_index $SLURM_ARRAY_TASK_ID \
+        --batch_size 10 --rna
 
 echo "Job finished"
 echo "Date: $(date)"
