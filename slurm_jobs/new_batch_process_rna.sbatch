@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --time=36:00:00
-#SBATCH --mem=6G
+#SBATCH --mem=12G  # <-- INCREASED MEMORY: Prevents SLURM from killing Python+Nextflow
 #SBATCH --cpus-per-task=1
 #SBATCH --array=0-5%10
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
@@ -23,28 +23,21 @@ echo "SIF:             ${SIF}"
 echo "=================================================="
 
 # ══════════════════════════════════════════════════
-#  NEXTFLOW + JAVA (installed in BIG_STORAGE, no conda/module needed)
+#  NEXTFLOW + JAVA CONFIGURATION
 # ══════════════════════════════════════════════════
 export JAVA_HOME="$BIG_STORAGE/java"
 export NXF_HOME="$BIG_STORAGE/.nextflow"
-
-# ══════════════════════════════════════════════════
-#  NEXTFLOW WORK DIR — must be on shared storage, never /tmp
-#  Each array task gets its own subdir to avoid collisions
-# ══════════════════════════════════════════════════
 export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
+
 # ══════════════════════════════════════════════════
 #  SINGULARITY / APPTAINER CACHING (SEPARATED)
 # ══════════════════════════════════════════════════
 # 1. Nextflow's Image Cache: Must be on shared network storage ($BIG_STORAGE) 
-#    so all SLURM nodes can find the final pulled images.
 export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 # 2. Apptainer's Internal Cache & Tmp: Must be on local compute node (/tmp) 
-#    because Apptainer strictly enforces chmod 0700 during layer downloads, 
-#    which the NFS network drive blocks.
 export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}_${SLURM_JOB_ID}"
@@ -52,17 +45,11 @@ export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
 mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 
 # ══════════════════════════════════════════════════
-#  RUN PYTHON ORCHESTRATION INSIDE THE CONTAINER
-# ══════════════════════════════════════════════════
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-# ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
 # ══════════════════════════════════════════════════
 MY_PASSWD="$BIG_STORAGE/tmp_passwd_$SLURM_JOB_ID"
 MY_GROUP="$BIG_STORAGE/tmp_group_$SLURM_JOB_ID"
 
-# Copy the system file, then append your specific network user info!
 cat /etc/passwd > "$MY_PASSWD"
 getent passwd $(whoami) >> "$MY_PASSWD"
 
@@ -70,8 +57,10 @@ cat /etc/group > "$MY_GROUP"
 getent group $(id -g -n) >> "$MY_GROUP"
 
 # ══════════════════════════════════════════════════
-#  RUN THE PIPELINE
+#  RUN THE PIPELINE INSIDE THE CONTAINER
 # ══════════════════════════════════════════════════
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
     --bind /usr/bin/singularity:/usr/bin/singularity \
@@ -105,8 +94,6 @@ apptainer exec \
     --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
     --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
-    --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
-    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
@@ -117,13 +104,10 @@ apptainer exec \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 1 --rna --container
 
-# Clean up the temporary files after the job finishes
+# ══════════════════════════════════════════════════
+#  CLEANUP
+# ══════════════════════════════════════════════════
 rm -f "$MY_PASSWD" "$MY_GROUP"
-# ══════════════════════════════════════════════════
-#  EPILOG — clean up work dir after job completes
-#  (Nextflow cleanup=true removes per-task files during run;
-#   this rm removes the top-level work subdir afterwards)
-# ══════════════════════════════════════════════════
 rm -rf "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
