@@ -75,7 +75,8 @@ if [[ "$1" == "pull" ]]; then
     EXIT_CODE=$?
     
     if [[ $EXIT_CODE -eq 0 ]]; then
-        find . -maxdepth 1 -type f -name "*.img" -exec cp {} "$ORIG_DIR/" \;
+        # Copy ALL downloaded files (including .pulling temporary files)
+        find . -maxdepth 1 -type f -exec cp {} "$ORIG_DIR/" \;
     fi
     
     cd /tmp
