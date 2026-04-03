@@ -60,11 +60,28 @@ mkdir -p "$APPTAINER_TMPDIR"
 #    staff-umbrella    — all data, configs, outputs, SIF itself
 # ══════════════════════════════════════════════════
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# ══════════════════════════════════════════════════
+#  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
+# ══════════════════════════════════════════════════
+MY_PASSWD="$BIG_STORAGE/tmp_passwd_$SLURM_JOB_ID"
+MY_GROUP="$BIG_STORAGE/tmp_group_$SLURM_JOB_ID"
 
+# Copy the system file, then append your specific network user info!
+cat /etc/passwd > "$MY_PASSWD"
+getent passwd $(whoami) >> "$MY_PASSWD"
+
+cat /etc/group > "$MY_GROUP"
+getent group $(id -g -n) >> "$MY_GROUP"
+
+# ══════════════════════════════════════════════════
+#  RUN THE PIPELINE
+# ══════════════════════════════════════════════════
 apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
     --bind /usr/bin/singularity:/usr/bin/singularity \
     --bind /etc/apptainer:/etc/apptainer \
+    --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
+    --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
     --bind /usr/bin/sbatch:/usr/bin/sbatch \
     --bind /usr/bin/squeue:/usr/bin/squeue \
     --bind /usr/bin/scancel:/usr/bin/scancel \
@@ -74,13 +91,11 @@ apptainer exec \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
     --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
-    --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
-    --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/slurm:/etc/slurm \
     --bind /etc/auks:/etc/auks \
-    --bind /etc/passwd:/etc/passwd \
-    --bind /etc/group:/etc/group \
+    --bind "$MY_PASSWD":/etc/passwd \
+    --bind "$MY_GROUP":/etc/group \
     --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
@@ -102,6 +117,8 @@ apptainer exec \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 1 --rna --container
 
+# Clean up the temporary files after the job finishes
+rm -f "$MY_PASSWD" "$MY_GROUP"
 # ══════════════════════════════════════════════════
 #  EPILOG — clean up work dir after job completes
 #  (Nextflow cleanup=true removes per-task files during run;
