@@ -4,7 +4,7 @@
 #SBATCH --time=36:00:00
 #SBATCH --mem=16G  
 #SBATCH --cpus-per-task=1
-#SBATCH --array=0-5%10
+#SBATCH --array=20-40%10
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
@@ -135,14 +135,24 @@ apptainer exec \
     python3 -u /repo/src/data_importing/new_download.py \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
-        --batch_size 1 --rna --container
+        --batch_size 10 --rna --container
 
 # ══════════════════════════════════════════════════
 #  CLEANUP
 # ══════════════════════════════════════════════════
+echo "Cleaning up all temporary directories..."
 rm -f "$MY_PASSWD" "$MY_GROUP"
-rm -rf "$NXF_WORK" "$FAKE_BIN" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
+rm -rf "$NXF_WORK"
+rm -rf "$FAKE_BIN"
+rm -rf "$APPTAINER_TMPDIR"
+rm -rf "$APPTAINER_CACHEDIR"
 
 echo "=================================================="
 echo "Job Completed"
+echo "=================================================="
+echo "Job ID:          $SLURM_JOB_ID"
+echo "Array Task ID:   $SLURM_ARRAY_TASK_ID"
+echo "Node:            $(hostname)"
+echo "Date:            $(date)"
+echo "SIF:             ${SIF}"
 echo "=================================================="
