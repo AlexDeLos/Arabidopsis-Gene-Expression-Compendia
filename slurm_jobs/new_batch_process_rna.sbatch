@@ -2,7 +2,7 @@
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=36:00:00
-#SBATCH --mem=12G  
+#SBATCH --mem=12G  # <-- INCREASED MEMORY: Prevents SLURM from killing Python+Nextflow
 #SBATCH --cpus-per-task=1
 #SBATCH --array=0-5%10
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
@@ -33,18 +33,19 @@ export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
-#  SINGULARITY / APPTAINER CACHING (MOVED AWAY FROM /tmp)
+#  SINGULARITY / APPTAINER CACHING (SEPARATED)
 # ══════════════════════════════════════════════════
+# 1. Nextflow's Image Cache: Must be on shared network storage ($BIG_STORAGE) 
 export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# Define temporary folders on the BIG_STORAGE drive instead of /tmp
-export APPTAINER_TMPDIR="$BIG_STORAGE/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
+# 2. Apptainer's Internal Cache & Tmp: Must be on local compute node (/tmp) 
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
-export APPTAINER_CACHEDIR="$BIG_STORAGE/apptainer_cache_${USER}_${SLURM_JOB_ID}"
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
-export NXF_SINGULARITY_TMPDIR="$BIG_STORAGE/nxf_singularity_tmp_${USER}_${SLURM_JOB_ID}"
-
-mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
+mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
+mkdir -p "/tmp/singularity_tmp_${USER}"
 
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
@@ -96,7 +97,7 @@ apptainer exec \
     --env APPTAINER_CACHEDIR="$APPTAINER_CACHEDIR" \
     --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
-    --env NXF_SINGULARITY_TMPDIR="$NXF_SINGULARITY_TMPDIR" \
+    --env NXF_SINGULARITY_TMPDIR="/tmp/singularity_tmp_${USER}" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
@@ -111,7 +112,7 @@ apptainer exec \
 #  CLEANUP
 # ══════════════════════════════════════════════════
 rm -f "$MY_PASSWD" "$MY_GROUP"
-rm -rf "$NXF_WORK" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
+rm -rf "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
 #  END LOGGING
