@@ -43,6 +43,7 @@ export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
 mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
+mkdir -p "/tmp/singularity_tmp_${USER}"
 
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
@@ -93,7 +94,7 @@ apptainer exec \
     --env APPTAINER_CACHEDIR="$APPTAINER_CACHEDIR" \
     --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
-    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
+    --env NXF_SINGULARITY_TMPDIR="/tmp/singularity_tmp_${USER}" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
