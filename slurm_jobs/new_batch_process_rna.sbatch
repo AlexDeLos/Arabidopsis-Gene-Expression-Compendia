@@ -44,6 +44,17 @@ export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 mkdir -p "$APPTAINER_TMPDIR"
 
+
+# ══════════════════════════════════════════════════
+#  SINGULARITY / APPTAINER CACHE (Moved to local /tmp to avoid NFS chmod errors)
+# ══════════════════════════════════════════════════
+export NXF_SINGULARITY_CACHEDIR="/tmp/nxf_singularity_cache_${USER}"
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}"
+export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
+export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
+
 # ══════════════════════════════════════════════════
 #  RUN PYTHON ORCHESTRATION INSIDE THE CONTAINER
 #
