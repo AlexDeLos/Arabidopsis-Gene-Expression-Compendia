@@ -30,21 +30,16 @@ export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
-#  SINGULARITY / APPTAINER CACHING (RAM DISK)
+#  SINGULARITY CACHES (RAM DISK + BIG STORAGE)
 # ══════════════════════════════════════════════════
-# 1. Final Images go to the shared network drive
 export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
-# 2. Temporary layers go into High-Speed RAM (/dev/shm)
-#    This bypasses both the NFS chmod bug AND the physical /tmp drive!
 export APPTAINER_TMPDIR="/dev/shm/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 export APPTAINER_CACHEDIR="/dev/shm/apptainer_cache_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
-export NXF_SINGULARITY_TMPDIR="/dev/shm/nxf_singularity_tmp_${USER}_${SLURM_JOB_ID}"
-
-mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
+mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
@@ -56,7 +51,42 @@ cat /etc/passwd > "$MY_PASSWD"
 getent passwd $(whoami) >> "$MY_PASSWD"
 
 cat /etc/group > "$MY_GROUP"
-getent group $(id -g -n) >> "$MY_GROUP"
+for g in $(id -G -n); do
+    getent group "$g" >> "$MY_GROUP" || true
+done
+sort -u "$MY_GROUP" -o "$MY_GROUP"
+
+# ══════════════════════════════════════════════════
+#  CREATE WRAPPER TO BYPASS NFS CHMOD BUG
+# ══════════════════════════════════════════════════
+FAKE_BIN="$BIG_STORAGE/fake_bin_$SLURM_JOB_ID"
+mkdir -p "$FAKE_BIN"
+
+cat << 'EOF' > "$FAKE_BIN/singularity"
+#!/bin/bash
+if [[ "$1" == "pull" ]]; then
+    # Nextflow runs `singularity pull` directly on the NFS drive, causing chmod errors.
+    # We intercept it, run the pull in the High-Speed RAM disk, and move the result back.
+    TEMP_DIR=$(mktemp -d -p /dev/shm)
+    ORIG_DIR="$PWD"
+    cd "$TEMP_DIR"
+    
+    /usr/bin/apptainer "$@"
+    EXIT_CODE=$?
+    
+    if [[ $EXIT_CODE -eq 0 ]]; then
+        find . -maxdepth 1 -type f -name "*.img" -exec cp {} "$ORIG_DIR/" \;
+    fi
+    
+    cd /tmp
+    rm -rf "$TEMP_DIR"
+    exit $EXIT_CODE
+else
+    # For all other commands, pass through directly
+    exec /usr/bin/apptainer "$@"
+fi
+EOF
+chmod +x "$FAKE_BIN/singularity"
 
 # ══════════════════════════════════════════════════
 #  RUN THE PIPELINE INSIDE THE CONTAINER
@@ -65,7 +95,7 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
-    --bind /usr/bin/singularity:/usr/bin/singularity \
+    --bind "$FAKE_BIN/singularity":/usr/bin/singularity \
     --bind /etc/apptainer:/etc/apptainer \
     --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
     --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
@@ -91,12 +121,11 @@ apptainer exec \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
-    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
     --env APPTAINER_CACHEDIR="$APPTAINER_CACHEDIR" \
     --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
-    --env NXF_SINGULARITY_TMPDIR="$NXF_SINGULARITY_TMPDIR" \
+    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
@@ -111,7 +140,7 @@ apptainer exec \
 #  CLEANUP
 # ══════════════════════════════════════════════════
 rm -f "$MY_PASSWD" "$MY_GROUP"
-rm -rf "$NXF_WORK" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
+rm -rf "$NXF_WORK" "$FAKE_BIN" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 
 echo "=================================================="
 echo "Job Completed"
