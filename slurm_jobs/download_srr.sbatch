@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=fastq_download
-#SBATCH --qos=medium
+#SBATCH --qos=short
 #SBATCH --time=2:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=4
