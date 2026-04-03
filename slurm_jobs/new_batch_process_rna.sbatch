@@ -70,6 +70,7 @@ apptainer exec \
     --bind /usr/lib64/libslurm.so.43:/usr/lib64/libslurm.so.43 \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
+    --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/slurm:/etc/slurm \
     --bind /etc/auks:/etc/auks \
@@ -79,6 +80,7 @@ apptainer exec \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/alexdelossanto/linuxhome/Dataset_fusion_Microarray:/repo \
+    --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
