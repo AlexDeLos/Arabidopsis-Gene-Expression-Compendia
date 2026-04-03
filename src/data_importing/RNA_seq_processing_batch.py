@@ -155,7 +155,7 @@ class RNASeq_processor:
 
         print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
         if container:
-            sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr_container.sbatch"))
+            sbatch_script = "./slurm_jobs/download_srr_container.sbatch"
         else:
             sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
         
