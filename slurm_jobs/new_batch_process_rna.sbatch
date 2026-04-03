@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=36:00:00
 #SBATCH --mem=12G  # <-- INCREASED MEMORY: Prevents SLURM from killing Python+Nextflow
