@@ -62,6 +62,9 @@ mkdir -p "$APPTAINER_TMPDIR"
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 apptainer exec \
+    --bind /usr/bin/apptainer:/usr/bin/apptainer \
+    --bind /usr/bin/singularity:/usr/bin/singularity \
+    --bind /etc/apptainer:/etc/apptainer \
     --bind /usr/bin/sbatch:/usr/bin/sbatch \
     --bind /usr/bin/squeue:/usr/bin/squeue \
     --bind /usr/bin/scancel:/usr/bin/scancel \
