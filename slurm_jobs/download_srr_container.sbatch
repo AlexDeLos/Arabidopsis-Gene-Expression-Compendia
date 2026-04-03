@@ -1,5 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=fastq_download
+#SBATCH --account=testusers
+#SBATCH --partition=all
 #SBATCH --time=2:00:00
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=4
