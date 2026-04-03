@@ -75,6 +75,7 @@ apptainer exec \
     --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+    --bind /home/alexdelossanto/linuxhome/Dataset_fusion_Microarray:/repo \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
@@ -84,9 +85,9 @@ apptainer exec \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
-    --env PYTHONPATH="$REPO_DIR" \
+    --pwd /repo \
     "$SIF" \
-    python3 -u "$REPO_DIR/src/data_importing/new_download.py" \
+    python3 -u /repo/src/data_importing/new_download.py \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 10 --rna
