@@ -66,7 +66,8 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", help="output_dir", default=100,type=int)
     parser.add_argument("--array_index", type=int, default=10, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=True)
+    parser.add_argument("--rna", action="store_true", default=False)
+    parser.add_argument("--container", action="store_true", default=False)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
@@ -163,7 +164,8 @@ if __name__ == "__main__":
                     metadata_only=False,
                     run_and_delete=True, # Enable deletion to save space after batch
                     batch_size=BATCH_SIZE, # Should match slice size
-                    debug=False
+                    debug=False,
+                    container = args.container
                 )
             else:
                 print(f"Index {args.array_index} (Start ID {start_idx}) is out of bounds for {len(target_list)} studies.")

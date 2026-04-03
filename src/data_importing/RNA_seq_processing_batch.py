@@ -113,7 +113,7 @@ class RNASeq_processor:
         return []
 
                 
-    def download_fastq(self, gse, output_folder, temp_files):
+    def download_fastq(self, gse, output_folder, temp_files,container):
         """Downloads using fastq-dump via parallel SLURM array jobs."""
         if not os.path.exists(output_folder): os.makedirs(output_folder)
         if not os.path.exists(temp_files): os.makedirs(temp_files)
@@ -154,7 +154,10 @@ class RNASeq_processor:
                 f.write(f"{srr}\n")
 
         print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
-        sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
+        if container:
+            sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr_container.sbatch"))
+        else:
+            sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
         
         if not os.path.exists(sbatch_script):
             print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
@@ -682,7 +685,7 @@ def save_rnaseq_sample_metadata(gse_id: str, gse, output_dir: str) -> str | None
         return None
 
 
-def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, metadata_only:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False):
+def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:str, output_dir:str, tracker:FileTracker, download_raw:bool=True, metadata_only:bool=True, run_and_delete:bool=True, batch_size:int=5,debug:bool=False,container:bool = False):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
     """
@@ -814,7 +817,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                     if download_raw:
                         if not tracker.is_downloaded(gse_id):
                             try:
-                                processor.download_fastq(gse, fastq_folder, cluster_temp)
+                                processor.download_fastq(gse, fastq_folder, cluster_temp,container)
                                 tracker.mark_downloaded(gse_id)
                                 print(f"Download completed for {gse_id}")
                             except Exception as e:

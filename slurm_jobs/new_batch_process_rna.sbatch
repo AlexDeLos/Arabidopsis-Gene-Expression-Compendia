@@ -90,7 +90,7 @@ apptainer exec \
     python3 -u /repo/src/data_importing/new_download.py \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
-        --batch_size 10 --rna
+        --batch_size 10 --rna --container
 
 # ══════════════════════════════════════════════════
 #  EPILOG — clean up work dir after job completes
