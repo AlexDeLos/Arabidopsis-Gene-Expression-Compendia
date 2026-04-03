@@ -70,7 +70,6 @@ apptainer exec \
     --bind /usr/lib64/libslurm.so.43:/usr/lib64/libslurm.so.43 \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
-    --bind /usr/lib64/libauks.so.1:/usr/lib64/libauks.so.1 \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/slurm:/etc/slurm \
     --bind /etc/auks:/etc/auks \
