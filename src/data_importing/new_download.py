@@ -18,7 +18,8 @@ from src.data_importing.helpers.download_helper import search_geo_accessions
 from src.data_importing.helpers.file_tracker import FileTracker
 
 # --- CONFIGURATION ---
-dotenv.load_dotenv()
+# dotenv.load_dotenv()
+dotenv.load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
 Entrez.email = os.getenv('email')
 Entrez.api_key = os.getenv('NCBI_APY_KEY')
 
