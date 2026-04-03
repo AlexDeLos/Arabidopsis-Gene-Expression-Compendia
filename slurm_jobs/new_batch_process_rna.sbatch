@@ -34,43 +34,24 @@ export NXF_HOME="$BIG_STORAGE/.nextflow"
 # ══════════════════════════════════════════════════
 export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
-
 # ══════════════════════════════════════════════════
 #  SINGULARITY / APPTAINER CACHE
-#  Shared across all jobs — never cleaned automatically
+#  TMPDIR is local to fix NFS chmod errors.
+#  CACHEDIR is shared so all SLURM nodes can see the final images!
 # ══════════════════════════════════════════════════
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
-export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 mkdir -p "$APPTAINER_TMPDIR"
 
-
-# ══════════════════════════════════════════════════
-#  SINGULARITY / APPTAINER CACHE (Moved to local /tmp to avoid NFS chmod errors)
-# ══════════════════════════════════════════════════
-export NXF_SINGULARITY_CACHEDIR="/tmp/nxf_singularity_cache_${USER}"
-export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}"
-export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
-export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
-export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
-mkdir -p "$NXF_SINGULARITY_CACHEDIR" "$APPTAINER_CACHEDIR" "$APPTAINER_TMPDIR"
-
+export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
+export APPTAINER_CACHEDIR="$NXF_SINGULARITY_CACHEDIR"
+export SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 # ══════════════════════════════════════════════════
 #  RUN PYTHON ORCHESTRATION INSIDE THE CONTAINER
-#
-#  Bind summary (all discovered empirically on DAIC):
-#    SLURM binaries    — sbatch/squeue/scancel need to be host versions
-#    libslurmfull.so   — SLURM shared lib, not present in container
-#    /usr/lib64/slurm  — auth_munge.so + cred_munge.so plugins
-#    libmunge.so*      — munge auth library
-#    /var/run/munge    — munge daemon socket (live auth)
-#    /etc/slurm        — SLURM cluster config files
-#    /etc/passwd+group — needed so SLURM can validate SlurmUser
-#    nextflow binary   — host nextflow, bound into container PATH
-#    java dir          — JDK installed in BIG_STORAGE
-#    staff-umbrella    — all data, configs, outputs, SIF itself
 # ══════════════════════════════════════════════════
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
 # ══════════════════════════════════════════════════
@@ -116,6 +97,10 @@ apptainer exec \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
     --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
+    --env APPTAINER_CACHEDIR="$APPTAINER_CACHEDIR" \
+    --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
+    --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
+    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
     --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
