@@ -1,118 +1,115 @@
 #!/bin/bash
-#SBATCH --account=testusers
-#SBATCH --partition=all
+
+#SBATCH --partition=general
+#SBATCH --qos=medium
 #SBATCH --time=36:00:00
-#SBATCH --mem=16G  
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --array=0-5%10
-#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --mem=6G
+#SBATCH --mail-type=END
+#SBATCH --job-name=batch_RNA_seq_processing
+#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --array=0-9%1
+#SBATCH --export=NONE
 
-# ══════════════════════════════════════════════════
-#  PATHS
-# ══════════════════════════════════════════════════
-BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="$BIG_STORAGE/dataset_fusion.sif"
+module purge
+module use /opt/insy/modulefiles
+module load miniconda/3.9
 
+# 2. Properly initialize Conda for non-interactive scripts
+eval "$(conda shell.bash hook)"
+conda activate download_env
+
+# Print job information
 echo "=================================================="
-echo "Job ID:          $SLURM_JOB_ID"
-echo "Array Task ID:   $SLURM_ARRAY_TASK_ID"
-echo "Node:            $(hostname)"
-echo "Date:            $(date)"
-echo "SIF:             ${SIF}"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node: $(hostname)"
+echo "Date: $(date)"
+echo "Environment activated: $CONDA_DEFAULT_ENV"
+echo "Python being used: $(which python3)"
 echo "=================================================="
 
-# ══════════════════════════════════════════════════
-#  NEXTFLOW + JAVA CONFIGURATION
-# ══════════════════════════════════════════════════
-export JAVA_HOME="$BIG_STORAGE/java"
-export NXF_HOME="$BIG_STORAGE/.nextflow"
+# Ensure clean Java environment
+unset JAVA_HOME
+unset NXF_JAVA_HOME
+
+# Define your base storage paths
+export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+
+# =============================================================================
+# WORK DIR STRATEGY
+# =============================================================================
+# NXF_WORK *must* be on shared storage (umbrella) — NOT /tmp.
+#
+# Reason: Nextflow with SLURM executor submits each process as a separate
+# SLURM job. Those jobs can land on ANY compute node. /tmp is node-local:
+# a job on node B cannot read files written to /tmp on node A.
+# Using /tmp for NXF_WORK causes every sub-job to fail immediately with
+# "terminated by external system" and exit status "-" (SLURM kills it
+# because the work directory doesn't exist on the assigned node).
+#
+# Per-job subdirectory prevents parallel array tasks from colliding in work/.
+# cleanup = true in .nextflow.config deletes successful task files automatically.
+# The Python run_and_delete logic deletes FASTQs after each batch succeeds.
+# These two together keep storage from growing uncontrollably.
 export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
-# ══════════════════════════════════════════════════
-#  SINGULARITY / APPTAINER CACHING (RAM DISK)
-# ══════════════════════════════════════════════════
-# 1. Final Images go to the shared network drive
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
+echo "Nextflow Work Directory: $NXF_WORK"
+
+# =============================================================================
+# SINGULARITY / APPTAINER CACHE
+# =============================================================================
+# Singularity image cache (.img files) -> shared home dir so all nodes reuse
+# the same pulled images. Shared across jobs — intentionally NOT per-job.
+export NXF_SINGULARITY_CACHEDIR="/home/nfs/alexdelossanto/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+export NXF_SINGULARITY_PULLTIMEOUT="120m"
 
-# 2. Temporary layers go into High-Speed RAM (/dev/shm)
-#    This bypasses both the NFS chmod bug AND the physical /tmp drive!
-export APPTAINER_TMPDIR="/dev/shm/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
+# Apptainer TMPDIR for SIF building -> /tmp is fine here because SIF builds
+# happen on the login/submit node, not inside the sub-jobs. The nodev issue
+# only matters on compute nodes; if you still hit it, change to:
+#   /home/nfs/alexdelossanto/apptainer_tmp
+export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
-export APPTAINER_CACHEDIR="/dev/shm/apptainer_cache_${USER}_${SLURM_JOB_ID}"
+mkdir -p "$APPTAINER_TMPDIR"
+
+# Layer/blob cache for Singularity pulls -> /tmp is fine (node-local, ephemeral)
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}"
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
-export NXF_SINGULARITY_TMPDIR="/dev/shm/nxf_singularity_tmp_${USER}_${SLURM_JOB_ID}"
+mkdir -p "$APPTAINER_CACHEDIR"
 
-mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
+# Pass TMPDIR and CACHEDIR into sub-jobs so they inherit the correct values
+export SINGULARITYENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export APPTAINERENV_PREPEND_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# ══════════════════════════════════════════════════
-#  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
-# ══════════════════════════════════════════════════
-MY_PASSWD="$BIG_STORAGE/tmp_passwd_$SLURM_JOB_ID"
-MY_GROUP="$BIG_STORAGE/tmp_group_$SLURM_JOB_ID"
 
-cat /etc/passwd > "$MY_PASSWD"
-getent passwd $(whoami) >> "$MY_PASSWD"
+BATCH_SIZE=10
+echo "Work Directory: $NXF_WORK"
+echo "Processing Batch Index: $SLURM_ARRAY_TASK_ID with Size: $BATCH_SIZE"
 
-cat /etc/group > "$MY_GROUP"
-getent group $(id -g -n) >> "$MY_GROUP"
+# --- RUN THE PIPELINE ---
+echo "Running RNA SEQ download and processing..."
+python3 -u src/data_importing/new_download.py \
+    -o "$BIG_STORAGE/" \
+    --array_index $SLURM_ARRAY_TASK_ID \
+    --batch_size $BATCH_SIZE \
+    --rna
+PIPELINE_EXIT=$?
 
-# ══════════════════════════════════════════════════
-#  RUN THE PIPELINE INSIDE THE CONTAINER
-# ══════════════════════════════════════════════════
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# =============================================================================
+# POST-RUN CLEANUP
+# Remove the per-job work directory after the job finishes.
+# cleanup = true in .nextflow.config already deletes files for successful tasks
+# during the run; this catches anything left over (failed task dirs, metadata).
+# Comment this out if you need to debug a failed run.
+# =============================================================================
+if [ -d "$NXF_WORK" ]; then
+    echo "Cleaning up work directory: $NXF_WORK"
+    rm -rf "$NXF_WORK"
+fi
 
-apptainer exec \
-    --bind /usr/bin/apptainer:/usr/bin/apptainer \
-    --bind /usr/bin/singularity:/usr/bin/singularity \
-    --bind /etc/apptainer:/etc/apptainer \
-    --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
-    --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
-    --bind /usr/bin/sbatch:/usr/bin/sbatch \
-    --bind /usr/bin/squeue:/usr/bin/squeue \
-    --bind /usr/bin/scancel:/usr/bin/scancel \
-    --bind /usr/bin/scontrol:/usr/bin/scontrol \
-    --bind /usr/lib64/slurm:/usr/lib64/slurm \
-    --bind /usr/lib64/libslurm.so.43:/usr/lib64/libslurm.so.43 \
-    --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
-    --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
-    --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
-    --bind /var/run/munge:/var/run/munge \
-    --bind /etc/slurm:/etc/slurm \
-    --bind /etc/auks:/etc/auks \
-    --bind "$MY_PASSWD":/etc/passwd \
-    --bind "$MY_GROUP":/etc/group \
-    --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
-    --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
-    --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
-    --bind /home/alexdelossanto/linuxhome/Dataset_fusion_Microarray:/repo \
-    --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
-    --env JAVA_HOME="$BIG_STORAGE/java" \
-    --env NXF_HOME="$NXF_HOME" \
-    --env NXF_WORK="$NXF_WORK" \
-    --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
-    --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
-    --env APPTAINER_CACHEDIR="$APPTAINER_CACHEDIR" \
-    --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
-    --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
-    --env NXF_SINGULARITY_TMPDIR="$NXF_SINGULARITY_TMPDIR" \
-    --env SLURM_JOB_ID="$SLURM_JOB_ID" \
-    --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
-    --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
-    --pwd /repo \
-    "$SIF" \
-    python3 -u /repo/src/data_importing/new_download.py \
-        -o "$BIG_STORAGE/" \
-        --array_index "$SLURM_ARRAY_TASK_ID" \
-        --batch_size 1 --rna --container
-
-# ══════════════════════════════════════════════════
-#  CLEANUP
-# ══════════════════════════════════════════════════
-rm -f "$MY_PASSWD" "$MY_GROUP"
-rm -rf "$NXF_WORK" "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR" "$NXF_SINGULARITY_TMPDIR"
-
-echo "=================================================="
-echo "Job Completed"
-echo "=================================================="
+echo "Job finished with exit code $PIPELINE_EXIT"
+echo "Date: $(date)"
+exit $PIPELINE_EXIT
