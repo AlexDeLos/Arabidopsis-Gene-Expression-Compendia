@@ -35,18 +35,22 @@ export NXF_HOME="$BIG_STORAGE/.nextflow"
 export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 # ══════════════════════════════════════════════════
-#  SINGULARITY / APPTAINER CACHE
-#  TMPDIR is local to fix NFS chmod errors.
-#  CACHEDIR is shared so all SLURM nodes can see the final images!
+#  SINGULARITY / APPTAINER CACHING (SEPARATED)
 # ══════════════════════════════════════════════════
+# 1. Nextflow's Image Cache: Must be on shared network storage ($BIG_STORAGE) 
+#    so all SLURM nodes can find the final pulled images.
+export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
+mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+
+# 2. Apptainer's Internal Cache & Tmp: Must be on local compute node (/tmp) 
+#    because Apptainer strictly enforces chmod 0700 during layer downloads, 
+#    which the NFS network drive blocks.
 export APPTAINER_TMPDIR="/tmp/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
-mkdir -p "$APPTAINER_TMPDIR"
+export APPTAINER_CACHEDIR="/tmp/apptainer_cache_${USER}_${SLURM_JOB_ID}"
+export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
+mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
-export APPTAINER_CACHEDIR="$NXF_SINGULARITY_CACHEDIR"
-export SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR"
-mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 # ══════════════════════════════════════════════════
 #  RUN PYTHON ORCHESTRATION INSIDE THE CONTAINER
 # ══════════════════════════════════════════════════
