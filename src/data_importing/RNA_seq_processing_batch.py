@@ -380,7 +380,7 @@ class RNASeq_processor:
             "-revision", "3.14.0",
             "-ansi-log", "false",
             "--slurm_account", "ewi-insy-prb",
-            "--slurm_partition", "ewi-insy-prb,prb,ewi-insy,insy",
+            "--slurm_partition", "ewi-insy,all",
             "--input", samplesheet_path,
             "--outdir", batch_out_dir,
             "--pseudo_aligner", "salmon",
