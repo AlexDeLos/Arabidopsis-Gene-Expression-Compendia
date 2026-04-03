@@ -59,6 +59,8 @@ mkdir -p "$APPTAINER_TMPDIR"
 #    java dir          — JDK installed in BIG_STORAGE
 #    staff-umbrella    — all data, configs, outputs, SIF itself
 # ══════════════════════════════════════════════════
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 apptainer exec \
     --bind /usr/bin/sbatch:/usr/bin/sbatch \
     --bind /usr/bin/squeue:/usr/bin/squeue \
@@ -82,9 +84,9 @@ apptainer exec \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
-    # --pwd "/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray" \
+    --env PYTHONPATH="$REPO_DIR" \
     "$SIF" \
-    python3 -u src/data_importing/new_download.py \
+    python3 -u "$REPO_DIR/src/data_importing/new_download.py" \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 10 --rna
