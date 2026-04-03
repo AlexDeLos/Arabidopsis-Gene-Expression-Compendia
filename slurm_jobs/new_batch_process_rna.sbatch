@@ -3,7 +3,7 @@
 #SBATCH --mem=6G
 #SBATCH --cpus-per-task=1
 #SBATCH --array=0-5%10
-#SBATCH --output=/tudelft.net/staff-umbrella/GeneExpressionStorage/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
 #  PATHS
