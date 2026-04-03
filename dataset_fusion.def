@@ -58,7 +58,8 @@ From: python:3.11-slim-bookworm
         r-bioc-biobase \
         r-bioc-oligo \
         r-bioc-limma \
-        r-bioc-sva
+        r-bioc-sva \
+        sra-toolkit
 
     rm -rf /var/lib/apt/lists/*
 
