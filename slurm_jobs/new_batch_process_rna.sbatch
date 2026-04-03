@@ -82,7 +82,7 @@ apptainer exec \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
-    --pwd "/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray" \
+    # --pwd "/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray" \
     "$SIF" \
     python3 -u src/data_importing/new_download.py \
         -o "$BIG_STORAGE/" \
