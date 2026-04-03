@@ -71,6 +71,8 @@ apptainer exec \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
     --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
+    --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
+    --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/slurm:/etc/slurm \
     --bind /etc/auks:/etc/auks \
