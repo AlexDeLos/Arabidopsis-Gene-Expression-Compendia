@@ -121,7 +121,7 @@ class RNASeq_processor:
         # Directory for the SLURM out/err logs
         big_storage = os.environ.get('BIG_STORAGE', '/tudelft.net/staff-umbrella/GeneExpressionStorage')
         logs_folder = os.path.join(big_storage, 'logs_slurm', 'download_logs')
-        if not os.path.exists(logs_folder): os.makedirs(logs_folder)
+        if not os.path.exists(logs_folder): os.makedirs(logs_folder,exist_ok=True)
 
         print(f"Fetching SRR IDs for {len(gse.gsms)} samples...")
         sra_map = {gsm: self.get_srr_ids(gsm) for gsm in gse.gsms.keys()}
