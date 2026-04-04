@@ -2,13 +2,14 @@
 #SBATCH --job-name=new_fastq_download
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=4:00:00      # INCREASED TIME
-#SBATCH --mem=8G           # INCREASED MEMORY
+#SBATCH --time=4:00:00
+#SBATCH --mem=8G
 #SBATCH --cpus-per-task=4
+#SBATCH --exclude=gpu36
 
-# Fix the /repo chdir bug by moving to the safe storage drive before running
-cd /tudelft.net/staff-umbrella/GeneExpressionStorage || exit 1
-
+# ══════════════════════════════════════════════════
+#  START LOGGING
+# ══════════════════════════════════════════════════
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="$BIG_STORAGE/dataset_fusion.sif"
 
@@ -36,10 +37,11 @@ MAX_RETRIES=3
 ATTEMPT=0
 SUCCESS=false
 
-# ---------------------------------------------------------
-# PURGE PARENT ENVIRONMENT VARIABLES
-# Prevents child jobs from searching for the parent's RAM disk
-# ---------------------------------------------------------
+# ══════════════════════════════════════════════════
+#  PURGE INHERITED PARENT ENVIRONMENT VARIABLES
+#  Prevents child jobs from inheriting the parent's
+#  RAM disk paths or bind mounts (e.g. /repo)
+# ══════════════════════════════════════════════════
 unset APPTAINER_BIND
 unset SINGULARITY_BIND
 unset APPTAINER_TMPDIR
@@ -47,6 +49,11 @@ unset SINGULARITY_TMPDIR
 unset APPTAINER_CACHEDIR
 unset SINGULARITY_CACHEDIR
 
+# ══════════════════════════════════════════════════
+#  FASTQ-DUMP TEMP DIR ON SHARED STORAGE
+#  Avoids /tmp exhaustion on compute nodes for
+#  large SRR files
+# ══════════════════════════════════════════════════
 FASTQ_TMP="$OUT_DIR/tmp_${SRR}"
 mkdir -p "$FASTQ_TMP"
 
@@ -78,7 +85,23 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
     fi
 done
 
+# ══════════════════════════════════════════════════
+#  END LOGGING
+# ══════════════════════════════════════════════════
 if [ "$SUCCESS" = false ]; then
     echo "FAILED to download $SRR after $MAX_RETRIES attempts."
+    echo "=================================================="
+    echo "Job ID:        $SLURM_JOB_ID"
+    echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+    echo "Node:          $(hostname)"
+    echo "Date:          $(date)"
+    echo "=================================================="
     exit 1
 fi
+
+echo "=================================================="
+echo "Job ID:        $SLURM_JOB_ID"
+echo "Array Task ID: $SLURM_ARRAY_TASK_ID"
+echo "Node:          $(hostname)"
+echo "Date:          $(date)"
+echo "=================================================="
