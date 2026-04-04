@@ -38,6 +38,10 @@ SUCCESS=false
 unset APPTAINER_BIND
 unset SINGULARITY_BIND
 
+# Give fastq-dump a temp dir on the large storage
+FASTQ_TMP="$OUT_DIR/tmp_${SRR}"
+mkdir -p "$FASTQ_TMP"
+
 while [ $ATTEMPT -lt $MAX_RETRIES ]; do
     echo "Attempt $((ATTEMPT+1)) of $MAX_RETRIES..."
 
@@ -45,6 +49,8 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
         --no-pid \
         --cleanenv \
         --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+        --env TMPDIR="$FASTQ_TMP" \
+        --env HOME="$FASTQ_TMP" \
         "$SIF" \
         fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
 
@@ -53,10 +59,12 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
     if [ "$FILE_COUNT" -gt 0 ]; then
         echo "Successfully downloaded $SRR"
         SUCCESS=true
+        rm -rf "$FASTQ_TMP"
         break
     else
         echo "Download failed or incomplete for $SRR. Cleaning up partial files..."
         rm -f "$OUT_DIR"/"$SRR"*
+        rm -rf "$FASTQ_TMP"
         sleep 10
         ATTEMPT=$((ATTEMPT+1))
     fi
