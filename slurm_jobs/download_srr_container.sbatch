@@ -34,12 +34,16 @@ fi
 MAX_RETRIES=3
 ATTEMPT=0
 SUCCESS=false
+# Add before the while loop:
+unset APPTAINER_BIND
+unset SINGULARITY_BIND
 
 while [ $ATTEMPT -lt $MAX_RETRIES ]; do
     echo "Attempt $((ATTEMPT+1)) of $MAX_RETRIES..."
 
     apptainer exec \
         --no-pid \
+        --cleanenv \
         --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
         "$SIF" \
         fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
