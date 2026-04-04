@@ -2,18 +2,19 @@
 #SBATCH --job-name=new_fastq_download
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=2:30:00
-#SBATCH --mem=4G
+#SBATCH --time=4:00:00      # INCREASED TIME
+#SBATCH --mem=8G           # INCREASED MEMORY
 #SBATCH --cpus-per-task=4
+
+# Fix the /repo chdir bug by moving to the safe storage drive before running
+cd /tudelft.net/staff-umbrella/GeneExpressionStorage || exit 1
 
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="$BIG_STORAGE/dataset_fusion.sif"
 
-# Arguments passed by the Python script
 SRR_LIST=$1
 OUT_DIR=$2
 
-# Extract the specific SRR for this array task ID
 SRR=$(awk "NR==${SLURM_ARRAY_TASK_ID}" "$SRR_LIST")
 
 echo "=================================================="
@@ -34,11 +35,18 @@ fi
 MAX_RETRIES=3
 ATTEMPT=0
 SUCCESS=false
-# Add before the while loop:
+
+# ---------------------------------------------------------
+# PURGE PARENT ENVIRONMENT VARIABLES
+# Prevents child jobs from searching for the parent's RAM disk
+# ---------------------------------------------------------
 unset APPTAINER_BIND
 unset SINGULARITY_BIND
+unset APPTAINER_TMPDIR
+unset SINGULARITY_TMPDIR
+unset APPTAINER_CACHEDIR
+unset SINGULARITY_CACHEDIR
 
-# Give fastq-dump a temp dir on the large storage
 FASTQ_TMP="$OUT_DIR/tmp_${SRR}"
 mkdir -p "$FASTQ_TMP"
 
