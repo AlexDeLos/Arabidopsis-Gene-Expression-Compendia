@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=fastq_download
+#SBATCH --job-name=new_fastq_download
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=2:00:00
@@ -39,6 +39,7 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
     echo "Attempt $((ATTEMPT+1)) of $MAX_RETRIES..."
 
     apptainer exec \
+        --no-pid \
         --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
         "$SIF" \
         fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
