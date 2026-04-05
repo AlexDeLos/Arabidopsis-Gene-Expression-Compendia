@@ -375,6 +375,7 @@ class RNASeq_processor:
             "nextflow",
             "-log", log_path,          # <-- explicit log file, isolated per batch
             "run", "nf-core/rnaseq",
+            "-resume",
             "-profile", self.profile,
             "-c", config_path,
             "-with-dag", f'{batch_out_dir}/flow_diagram.svg',
