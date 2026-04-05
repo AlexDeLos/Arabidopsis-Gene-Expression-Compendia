@@ -130,6 +130,7 @@ apptainer exec \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
+    --env SLURM_ACCOUNT="testusers" \
     --pwd /repo \
     "$SIF" \
     python3 -u /repo/src/data_importing/new_download.py \

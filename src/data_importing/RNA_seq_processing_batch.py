@@ -191,16 +191,22 @@ class RNASeq_processor:
             for gz_file in existing_gz:
                 gz_path = os.path.join(output_folder, gz_file)
                 try:
-                    # Run a quiet integrity check on the gzip archive
+                    # Two-stage check: header test + partial decompression
                     subprocess.run(['gzip', '-t', '-q', gz_path], check=True, stderr=subprocess.PIPE)
+                    # Also verify actual content is readable (catches truncated-but-valid-header files)
+                    result = subprocess.run(
+                        ['bash', '-c', f'zcat "{gz_path}" | head -4 | wc -l'],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    if result.returncode != 0 or int(result.stdout.strip()) < 4:
+                        raise subprocess.CalledProcessError(1, 'zcat')
                     valid_gz.append(gz_file)
-                except subprocess.CalledProcessError:
-                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting to prevent pipeline crash.")
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
+                    print(f"    [!] CORRUPTION DETECTED: {gz_file} fails decompression check. Deleting.")
                     os.remove(gz_path)
             
             if not valid_gz:
                 print(f"    [!] Failed to download valid files for {srr} after sbatch completion.")
-                
         print(f'Done downloading for {gse.name}')
                 
         print(f'Done downloading for {gse}')
