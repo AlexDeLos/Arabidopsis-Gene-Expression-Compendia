@@ -135,7 +135,24 @@ class RNASeq_processor:
         if not sra_map:
             print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
             return
-
+        # Pre-validate any existing files and delete corrupt ones
+        print(f"Pre-validating existing files in {output_folder}...")
+        for fname in list(os.listdir(output_folder)):
+            if not fname.endswith('.gz'):
+                continue
+            gz_path = os.path.join(output_folder, fname)
+            try:
+                subprocess.run(['gzip', '-t', '-q', gz_path], check=True, stderr=subprocess.PIPE)
+                result = subprocess.run(
+                    ['bash', '-c', f'zcat "{gz_path}" | head -4 | wc -l'],
+                    capture_output=True, text=True, timeout=60
+                )
+                if result.returncode != 0 or int(result.stdout.strip()) < 4:
+                    raise subprocess.CalledProcessError(1, 'zcat')
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
+                print(f"    [!] PRE-SCAN: {fname} is corrupt. Deleting.")
+                os.remove(gz_path)
+        
         # 1. Collect all SRRs that need downloading
         srrs_to_download = []
         for gsm, srrs in sra_map.items():
