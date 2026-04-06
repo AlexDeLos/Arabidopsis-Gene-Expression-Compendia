@@ -200,7 +200,7 @@ _RE_BATCH_IDS   = re.compile(r"IDs: (\[.*?\])")
 _RE_JOB_ID      = re.compile(r"Job ID: (\d+)")
 _RE_NODE        = re.compile(r"Node: (\S+)")
 _RE_DATE        = re.compile(r"^Date: (.+)$")
-_RE_JOB_DONE    = re.compile(r"^Job finished")
+_RE_JOB_DONE    = re.compile(r"^Job (finished|Completed)")
 _RE_TMP_NODEV   = re.compile(r"nodev.*mount option|chmod.*operation not permitted")
 
 STUDY_STATES = {

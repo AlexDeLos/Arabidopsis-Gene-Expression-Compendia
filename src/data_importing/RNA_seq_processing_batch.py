@@ -343,8 +343,8 @@ class RNASeq_processor:
             if success:
                 return True, all_bad_samples
 
-            bad_samples = self._extract_failed_samples(log_path)   # <-- pass path directly
-
+            bad_samples = self._extract_failed_samples(log_path)
+            
             if not bad_samples:
                 print("  [!] No bad samples identified — unrecoverable failure.")
                 return False, all_bad_samples
