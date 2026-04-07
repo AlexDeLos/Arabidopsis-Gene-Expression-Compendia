@@ -202,6 +202,9 @@ _RE_NODE        = re.compile(r"Node: (\S+)")
 _RE_DATE        = re.compile(r"^Date: (.+)$")
 _RE_JOB_DONE    = re.compile(r"^Job (finished|Completed)")
 _RE_TMP_NODEV   = re.compile(r"nodev.*mount option|chmod.*operation not permitted")
+_RE_SKIP_PROCESSED = re.compile(r"Skipped — already processed \(\d+\): (\[.*?\])")
+_RE_SKIP_IGNORED   = re.compile(r"Skipped — ignored \(\d+\): (\[.*?\])")
+_RE_SKIP_ERROR     = re.compile(r"Skipped — error \(\d+\): (\[.*?\])")
 
 STUDY_STATES = {
     "processing":   ("#60a5fa", "Processing"),
@@ -354,6 +357,36 @@ def parse_log_file(path: str) -> dict:
                     result["retries"][current_study].append(
                         f"Retry {m.group(1)}/{m.group(2)}: {m.group(3)} SRRs"
                     )
+                
+                m = _RE_SKIP_PROCESSED.search(line)
+                if m:
+                    try:
+                        for gse in eval(m.group(1)):
+                            if gse not in result["studies"]:
+                                result["study_order"].append(gse)
+                            result["studies"][gse] = "processed"
+                    except Exception:
+                        pass
+
+                m = _RE_SKIP_IGNORED.search(line)
+                if m:
+                    try:
+                        for gse in eval(m.group(1)):
+                            if gse not in result["studies"]:
+                                result["study_order"].append(gse)
+                            result["studies"][gse] = "ignore"
+                    except Exception:
+                        pass
+
+                m = _RE_SKIP_ERROR.search(line)
+                if m:
+                    try:
+                        for gse in eval(m.group(1)):
+                            if gse not in result["studies"]:
+                                result["study_order"].append(gse)
+                            result["studies"][gse] = "error"
+                    except Exception:
+                        pass
 
     except Exception as e:
         result["errors"].append(f"Failed to read {path}: {e}")
