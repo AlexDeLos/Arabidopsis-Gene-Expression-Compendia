@@ -201,6 +201,8 @@ class RNASeq_processor:
             raise  # propagate so caller marks study as error (retryable), not downloaded
 
         # 4. Verify post-download and check data integrity
+        successful_downloads = 0 # <-- Track successful SRRs
+
         for srr in srrs_to_download:
             existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith('.gz')]
             
@@ -224,6 +226,17 @@ class RNASeq_processor:
             
             if not valid_gz:
                 print(f"    [!] Failed to download valid files for {srr} after sbatch completion.")
+            else:
+                successful_downloads += 1 # <-- Increment if at least 1 valid file exists for this SRR
+        
+        # --- NEW BLOCK ---
+        # If we attempted to download SRRs, but absolutely none survived the validation:
+        if len(srrs_to_download) > 0 and successful_downloads == 0:
+            error_msg = f"CRITICAL: All {len(srrs_to_download)} SRR downloads for {gse.name} failed or were completely corrupted."
+            print(error_msg)
+            raise RuntimeError(error_msg) 
+        # -----------------
+
         print(f'Done downloading for {gse.name}')
                 
         print(f'Done downloading for {gse}')
