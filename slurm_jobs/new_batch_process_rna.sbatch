@@ -4,7 +4,7 @@
 #SBATCH --time=36:00:00
 #SBATCH --mem=16G  
 #SBATCH --cpus-per-task=1
-#SBATCH --array=10-50%10
+#SBATCH --array=10-19%5
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
@@ -17,7 +17,7 @@ echo "=================================================="
 echo "Job ID:          $SLURM_JOB_ID"
 echo "Array Task ID:   $SLURM_ARRAY_TASK_ID"
 echo "Node:            $(hostname)"
-echo "Date:            $(date)"
+echo "Date: $(date)"
 echo "SIF:             ${SIF}"
 echo "=================================================="
 
@@ -154,6 +154,6 @@ echo "=================================================="
 echo "Job ID:          $SLURM_JOB_ID"
 echo "Array Task ID:   $SLURM_ARRAY_TASK_ID"
 echo "Node:            $(hostname)"
-echo "Date:            $(date)"
+echo "Date: $(date)"
 echo "SIF:             ${SIF}"
 echo "=================================================="
