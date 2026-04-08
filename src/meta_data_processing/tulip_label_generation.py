@@ -43,6 +43,7 @@ import argparse
 import json
 import logging
 import os
+from dotenv import load_dotenv
 import re
 import sys
 from typing import Dict, List, Optional
@@ -52,7 +53,7 @@ from tqdm import tqdm
 module_dir = './'
 sys.path.append(module_dir)
 
-from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH
+from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH, RNA_MA
 from src.constants_labeling import LABEL_CONFIG, UNIQUE_LABELS, LABELS, BUCKET_KEYWORDS, EXPLICIT_KEYWORDS
 
 logger = logging.getLogger(__name__)
@@ -63,9 +64,10 @@ logging.basicConfig(
 )
 
 # ── TULIP constants ────────────────────────────────────────────────────────────
+load_dotenv()
 TULIP_BASE_URL   = "https://api.tulip.tudelft.nl/chat/v1"
 TULIP_MODEL      = "chat"
-TULIP_API_KEY    = os.environ.get("TULIP_API_KEY", "DUMMY_API_KEY")
+TULIP_API_KEY    = os.getenv("TULIP_API_KEY", "DUMMY_API_KEY")
 TULIP_MAX_TOKENS = 2048   # Reasoning model writes chain-of-thought before JSON
 
 # Output subfolder name — kept separate from the vector pipeline so results
@@ -116,6 +118,21 @@ def generate_system_prompt():
             
     prompt += "- FALLBACK: If a category is missing/unclear, output 'unspecified'. If explicitly stated as unknown, output 'unknown'.\n"
     prompt += "</rules>\n\n"
+
+    # Control condition guidance — explicit list so the model recognises control
+    # samples reliably rather than guessing from "standard conditions".
+    prompt += (
+        "<control_conditions>\n"
+        "A sample should be labelled treatment=[{\"val\": \"Control\", \"intensity\": 0}] when ANY of the following apply:\n"
+        "  - No stress or treatment is mentioned (mock, untreated, water-treated, vehicle control)\n"
+        "  - The sample is described as a 0h / 0 day timepoint in a time-course experiment\n"
+        "  - The sample is described as 'unstressed', 'normal conditions', or 'ambient conditions'\n"
+        "  - The sample is described as 'Col-0 control', 'wild-type control', or similar baseline\n"
+        "  - The growth conditions are fully standard (22°C, 16h light/8h dark, 60% RH, MS medium,101.325 kPa...)\n"
+        "  - The sample is used as the reference/comparison group in the study\n"
+        "IMPORTANT: intensity MUST be 0 whenever val is 'Control'. Never assign intensity > 0 to a Control treatment.\n"
+        "</control_conditions>\n\n"
+    )
             
     # 2. Dynamically build ontology using Definitions
     prompt += "<ontology>\n"
@@ -194,7 +211,7 @@ class TulipLabelGenerator:
 
     def __init__(
         self,
-        in_folder:    str  = "new_storage/processed_microarray_data/",
+        in_folder:    str  = "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/",#TODO: un-hardcode this
         saving_path:  str  = None,
         model:        str  = TULIP_MODEL,
         timeout:      int  = 60,
@@ -267,6 +284,11 @@ class TulipLabelGenerator:
 
     # ── Study-level processing ─────────────────────────────────────────────────
 
+    # Maximum samples sent in one conversation turn. Keeping this small enough
+    # that the full context (system prompt + study context + N samples + N responses)
+    # stays well within the model's context window.
+    _STUDY_BATCH_SIZE = 10
+
     def _process_study(
         self,
         study_id:    str,
@@ -280,23 +302,31 @@ class TulipLabelGenerator:
         if max_samples:
             sample_files = sample_files[:max_samples]
 
+        # Load all samples first so we can build the study context once
+        samples: List[Dict] = []
+        for sample_file in sample_files:
+            try:
+                with open(os.path.join(study_path, sample_file)) as f:
+                    data = json.load(f)
+                samples.append(data)
+            except Exception as exc:
+                logger.warning("Error reading %s/%s: %s", study_id, sample_file, exc)
+
+        if not samples:
+            return
+
+        # Study metadata is the same for every sample — extract once
+        study_meta = samples[0].get("study_metadata", {})
+
         final_output: Dict[str, Dict] = {}
 
-        for sample_file in sample_files:
-            file_path = os.path.join(study_path, sample_file)
-            try:
-                with open(file_path) as f:
-                    data = json.load(f)
-
-                sample_id     = data.get("sample_id", sample_file.replace(".json", ""))
-                sample_meta   = data.get("sample_metadata", {})
-                study_meta    = data.get("study_metadata", {})
-
-                labels = self._label_sample(sample_meta, study_meta)
-                final_output[sample_id] = labels
-
-            except Exception as exc:
-                logger.warning("Error processing %s/%s: %s", study_id, sample_file, exc)
+        # Process in batches. Each batch is one multi-turn conversation where
+        # the model sees the previous samples and their assigned labels before
+        # labelling the next one — this is the "short-term memory".
+        for batch_start in range(0, len(samples), self._STUDY_BATCH_SIZE):
+            batch = samples[batch_start : batch_start + self._STUDY_BATCH_SIZE]
+            batch_results = self._label_study_batch(batch, study_meta, study_id)
+            final_output.update(batch_results)
 
         if final_output:
             with open(output_file, "w") as f:
@@ -305,103 +335,141 @@ class TulipLabelGenerator:
 
     # ── Sample-level labeling ──────────────────────────────────────────────────
 
-    def _label_sample(
+    def _label_study_batch(
         self,
-        sample_metadata: Dict,
-        study_metadata:  Dict):
+        samples:    List[Dict],
+        study_meta: Dict,
+        study_id:   str,
+    ) -> Dict[str, Dict]:
         """
-        Ask TULIP to assign all label axes for one sample.
-        Returns a dict matching the standard pipeline output format:
-            {label_axis: [canonical_value]}
-        Falls back to {"label": ["unspecified"]} for any axis that fails.
+        Label a batch of samples from the same study in a single multi-turn
+        conversation, giving the model memory of previously assigned labels.
+
+        The conversation structure is:
+          system: <full ontology + rules prompt>
+          user:   <study context + sample 1 metadata>   → assistant: <JSON 1>
+          user:   <sample 2 metadata>                   → assistant: <JSON 2>
+          ...
+
+        By appending each assistant response back into the message history before
+        sending the next sample, the model can use earlier assignments as context
+        (e.g. it knows this is a heat-stress study after seeing the first sample,
+        so it won't label subsequent samples as Control by mistake).
         """
-        prompt = self._build_prompt(sample_metadata, study_metadata)
+        # The study context is prepended only in the first user message.
+        study_block = self._format_study_block(study_meta)
 
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = self._client.chat.completions.create(
-                    model       = self.model,
-                    messages    = [
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user",   "content": prompt},
-                    ],
-                    max_tokens  = TULIP_MAX_TOKENS,
-                    temperature = 0.1*attempt,
+        # # Build the running message history — starts with just the system prompt.
+        # message: List[Dict[str, str]] = [
+        #     {"role": "system", "content": self.system_prompt},
+        #     # {"role": "assistant", "content": self.system_prompt}
+        # ]
+
+        results: Dict[str, Dict] = {}
+
+        for i, data in enumerate(samples):
+            #! BY moving it here we are deleting the use of history
+            message: List[Dict[str, str]] = [
+                {"role": "system", "content": self.system_prompt},
+                # {"role": "assistant", "content": self.system_prompt}
+            ]
+            sample_id   = data.get("sample_id", f"unknown_{i}")
+            sample_meta = data.get("sample_metadata", {})
+
+            # First sample includes the study context so the model understands
+            # the experiment before seeing any individual sample metadata.
+            if i == 0:
+                user_content = _USER_PROMPT_TEMPLATE.format(
+                    sample_block = self._format_sample_block(sample_meta),
+                    study_block  = study_block,
                 )
-                msg      = response.choices[0].message
-                raw_text = msg.content or ""
-
-                # Reasoning model fallback: content may be empty if token budget was
-                # spent on chain-of-thought — extract JSON from reasoning_content instead.
-                if not raw_text:
-                    reasoning = getattr(msg, "reasoning_content", None) or ""
-                    if reasoning:
-                        logger.debug(
-                            "content empty (finish_reason=%s); extracting from reasoning_content",
-                            response.choices[0].finish_reason,
-                        )
-                        raw_text = reasoning
-
-                return self._parse_labels(raw_text)
-
-            except Exception as exc:
-                logger.warning(
-                    "TULIP call failed on attempt %d/%d: %s", 
-                    attempt + 1, max_retries, exc
+            else:
+                # Subsequent samples: study context is already in history,
+                # so we only send the new sample metadata. This keeps each
+                # turn short while the model retains full prior context.
+                user_content = (
+                    f"Next sample ({sample_id}):\n"
+                    f"{self._format_sample_block(sample_meta)}\n\n"
+                    "Provide only the JSON object for this sample."
                 )
-                
-                if attempt == max_retries - 1:
-                    logger.error("All %d attempts to reach TULIP failed. Falling back to default labels.", max_retries)
-                    return self._parse_labels("")  # Generates the default unclassified schema
-                
-                # Optional: Add a standard `import time` at top of file and do:
-                # time.sleep(1 * (attempt + 1)) # to give transient network blips time to resolve
-            # return {label: ["unspecified"] for label in LABELS}
+
+            message.append({"role": "user", "content": user_content})
+
+            max_retries = 3
+            raw_text = ""
+            # labels = None
+            for attempt in range(max_retries):
+                try:
+                    response = self._client.chat.completions.create(
+                        model      = self.model,
+                        messages   = message,
+                        max_tokens = TULIP_MAX_TOKENS,
+                        temperature = 0.1 * attempt,
+                    )
+                    msg      = response.choices[0].message
+                    raw_text = msg.content or ""
+
+                    if not raw_text:
+                        reasoning = getattr(msg, "reasoning_content", None) or ""
+                        if reasoning:
+                            raw_text = reasoning
+
+                    # break  # success
+
+
+                    labels = self._parse_labels(raw_text) # generates default unspecified schema
+                    results[sample_id] = labels
+
+                except Exception as exc:
+                    logger.warning(
+                        "TULIP call failed (study=%s sample=%s attempt %d/%d): %s",
+                        study_id, sample_id, attempt + 1, max_retries, exc,
+                    )
+                    if attempt == max_retries - 1:
+                        raw_text = ""
+
+            # Append the assistant's response to history so the next sample
+            # sees what was already assigned — this is the memory mechanism.
+            # history.append({"role": "assistant", "content": raw_text or "{}"})
+
+        return results
 
     # ── Prompt construction ────────────────────────────────────────────────────
 
-    def _build_prompt(self, sample_metadata: Dict, study_metadata: Dict) -> str:
-        # --- Format Sample Metadata ---
+    def _format_sample_block(self, sample_metadata: Dict) -> str:
+        """Format sample-level metadata fields into a prompt string."""
         sample_lines = []
         for field in _SAMPLE_FIELDS:
             val = sample_metadata.get(field)
             if not val:
                 continue
-            
-            # Format lists cleanly rather than duplicating the field name
             if isinstance(val, list):
                 clean_val = "; ".join([str(item).strip() for item in val if item])
                 if clean_val:
                     sample_lines.append(f"  [{field.upper()}]: {clean_val}")
             else:
                 sample_lines.append(f"  [{field.upper()}]: {str(val).strip()}")
+        return "\n".join(sample_lines) if sample_lines else "  (No sample metadata available)"
 
-        sample_block = "\n".join(sample_lines) if sample_lines else "  (No sample metadata available)"
-
-        # --- Format Study Metadata (Context) ---
+    def _format_study_block(self, study_metadata: Dict) -> str:
+        """Format study-level metadata fields into a prompt string."""
         study_lines = []
         for field in _STUDY_FIELDS:
-            # Some GEO fields come back as lists, ensure we handle them safely
             val = study_metadata.get(field, "")
             if isinstance(val, list):
                 val = " ".join([str(v) for v in val])
             else:
                 val = str(val).strip()
-
             if val:
-                # 400 characters is too short for GEO abstracts where the treatment protocol 
-                # is often described at the very end. 1500 is much safer for modern LLMs.
                 truncated = val[:1500] + ("..." if len(val) > 1500 else "")
                 study_lines.append(f"  [{field.upper()}]: {truncated}")
+        return "\n".join(study_lines) if study_lines else "  (No study context available)"
 
-        study_block = "\n".join(study_lines) if study_lines else "  (No study context available)"
-
-        # Options block is intentionally removed here because the System Prompt 
-        # now handles the entire ontology, rules, and JSON schema.
+    def _build_prompt(self, sample_metadata: Dict, study_metadata: Dict) -> str:
+        """Build the full user prompt for a single isolated sample call."""
         return _USER_PROMPT_TEMPLATE.format(
-            sample_block=sample_block,
-            study_block=study_block,
+            sample_block = self._format_sample_block(sample_metadata),
+            study_block  = self._format_study_block(study_metadata),
         )
 
     # ── Response parsing ───────────────────────────────────────────────────────
@@ -477,6 +545,12 @@ class TulipLabelGenerator:
             if not validated:
                 validated = ["unspecified"] if not sub_attr_cfg else [{"val": "unspecified", **{k: list(v['enum'])[0].value for k,v in sub_attr_cfg.items()}}]
 
+            # Rule: a single sample cannot have the same treatment val at multiple
+            # intensities simultaneously (e.g. Heat@1 + Heat@2 + Heat@3 is nonsensical).
+            # When duplicates exist, keep only the entry with the highest intensity.
+            if sub_attr_cfg and label == 'treatment':
+                validated = self._deduplicate_by_intensity(validated)
+
             result[label] = validated
 
         return result
@@ -517,6 +591,46 @@ class TulipLabelGenerator:
                 return item.value
 
         return allowed_values[0]
+    @staticmethod
+    def _deduplicate_by_intensity(treatment_list: List) -> List:
+        """
+        Enforce the rule: a single sample cannot have the same treatment val
+        at multiple intensity levels simultaneously.
+
+        For each unique treatment val, keep only the entry with the highest
+        intensity value.  Also enforces that Control always has intensity=0.
+
+        Example: [Heat@1, Heat@2, Heat@3, Drought@1]  →  [Heat@3, Drought@1]
+        """
+        # Step 1: Force intensity=0 for any Control entries
+        for item in treatment_list:
+            if isinstance(item, dict) and item.get("val", "").lower() == "control":
+                item["intensity"] = 0
+
+        # Step 2: Group by val, keep highest intensity per group
+        best: Dict[str, Dict] = {}
+        for item in treatment_list:
+            if not isinstance(item, dict):
+                continue
+            val = item.get("val", "unspecified")
+            intensity = item.get("intensity", 0)
+            if val not in best or intensity > best[val].get("intensity", 0):
+                best[val] = item
+
+        # Preserve original insertion order for determinism
+        seen = set()
+        deduped = []
+        for item in treatment_list:
+            if not isinstance(item, dict):
+                deduped.append(item)
+                continue
+            val = item.get("val", "unspecified")
+            if val not in seen:
+                seen.add(val)
+                deduped.append(best[val])
+
+        return deduped
+
     def _validate_label(self, value: str, label: str) -> str:
         """
         Accept the value only if it matches a canonical option (case-insensitive).

@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Optional, List
 import os
-from src.constants import LABELS
+from src.constants_labeling import LABELS
 
 
 def load_json(path: str):

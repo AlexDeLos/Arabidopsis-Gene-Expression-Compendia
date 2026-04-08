@@ -3,7 +3,6 @@ from typing import List, Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer, util
 from spacy.cli import download
 import torch
-from src.constants import UNIQUE_LABELS, CONTROL_MAP
 import re
 import sys
 
@@ -11,7 +10,7 @@ module_dir = './'
 sys.path.append(module_dir)
 
 # Import the new map alongside the others
-from src.constants import LABELS, EXPLICIT_KEYWORDS, BUCKET_KEYWORDS, CANONICAL_MAP
+from src.constants_labeling import LABELS, EXPLICIT_KEYWORDS, BUCKET_KEYWORDS, CANONICAL_MAP,UNIQUE_LABELS, CONTROL_MAP
 from src.meta_data_processing.utils.labelMap import LabelMap
 
 class GroundingOptimizer:
