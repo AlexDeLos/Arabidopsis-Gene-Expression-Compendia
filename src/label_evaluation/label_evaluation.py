@@ -8,7 +8,7 @@ import glob
 # Point these to where your actual label and metadata JSON files are stored
 LABELS_DIR = "./new_storage/labels/TULIP_1.2_RNA/4.5"      # e.g., folder containing GSE40216.json
 METADATA_DIR = "./new_storage/rnaseq_data/metadata/GSE40216/"  # e.g., folder containing GSE163009_GSM4970099.json
-RESULTS_FILE = "evaluation_results.csv"
+RESULTS_FILE = "./src/label_evaluation/evaluation_results.csv"
 
 st.set_page_config(layout="wide", page_title="Label Evaluation Tool")
 
