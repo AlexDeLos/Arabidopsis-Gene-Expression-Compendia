@@ -19,12 +19,19 @@ echo ""
 
 echo "Starting TULIP label generation..."
 
-# 2. Run the Script using Apptainer
-# echo "running MA labels"
-# srun apptainer exec --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python -u src/meta_data_processing/tulip_label_generation.py --in-folder "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/"
-echo "running RNA labels"
-apptainer exec --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif python -u ./src/meta_data_processing/tulip_label_generation.py --in-folder "/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/metadata/"
+# Define your directories to keep the command clean
+REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
+BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+SIF="$BIG_STORAGE/dataset_fusion.sif"
 
+echo "running RNA labels"
+apptainer exec \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":"$REPO_DIR" \
+    --pwd "$REPO_DIR" \
+    "$SIF" \
+    python -u src/meta_data_processing/tulip_label_generation.py \
+    --in-folder "$BIG_STORAGE/rnaseq_data/metadata/"
 
 echo "Job finished successfully."
 echo "Date: $(date)"
