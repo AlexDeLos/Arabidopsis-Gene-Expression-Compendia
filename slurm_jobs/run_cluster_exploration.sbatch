@@ -1,11 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=cluster_exploration
-#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
-#SBATCH --qos=medium
+#SBATCH --account=testusers
+#SBATCH --partition=all
 #SBATCH --time=4:00:00
 #SBATCH --mem=26G
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=general
+#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
