@@ -13,7 +13,7 @@ SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
 
 # Storage root (bound into the container so all data paths resolve correctly)
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
-REPO=/tudelft.net/staff-umbrella/GeneExpressionStorage
+REPO=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Make sure the log directory exists before the job starts writing to it
