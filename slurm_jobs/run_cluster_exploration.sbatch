@@ -9,11 +9,9 @@
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
 # It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
-SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
-
-# Storage root (bound into the container so all data paths resolve correctly)
-STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
-REPO=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray
+REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
+BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+SIF="$BIG_STORAGE/dataset_fusion.sif"
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Make sure the log directory exists before the job starts writing to it
@@ -37,10 +35,10 @@ if [ ! -f "${SIF}" ]; then
 fi
 
 apptainer exec \
-    --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:${REPO}" \
-    --pwd "${REPO}" \
-    "${SIF}" \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
     python src/data_analisys/cluster_explotation_new.py
 
 EXIT_CODE=$?
