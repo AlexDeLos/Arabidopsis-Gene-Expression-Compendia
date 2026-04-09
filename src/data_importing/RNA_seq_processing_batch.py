@@ -4,6 +4,7 @@ import shutil
 import csv
 import re
 import glob
+from collections import defaultdict
 import json
 import pandas as pd
 from tqdm import tqdm
@@ -764,7 +765,6 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     print(f'Skipped — ignored ({len(skipped_ignored)}): {skipped_ignored}')
     print(f'Skipped — error ({len(skipped_error)}): {skipped_error}')
 
-    from collections import defaultdict
     ecotype_groups: dict[str, list[str]] = defaultdict(list)
     
     print("Detecting ecotypes for all studies...")
@@ -849,7 +849,7 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                         print(f"    > Metadata processing failed: {e}")
                     
                     if metadata_only:
-                        continue #TODO: test if this works, should only download the metadata, nothing more
+                        continue
                     # save_rnaseq_sample_metadata(gse_id, gse, output_dir)
                     # 3. Download (FIX 2: retry on corruption baked into download_fastq)
                     if download_raw:
@@ -946,6 +946,10 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
                             if os.path.exists(soft_file):
                                 print(f"Cleaning SOFT file for {gse_id}")
                                 os.remove(soft_file)
+                            metadata_dir = os.path.join(output_dir, "metadata",gse_id)
+                            if os.path.exists(soft_file):
+                                print(f"Cleaning metadata files for {gse_id}")
+                                shutil.rmtree(fq_dir)
 
                     # Studies with no matching columns stay at STATUS_DOWNLOADED for retry
                     not_saved = set(effective_study_map.keys()) - set(split_success)
