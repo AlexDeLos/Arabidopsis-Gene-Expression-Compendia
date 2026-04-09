@@ -11,7 +11,7 @@ if CLUSTER_RUN:
 else:
     STORAGE_DIR = f'./new_storage/'
 
-RNA_MA= True
+RNA_MA= False
 
 DATA_IMPORT_DIR = './data/downloads_new/'
 GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_new/'

@@ -608,42 +608,99 @@ def plot_metrics_comparison(metrics_dict: dict,
     print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.png')}")
     plt.close()
 
-# def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, output_folder: str):
-#     """
-#     Aggregates and plots metrics across different stages/experiments.
-#     Matches exact signature expected by cluster_explotation_new.py.
-#     """
-#     print(f"Saving comparison metrics to {output_folder}...")
-#     os.makedirs(output_folder, exist_ok=True)
+module_dir = './'
+sys.path.append(module_dir)
+
+# --- NEW BULKFORMER IMPORTS ---
+import torch
+import umap
+from tqdm import tqdm
+from collections import OrderedDict
+from torch_sparse import SparseTensor
+from src.bulk.utils.BulkFormer import BulkFormer
+from src.bulk.model.config import model_params
+from src.constants import STORAGE_DIR
+# ------------------------------
+# ==========================================
+# --- BULKFORMER INTEGRATION ---
+# ==========================================
+BULKFORMER_FILES = {
+    'model_weights': f'{STORAGE_DIR}bulkformer/model/checkpoints_ath/BulkFormer_ath_best.pt',
+    'graph_ei':      f'{STORAGE_DIR}bulkformer/graph/G_ath.pt',
+    'graph_w':       f'{STORAGE_DIR}bulkformer/graph/G_ath_weight.pt',
+    'gene_info':     f'{STORAGE_DIR}bulkformer/gene_metadata/arabidopsis_gene_info.csv',
+}
+
+def run_bulkformer(df_aligned: pd.DataFrame, batch_size=8):
+    """
+    Takes an aligned expression dataframe (Samples x Genes), runs it through 
+    the BulkFormer model to extract 128-dim representations, and reduces 
+    them to 2D via UMAP for visualization.
+    """
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f'  [BulkFormer] Device: {device}')
+
+    # 1. Gene vocabulary mapping
+    gene_info = pd.read_csv(BULKFORMER_FILES['gene_info'])
+    id_col = 'tair_id' if 'tair_id' in gene_info.columns else gene_info.columns[0]
+    all_genes = gene_info[id_col].drop_duplicates().tolist()
+
+    # df_aligned is (Samples x Genes). Sync with known vocabulary
+    genes_in_expr = set(df_aligned.columns)
+    gene_list = [g for g in all_genes if g in genes_in_expr]
+    GENE_LENGTH = len(gene_list)
+
+    # Reorder columns and pad missing genes
+    expr_df = df_aligned[[c for c in gene_list if c in df_aligned.columns]].copy()
+    missing = [g for g in gene_list if g not in expr_df.columns]
+    if missing:
+        pad = pd.DataFrame(-10.0, index=expr_df.index, columns=missing)
+        expr_df = pd.concat([expr_df, pad], axis=1)
     
-#     combined_rows = []
-#     for exp_name, df in metrics_dict.items():
-#         if isinstance(df, pd.DataFrame):
-#             # Ensure the experiment name is tracked
-#             df_copy = df.copy()
-#             df_copy['Experiment'] = exp_name
-#             combined_rows.append(df_copy)
+    input_df = expr_df[gene_list]
+    expr_arr = input_df.values.astype(np.float32)
+
+    # 2. Load Graph
+    graph_ei = torch.load(BULKFORMER_FILES['graph_ei'], map_location='cpu', weights_only=False)
+    graph_w  = torch.load(BULKFORMER_FILES['graph_w'], map_location='cpu', weights_only=False)
+    graph_cpu = SparseTensor(
+        row=graph_ei[1], col=graph_ei[0],
+        value=graph_w,
+        sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
+    )
+
+    # 3. Initialize Model
+    model_params['graph'] = graph_cpu
+    model_params['gene_emb'] = None
+    model_params['gene_length'] = GENE_LENGTH
+    model_params['dim'] = 128
+
+    model = BulkFormer(**model_params).to(device)
+    ckpt = torch.load(BULKFORMER_FILES['model_weights'], map_location='cpu', weights_only=False)
+    sd = OrderedDict((k[7:] if k.startswith('module.') else k, v) for k, v in ckpt.items())
+    
+    model_sd = model.state_dict()
+    to_load = {k: v for k, v in sd.items() if k in model_sd and model_sd[k].shape == v.shape}
+    model.load_state_dict(to_load, strict=False)
+    model.eval()
+    
+    # Move graph to device ONCE before inference
+    model.graph = model.graph.to(device)
+
+    # 4. Inference
+    results = []
+    with torch.no_grad():
+        for i in tqdm(range(0, len(expr_arr), batch_size), desc='  [BulkFormer] Extracting embeddings'):
+            batch = torch.tensor(expr_arr[i:i+batch_size], dtype=torch.float32).to(device)
+            out = model(batch, mask_prob=0.0, output_expr=False)
+            results.append(out.cpu())
             
-#     if not combined_rows:
-#         print("  ! No metrics DataFrames found to compare.")
-#         return
-        
-#     combined_df = pd.concat(combined_rows, ignore_index=True)
-#     combined_df.to_csv(f"{output_folder}/combined_metrics.csv", index=False)
+    embeddings = torch.cat(results, dim=0)   # [Samples, Genes, Dim]
+    sample_emb = embeddings.mean(dim=1).numpy() # [Samples, Dim]
+
+    # 5. UMAP Reduction
+    print('  [BulkFormer] Computing 2D UMAP projection...')
+    reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
+    sample_umap = reducer.fit_transform(sample_emb)
     
-#     # Generate Comparison Plot
-#     if 'Metric' in combined_df.columns and 'Value' in combined_df.columns and 'Label_Axis' in combined_df.columns:
-#         fig = px.bar(
-#             combined_df, 
-#             x='Label_Axis', 
-#             y='Value', 
-#             color='Experiment',
-#             facet_col='Metric', 
-#             barmode='group',
-#             template='plotly_dark',
-#             title="Cluster Metrics Comparison Across Pipeline Stages"
-#         )
-#         # Allow Y axes to adjust independently for different metric scales
-#         fig.update_yaxes(matches=None) 
-#         fig.write_html(f"{output_folder}/Metrics_Comparison_Barplot.html")
-#         print("  -> Exported Metrics_Comparison_Barplot.html")
+    return sample_umap

@@ -1,0 +1,152 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.2.1-cuda11.8-cudnn8-devel
+
+%labels
+    Author      alexdelossanto
+    Project     Dataset_Fusion_and_BulkFormer
+    Python      3.10
+    CUDA        11.8
+
+%environment
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export NUMBA_CACHE_DIR=/tmp
+    export PATH="/usr/local/bin:$PATH"
+    export R_LIBS_USER=/opt/R_libs
+    export HF_HOME=/home/user/.cache/huggingface
+    export TRANSFORMERS_CACHE=$HF_HOME
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+
+# =========================================================================
+    # 1. System dependencies + R
+    # =========================================================================
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        wget \
+        curl \
+        git \
+        locales \
+        gnupg \
+        ca-certificates \
+        gcc \
+        g++ \
+        gfortran \
+        make \
+        r-base \
+        r-base-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+        libfontconfig1-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libjpeg-dev \
+        libgmp-dev \
+        libmpfr-dev \
+        libbz2-dev \
+        liblzma-dev \
+        zlib1g-dev \
+        libffi-dev \
+        liblapack-dev \
+        libblas-dev \
+        gzip \
+        r-bioc-biobase \
+        r-bioc-oligo \
+        r-bioc-limma \
+        r-bioc-sva \
+        sra-toolkit \
+        && rm -rf /var/lib/apt/lists/*
+        
+    # =========================================================================
+    # 2. R packages
+    # =========================================================================
+    mkdir -p /opt/R_libs
+    Rscript -e "options(repos=c(CRAN='https://cloud.r-project.org')); install.packages(c('writexl'), lib='/opt/R_libs', quiet=TRUE)"
+
+    # =========================================================================
+    # 3. Upgrade Pip & Install PyG (Graph) Dependencies
+    # =========================================================================
+    pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    # These MUST come from the PyG wheel URL to get CUDA-compiled .so files matching PyTorch 2.2.1
+    pip install --no-cache-dir torch_geometric==2.5.3
+    pip install --no-cache-dir pyg_lib torch_scatter torch_sparse \
+        -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+
+    # =========================================================================
+    # 4. Data Science, Bioinformatics, and ML Dependencies
+    # =========================================================================
+    # IMPORTANT: "torch==2.2.1" is pinned so pip doesn't auto-upgrade PyTorch 
+    # and break the C++ ABI of the PyG sparse libraries!
+    pip install --no-cache-dir \
+        "torch==2.2.1" \
+        "numpy<2.0.0" \
+        pandas \
+        scipy \
+        matplotlib \
+        plotly \
+        seaborn \
+        scikit-learn \
+        umap-learn \
+        tqdm \
+        einops \
+        "axial-positional-embedding>=0.1.0" \
+        "local-attention>=1.1.1" \
+        polars \
+        python-dotenv \
+        openai \
+        debugpy \
+        sentence-transformers \
+        spacy \
+        transformers \
+        huggingface-hub \
+        biopython \
+        GEOparse \
+        mygene \
+        goatools \
+        "rpy2==3.5.16"
+
+    # Download SpaCy language model
+    python -m spacy download en_core_web_sm
+
+    # =========================================================================
+    # 5. Build-isolated packages (Performer)
+    # =========================================================================
+    # This allows it to "see" the globally installed PyTorch during compilation
+    pip install --no-cache-dir --no-build-isolation performer-pytorch
+
+%runscript
+    exec python "$@"
+
+%test
+    python --version
+    Rscript --version
+    
+    python -c "
+import sklearn, numpy, torch, pandas, matplotlib, umap
+import GEOparse, Bio, tqdm, rpy2, mygene, plotly, goatools, ftplib
+from sentence_transformers import SentenceTransformer
+import torch_geometric
+from torch_sparse import SparseTensor
+from performer_pytorch import Performer
+
+print('PyTorch:', torch.__version__)
+print('CUDA available:', torch.cuda.is_available())
+
+# Verify SparseTensor actually works (tests if CUDA .so loaded properly)
+ei = torch.zeros(2, 4, dtype=torch.long)
+ew = torch.ones(4)
+st = SparseTensor(row=ei[0], col=ei[1], value=ew, sparse_sizes=(3, 3))
+print('SparseTensor: OK')
+print('All Python imports OK')
+"
+    
+    # Verify R libraries
+    Rscript -e "suppressMessages({library(Biobase); library(oligo); library(limma); library(writexl, lib.loc='/opt/R_libs')}); cat('All R imports OK\n')"

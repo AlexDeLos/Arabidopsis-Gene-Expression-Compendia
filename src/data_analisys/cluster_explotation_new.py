@@ -15,7 +15,7 @@ module_dir = './'
 sys.path.append(module_dir)
 
 from src.constants import *
-from src.constants_labeling import LABELS as LABEL_AXES  # new label schema (6 axes + sub-attributes)
+from src.constants_labeling import LABELS as LABEL_AXES
 from src.data_analisys.utils.cluster_exploration_utils_final import (
     load_labels_study, 
     make_df_from_labels, 
@@ -25,6 +25,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (
     run_pca, 
     run_umap, 
     run_tsne,
+    run_bulkformer,
     calculate_asw_batch_within_biology,
     variance_explained_by_label,
     plot_metrics_comparison
@@ -44,7 +45,6 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
       - Sample count and category legend in sidebar
       - Responsive, fully fills the browser window
     """
-    import json
 
     stages = list(embeddings_dict.keys())
     num_stages = len(stages)
@@ -839,10 +839,21 @@ def run_exploration_on_dataframe(
     pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0]-1, df_aligned.shape[1]-1))
         
     embeddings_out = {}
-    for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne)]:
-        emb = run_func(pca_embedding)
+    for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne), ("bulk", run_bulkformer)]:
+        if method == 'bulk':
+            emb = run_func(df_aligned)
+        else:
+            emb = run_func(pca_embedding)
         embeddings_out[method] = emb
-        
+      
+    # --- ADDED BULKFORMER INTEGRATION ---
+    # print(f"\nGenerating BulkFormer Embedding for {experiment_name}...")
+    # try:
+    #     bf_emb = run_bulkformer(df_aligned)
+    #     embeddings_out["BulkFormer"] = bf_emb
+    # except Exception as e:
+    #     print(f"  [!] BulkFormer failed: {e}")
+    # ------------------------------------
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     
@@ -854,10 +865,12 @@ def run_exploration_on_dataframe(
 # ==========================================
 
 if __name__ == "__main__":
+    N_SAMPLES = 100
     all_metrics = {}
     all_umaps = {}
     all_tsnes = {}
     all_metas = {}
+    all_bulk = {}
     
     print("Loading Labels Map...")
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
@@ -874,7 +887,14 @@ if __name__ == "__main__":
         
         if os.path.exists(data_path):
             print(f"\n{'='*50}\nProcessing {file}\n{'='*50}")
-            df = pd.read_csv(data_path, index_col=0)
+            # df = pd.read_csv(data_path, index_col=0)
+            if N_SAMPLES is not None:
+                # imputed.csv is genes × samples, so columns 1..N_SAMPLES+1 = first N samples
+                print(f'Loading first {data_path} samples (memory-saving mode)...')
+                df = pd.read_csv(data_path, index_col=0,
+                                usecols=list(range(N_SAMPLES + 1)))
+            else:
+                df = pd.read_csv(data_path, index_col=0)
             # df = df.iloc[:, :200]
             print("  Cleaning sample IDs...")
             df.columns = [c.split('.')[0].upper() for c in df.columns]
@@ -896,7 +916,7 @@ if __name__ == "__main__":
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
-            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_3/{file}"
+            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_temp/{file}"
             
             metrics_df, embeddings, meta_df = run_exploration_on_dataframe(
                 data_df=df,
@@ -908,6 +928,7 @@ if __name__ == "__main__":
             all_metrics[file] = metrics_df
             all_umaps[file] = embeddings['UMAP']
             all_tsnes[file] = embeddings['TSNE']
+            all_bulk[file] = embeddings['bulk']
             all_metas[file] = meta_df
             
         else:
@@ -916,7 +937,7 @@ if __name__ == "__main__":
     # Generate the Comparison Plots 
     # if len(all_metrics) > 1:
     if True:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_29_3/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_temp/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
@@ -942,4 +963,11 @@ if __name__ == "__main__":
             meta_dicts=all_metas, 
             title="t-SNE Cross-Stage Comparison", 
             output_path=f"{comparison_output_dir}/Combined_TSNE.html"
+        )
+        print("Generating Bulk comparison...")
+        plot_combined_interactive_projections(
+            embeddings_dict=all_bulk, 
+            meta_dicts=all_metas, 
+            title="Bulk Cross-Stage Comparison", 
+            output_path=f"{comparison_output_dir}/Combined_bulk.html"
         )
