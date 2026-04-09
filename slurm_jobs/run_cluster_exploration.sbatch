@@ -13,6 +13,7 @@ SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
 
 # Storage root (bound into the container so all data paths resolve correctly)
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
+REPO=REPO=/tudelft.net/staff-umbrella/GeneExpressionStorage
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Make sure the log directory exists before the job starts writing to it
@@ -35,7 +36,7 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-srun apptainer exec \
+apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:${REPO}" \
     "${SIF}" \
