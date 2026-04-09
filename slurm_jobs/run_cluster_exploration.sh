@@ -10,7 +10,7 @@
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
 # It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
-SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif
+SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
 
 # Storage root (bound into the container so all data paths resolve correctly)
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage

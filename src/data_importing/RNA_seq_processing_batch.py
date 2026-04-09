@@ -1066,7 +1066,7 @@ def combine_files_rnaseq(
             study_id = d 
             
             # Target the specific nf-core/rnaseq star_salmon output file
-            expected_tsv_name = "salmon.merged.gene_counts.tsv"
+            expected_tsv_name = "salmon.merged.gene_tpm.tsv"
             file_path = os.path.join(study_folder, "star_salmon", expected_tsv_name)
             
             if os.path.exists(file_path):

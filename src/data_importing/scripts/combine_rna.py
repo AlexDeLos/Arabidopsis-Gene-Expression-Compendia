@@ -19,7 +19,7 @@ def main():
     # 2. Set input and output locations
     processed_rnaseq_folder = os.path.join(BIG_STORAGE, "rnaseq_data", "processed_rnaseq")
     final_data_folder = os.path.join(BIG_STORAGE, "final_data")
-    output_filename = "Salmon_RNAseq_Combined.csv"
+    output_filename = "Salmon_RNAseq_Combined_TPM.csv"
 
     print(f"Starting RNA-seq merge process...")
     print(f"Input directory: {processed_rnaseq_folder}")
