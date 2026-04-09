@@ -39,6 +39,7 @@ fi
 apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:${REPO}" \
+    --pwd "${REPO}" \
     "${SIF}" \
     python src/data_analisys/cluster_explotation_new.py
 
