@@ -922,7 +922,7 @@ if __name__ == "__main__":
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
-            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
+            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_RNA/{file}"
             
             metrics_df, embeddings, meta_df = run_exploration_on_dataframe(
                 data_df=df,
@@ -943,7 +943,7 @@ if __name__ == "__main__":
     # Generate the Comparison Plots 
     # if len(all_metrics) > 1:
     if True:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_RNA/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
