@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import sys
+import argparse
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -865,7 +866,12 @@ def run_exploration_on_dataframe(
 # ==========================================
 
 if __name__ == "__main__":
-    N_SAMPLES = None
+    
+    # parser = argparse.ArgumentParser()
+    # # parser.add_argument("--ma", action="store_true", default=False)
+    # parser.add_argument("--rna", action="store_true", default=False)
+    # args = parser.parse_args()
+    N_SAMPLES = 300
     all_metrics = {}
     all_umaps = {}
     all_tsnes = {}
@@ -875,12 +881,12 @@ if __name__ == "__main__":
     print("Loading Labels Map...")
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
-    if RNA_MA:
-      stages = ['Salmon_RNAseq_Combined','combat_seq','rankin']
+    if RNA_USED:
+      stages = ['Salmon_RNAseq_Combined_TPM']
     else:
       stages = ['filter', 'study_corrected', 'rankin']
     for file in stages:
-        if RNA_MA:
+        if RNA_USED:
           data_path = f'{STORAGE_DIR}/final_data/rnaseq_processed/{file}.csv'
         else:
           data_path = f'{STORAGE_DIR}/final_data/{file}.csv'

@@ -53,7 +53,7 @@ from tqdm import tqdm
 module_dir = './'
 sys.path.append(module_dir)
 
-from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH, RNA_MA
+from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH, RNA_USED
 from src.constants_labeling import LABEL_CONFIG, UNIQUE_LABELS, LABELS, BUCKET_KEYWORDS, EXPLICIT_KEYWORDS
 
 logger = logging.getLogger(__name__)

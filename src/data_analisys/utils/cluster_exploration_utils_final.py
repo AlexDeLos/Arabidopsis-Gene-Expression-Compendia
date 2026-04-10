@@ -22,7 +22,7 @@ import urllib.error
 import time
 import re
 from Bio import Entrez
-from src.constants import RNA_MA  # Pull in your new constant
+from src.constants import RNA_USED  # Pull in your new constant
 
 Entrez.email = "alexdelossanto@tudelft.nl"
 
@@ -261,7 +261,7 @@ def align_labels_to_data(df: pd.DataFrame, labels_dict: dict, label_category: st
     # -------------------------------------------------------------------------
     # --- RNA-SEQ LOGIC: Translate the GSM label keys to SRR keys dynamically
     # -------------------------------------------------------------------------
-    if RNA_MA and sample_to_label_map:
+    if RNA_USED and sample_to_label_map:
         mapped_dict = {}
         for gsm_key, label_val in sample_to_label_map.items():
             gsm_str = str(gsm_key).upper()
@@ -281,7 +281,7 @@ def align_labels_to_data(df: pd.DataFrame, labels_dict: dict, label_category: st
     cleaned_labels = []
     for s in df.index:
         # Handles potential variations in index string (e.g., SRR123456_1)
-        if RNA_MA:
+        if RNA_USED:
             s_upper = str(s).upper().split('_')[1]
         else:
             s_upper = str(s).upper()
