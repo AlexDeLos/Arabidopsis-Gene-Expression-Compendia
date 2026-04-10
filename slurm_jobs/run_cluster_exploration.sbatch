@@ -2,7 +2,7 @@
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=4:00:00
-#SBATCH --mem=26G
+#SBATCH --mem=168G
 #SBATCH --cpus-per-task=4
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
@@ -16,7 +16,6 @@ SIF="$BIG_STORAGE/fused.sif"
 
 # Make sure the log directory exists before the job starts writing to it
 mkdir -p "$(dirname "$SLURM_STDOUT")" 2>/dev/null || true
-mkdir -p "${STORAGE}/logs"
 
 echo "========================================"
 echo "Job ID      : ${SLURM_JOB_ID}"
