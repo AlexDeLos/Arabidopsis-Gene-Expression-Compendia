@@ -871,7 +871,7 @@ if __name__ == "__main__":
     # # parser.add_argument("--ma", action="store_true", default=False)
     # parser.add_argument("--rna", action="store_true", default=False)
     # args = parser.parse_args()
-    N_SAMPLES = 300
+    N_SAMPLES = None
     all_metrics = {}
     all_umaps = {}
     all_tsnes = {}
@@ -882,7 +882,7 @@ if __name__ == "__main__":
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
     if RNA_USED:
-      stages = ['Salmon_RNAseq_Combined_TPM','filter']
+      stages = ['Salmon_RNAseq_Combined_TPM']
     else:
       stages = ['filter', 'study_corrected', 'rankin']
     for file in stages:

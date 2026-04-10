@@ -3,6 +3,7 @@ import sys
 import json
 import glob
 import numpy as np
+import csv
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -258,6 +259,8 @@ def load_labels_study(labels_dir: str) -> dict:
     for file in files:
         # Derive study_id from filename (e.g. GSE24696.json → GSE24696)
         study_id = os.path.splitext(os.path.basename(file))[0]
+        if study_id =='tulip_condensed_labels':
+            continue
  
         with open(file, "r") as f:
             try:
