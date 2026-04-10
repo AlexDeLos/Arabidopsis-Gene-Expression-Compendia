@@ -4,7 +4,7 @@ import numpy as np
 import os
 
 # 1. Configuration
-INPUT_FILE = "new_storage/final_data/Salmon_RNAseq_Combined.csv"
+INPUT_FILE = "new_storage/final_data/Salmon_RNAseq_Combined_TPM.csv"
 
 
 def read_id(path):
@@ -12,7 +12,7 @@ def read_id(path):
         return f.read().strip()
 
 def evaluate_distributions():
-    OUTPUT_PLOT = "mathematical_study_evaluation.png"
+    OUTPUT_PLOT = "mathematical_study_evaluation_TMP.png"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
@@ -149,7 +149,7 @@ def evaluate_distributions():
     
 
 def evaluate_distributions_samples():
-    OUTPUT_PLOT = "mathematical_distribution_evaluation.png"
+    OUTPUT_PLOT = "mathematical_distribution_evaluation_sample_TMP.png"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return

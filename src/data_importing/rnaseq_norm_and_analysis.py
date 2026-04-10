@@ -106,28 +106,48 @@ def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, outp
 
 def run_filtering(
     raw_df: pd.DataFrame,
+    gene_nan_pct: float = 20.0,
     sample_nan_pct: float = 20.0
 ) -> pd.DataFrame:
     """
-    RNA-seq sample filtering:
+    RNA-seq sample and gene filtering:
 
-    Removes samples (columns) if they have a value of NaN or 0 in more than 
-    `sample_nan_pct`% of the genes. Does NOT filter out any genes.
+    1. Removes genes (rows) if they have a value of NaN or 0 in more than 
+       `gene_nan_pct`% of the samples.
+    2. Removes samples (columns) if they have a value of NaN or 0 in more than 
+       `sample_nan_pct`% of the remaining genes.
 
     Parameters
     ----------
     raw_df         : genes × samples count matrix (integer or float counts)
+    gene_nan_pct   : max % of (0 or NaN) per gene (row) to keep [default 20.0]
     sample_nan_pct : max % of (0 or NaN) per sample (col) to keep [default 20.0]
     """
     print(f"  [Filter] Input: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    # 1. Identify which cells are either exactly 0 or NaN
+    # ==========================================
+    # STEP 1: Filter Genes (Rows)
+    # ==========================================
     is_zero_or_nan = raw_df.isna() | (raw_df == 0)
+    
+    # Calculate the percentage of 0/NaN values per gene (across columns -> axis=1)
+    invalid_pct_per_gene = is_zero_or_nan.mean(axis=1) * 100
+    
+    # Keep only the genes (rows) that fall below or equal to the threshold
+    raw_df = raw_df.loc[invalid_pct_per_gene <= gene_nan_pct, :]
+    
+    print(f"  [Filter] After gene filtering (≤{gene_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    # 2. Calculate the percentage of these values per sample (column)
-    invalid_pct_per_sample = is_zero_or_nan.mean() * 100
-
-    # 3. Keep only the samples that fall below or equal to the threshold
+    # ==========================================
+    # STEP 2: Filter Samples (Columns)
+    # ==========================================
+    # Recalculate 0/NaN mask for the newly reduced dataframe
+    is_zero_or_nan = raw_df.isna() | (raw_df == 0)
+    
+    # Calculate the percentage of 0/NaN values per sample (across rows -> axis=0)
+    invalid_pct_per_sample = is_zero_or_nan.mean(axis=0) * 100
+    
+    # Keep only the samples (columns) that fall below or equal to the threshold
     raw_df = raw_df.loc[:, invalid_pct_per_sample <= sample_nan_pct]
 
     print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")

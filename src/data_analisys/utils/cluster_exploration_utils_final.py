@@ -115,7 +115,295 @@ def get_srr_ids(gsm_id: str, max_retries=5) -> list:
 # 1. DATA AND LABEL PREPARATION (Updated for TULIP LLM Format)
 # =============================================================================
 
+# ── Coverage bucketing thresholds ──────────────────────────────────────────────
+# Applied to the Percent_Mapped column from sample_coverage.csv.
+# These can be adjusted to reflect QC thresholds for your dataset.
+_COVERAGE_THRESHOLDS = {
+    "high":     90.0,   # ≥ 90 %
+    "medium":   75.0,   # ≥ 75 %
+    "low":      50.0,   # ≥ 50 %
+    # below 50 % → "very_low"
+}
+ 
+ 
+def _bucket_coverage(percent: float) -> str:
+    """Convert a raw alignment percentage to a categorical label."""
+    if percent >= _COVERAGE_THRESHOLDS["high"]:
+        return "high"
+    if percent >= _COVERAGE_THRESHOLDS["medium"]:
+        return "medium"
+    if percent >= _COVERAGE_THRESHOLDS["low"]:
+        return "low"
+    return "very_low"
+ 
+ 
+def _load_study_coverage(study_id: str) -> dict:
+    """
+    Load sample_coverage.csv for one RNA-seq study.
+ 
+    File location:
+        {STORAGE_DIR}/rnaseq_data/processed_rnaseq/{study_id}/sample_coverage.csv
+ 
+    The CSV uses  {study_id}_{SRR_ID}  as sample keys (e.g. GSE30720_SRR309145).
+ 
+    Returns a dict keyed by SRR ID (uppercase):
+        {
+            "SRR309145": {"percent_mapped": 93.78, "bucket": "high"},
+            ...
+        }
+    Returns an empty dict if the file does not exist or cannot be parsed.
+    """
+    csv_path = os.path.join(
+        STORAGE_DIR, "rnaseq_data", "processed_rnaseq",
+        study_id, "sample_coverage.csv"
+    )
+    if not os.path.exists(csv_path):
+        return {}
+ 
+    coverage = {}
+    try:
+        with open(csv_path, "r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Sample column format: GSE30720_SRR309145
+                sample_key = row.get("Sample", "").strip()
+                if not sample_key:
+                    continue
+                # Strip the study prefix to get just the SRR ID
+                srr_id = sample_key.replace(f"{study_id}_", "", 1).upper()
+                try:
+                    pct = float(row.get("Percent_Mapped", "0"))
+                except ValueError:
+                    pct = 0.0
+                coverage[srr_id] = {
+                    "percent_mapped": pct,
+                    "bucket":         _bucket_coverage(pct),
+                }
+    except Exception as e:
+        print(f"  [WARN] Could not read coverage for {study_id}: {e}")
+ 
+    return coverage
+ 
+ 
+def _load_sample_platform(study_id: str, gsm_id: str) -> str:
+    """
+    Read the platform field from the per-sample metadata JSON.
+ 
+    File location:
+        {STORAGE_DIR}/rnaseq_data/metadata/{study_id}/{study_id}_{gsm_id}.json
+ 
+    Returns the platform string (e.g. "GPL9302"), or "unspecified" if not found.
+    """
+    json_path = os.path.join(
+        STORAGE_DIR, "rnaseq_data", "metadata",
+        study_id, f"{study_id}_{gsm_id}.json"
+    )
+    if not os.path.exists(json_path):
+        return "unspecified"
+ 
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        platform = meta.get("platform", "unspecified")
+        # platform may be stored as a list in some GEO exports
+        if isinstance(platform, list):
+            platform = platform[0] if platform else "unspecified"
+        return str(platform).strip() or "unspecified"
+    except Exception as e:
+        print(f"  [WARN] Could not read platform for {study_id}/{gsm_id}: {e}")
+        return "unspecified"
+ 
+ 
 def load_labels_study(labels_dir: str) -> dict:
+    """
+    Loads the TULIP LLM JSON label files.
+    Reads all {GSE_ID}.json files from labels_dir.
+ 
+    The new JSON format is:
+    { "GSM_ID": { "axis": ["val1"], "axis2": [{"val": "Drought", "intensity": 2}] } }
+ 
+    Returns a transposed dictionary ready for alignment, including sub-attributes:
+    {
+       'treatment':            { GSM_ID: 'Drought' },
+       'treatment_intensity':  { GSM_ID: '2' },
+       ...
+    }
+ 
+    When RNA_USED is True, two additional axes are added per sample:
+ 
+    'alignment_coverage'  — categorical bucket derived from Percent_Mapped in
+                            sample_coverage.csv: "high" | "medium" | "low" | "very_low"
+    'alignment_rate'      — raw Percent_Mapped float as a string (e.g. "93.78"),
+                            kept for any downstream quantitative use
+    'platform'            — sequencing platform from the per-sample metadata JSON
+                            (e.g. "GPL9302")
+ 
+    Coverage is looked up via get_srr_ids(gsm_id) → SRR IDs, then matched
+    against the {study_id}_{SRR_ID} rows in sample_coverage.csv.
+    If an SRR ID cannot be resolved (network error, cache miss, etc.) the
+    coverage axes are set to "unspecified" for that sample — the function
+    never raises.
+    """
+    aggregated_data   = {}   # {gsm_id: {axis: value, ...}}
+    gsm_to_study: dict[str, str] = {}   # track which study each GSM came from
+ 
+    # Support both a single file or a directory of files
+    if os.path.isfile(labels_dir):
+        files = [labels_dir]
+    else:
+        files = glob.glob(os.path.join(labels_dir, "*.json"))
+ 
+    print(f"Loading labels from {len(files)} JSON files in {labels_dir}...")
+ 
+    for file in files:
+        # Derive study_id from filename (e.g. GSE24696.json → GSE24696)
+        study_id = os.path.splitext(os.path.basename(file))[0]
+ 
+        with open(file, "r") as f:
+            try:
+                data = json.load(f)
+ 
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and "id" in item:
+                            item_id = item.pop("id")
+                            aggregated_data[item_id] = item
+                            gsm_to_study[item_id] = study_id
+                elif isinstance(data, dict):
+                    aggregated_data.update(data)
+                    for gsm_id in data:
+                        gsm_to_study[gsm_id] = study_id
+ 
+            except json.JSONDecodeError:
+                print(f"  ! Warning: Could not parse {file}")
+ 
+    # ── RNA-seq metadata enrichment ────────────────────────────────────────────
+    # Pre-load coverage CSVs once per study so we don't re-read the file for
+    # every sample.  Keys: study_id → {SRR_ID: {percent_mapped, bucket}}
+    coverage_cache: dict[str, dict] = {}
+ 
+    if RNA_USED:
+        # Import here so the function still works without Bio installed when
+        # RNA_USED is False.
+        try:
+            # from src.data_importing.RNA_seq_processing_batch import get_srr_ids
+            pass
+        except ImportError:
+            print("  [WARN] Could not import get_srr_ids — "
+                  "RNA metadata enrichment disabled.")
+            RNA_USED_EFFECTIVE = False
+        else:
+            RNA_USED_EFFECTIVE = True
+    else:
+        RNA_USED_EFFECTIVE = False
+ 
+    # ── Build axis_map ─────────────────────────────────────────────────────────
+    axis_map: dict[str, dict] = {}
+ 
+    for gsm_id, axes_dict in aggregated_data.items():
+        if not isinstance(axes_dict, dict):
+            continue
+ 
+        gsm_upper  = gsm_id.upper()
+        study_id   = gsm_to_study.get(gsm_id, gsm_to_study.get(gsm_upper, ""))
+ 
+        # ── Standard label axes (unchanged from original logic) ────────────────
+        for axis, values in axes_dict.items():
+            if axis not in axis_map:
+                axis_map[axis] = {}
+ 
+            if isinstance(values, list):
+                if len(values) == 0:
+                    axis_map[axis][gsm_upper] = "unspecified"
+ 
+                elif isinstance(values[0], dict):
+                    # Sub-attribute format (e.g. treatment with intensity)
+                    vals      = []
+                    sub_attrs = {}
+ 
+                    for v_dict in values:
+                        canonical = str(v_dict.get("val", "unspecified"))
+                        vals.append(canonical)
+ 
+                        for k, v in v_dict.items():
+                            if k == "val":
+                                continue
+                            if k not in sub_attrs:
+                                sub_attrs[k] = []
+                            sub_attrs[k].append(str(v))
+ 
+                    val_str = " + ".join(vals)
+                    if val_str.lower() in ["none", "", "nan", "unknown"]:
+                        val_str = "unspecified"
+                    axis_map[axis][gsm_upper] = val_str
+ 
+                    for sub_k, sub_list in sub_attrs.items():
+                        sub_axis = f"{axis}_{sub_k}"
+                        if sub_axis not in axis_map:
+                            axis_map[sub_axis] = {}
+                        axis_map[sub_axis][gsm_upper] = " + ".join(sub_list)
+ 
+                else:
+                    # Standard flat list of strings
+                    val_str = " + ".join([str(v) for v in values])
+                    if val_str.lower() in ["none", "", "nan", "unknown"]:
+                        val_str = "unspecified"
+                    axis_map[axis][gsm_upper] = val_str
+ 
+            elif isinstance(values, str):
+                val_str = (values
+                           if values.lower() not in ["none", "", "nan", "unknown"]
+                           else "unspecified")
+                axis_map[axis][gsm_upper] = val_str
+ 
+            else:
+                axis_map[axis][gsm_upper] = str(values)
+ 
+        # ── RNA-seq enrichment axes ────────────────────────────────────────────
+        if RNA_USED_EFFECTIVE and study_id:
+ 
+            # ── 1. Coverage from sample_coverage.csv ──────────────────────────
+            # Load the study's coverage CSV once, then cache it.
+            if study_id not in coverage_cache:
+                coverage_cache[study_id] = _load_study_coverage(study_id)
+            study_cov = coverage_cache[study_id]
+ 
+            bucket       = "unspecified"
+            rate_str     = "unspecified"
+ 
+            try:
+                srr_ids = get_srr_ids(gsm_upper)  # list of SRR IDs, e.g. ["SRR309145"]
+                for srr_id in srr_ids:
+                    entry = study_cov.get(srr_id.upper())
+                    if entry:
+                        # Use the first SRR that has coverage data.
+                        # Multi-run samples are rare for this dataset; if needed,
+                        # replace with an average across all SRR IDs.
+                        bucket   = entry["bucket"]
+                        rate_str = f"{entry['percent_mapped']:.2f}"
+                        break
+            except Exception as e:
+                print(f"  [WARN] SRR lookup failed for {gsm_upper}: {e}")
+ 
+            for cov_axis, cov_val in [
+                ("alignment_coverage", bucket),
+                ("alignment_rate",     rate_str),
+            ]:
+                if cov_axis not in axis_map:
+                    axis_map[cov_axis] = {}
+                axis_map[cov_axis][gsm_upper] = cov_val
+ 
+            # ── 2. Platform from per-sample metadata JSON ──────────────────────
+            if "platform" not in axis_map:
+                axis_map["platform"] = {}
+            axis_map["platform"][gsm_upper] = _load_sample_platform(
+                study_id, gsm_upper
+            )
+ 
+    return axis_map
+
+
+def load_labels_study_old(labels_dir: str) -> dict:
     """
     Loads the TULIP LLM JSON label files.
     Reads all {GSE_ID}.json files from labels_dir.
