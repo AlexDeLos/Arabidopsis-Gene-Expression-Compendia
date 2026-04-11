@@ -4,7 +4,7 @@
 #SBATCH --time=36:00:00
 #SBATCH --mem=16G  
 #SBATCH --cpus-per-task=1
-#SBATCH --array=10-100%10
+#SBATCH --array=0-99%10
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════

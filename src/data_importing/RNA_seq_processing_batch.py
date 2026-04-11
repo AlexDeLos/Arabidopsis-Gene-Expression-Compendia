@@ -732,21 +732,20 @@ def download_experiments_RNA_seq_nf_core(gse_list:list[str], root_storage_dir:st
     PATH_TO_GTF = f"{root_storage_dir}genome_index/Arabidopsis_thaliana.TAIR10.56.gtf"
     REFERENCE_MAP = {
         'col-0': {
-            'fasta':         f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
-            'gtf':           f"{root_storage_dir}files_for_rna_seq/col-0/col-0_nfcore.gtf",
-            'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
+            'fasta':         f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
+            'gtf':           f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
+            'salmon_index':  f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
         },
-        #TODO: for now it is pointing to col-0 ecotype
         'ler': {
-            'fasta':        f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
-            'gtf':          f"{root_storage_dir}files_for_rna_seq/col-0/col-0_nfcore.gtf",
-            'salmon_index': f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
+            'fasta':         f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
+            'gtf':           f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
+            'salmon_index':  f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
         },
         # Default fallback
         'unknown': {
-            'fasta':         f"{root_storage_dir}files_for_rna_seq/col-0/col-0.fasta",
-            'gtf':           f"{root_storage_dir}files_for_rna_seq/col-0/col-0_nfcore.gtf",
-            'salmon_index':  f"{root_storage_dir}files_for_rna_seq/col-0/salmon_index",
+            'fasta':         f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
+            'gtf':           f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
+            'salmon_index':  f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
         },
     }
     processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile='singularity,slurm')
