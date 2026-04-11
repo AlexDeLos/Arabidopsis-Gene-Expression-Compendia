@@ -425,7 +425,7 @@ class RNASeq_processor:
             "--pseudo_aligner", "salmon",
             "--skip_alignment",
             "--fasta", refs['fasta'],
-            "--gtf", refs['gtf'],
+            "--gff", refs['gtf'],
             "--salmon_index", refs['salmon_index'],
             "--gtf_group_features_type", "mRNA",
             "--skip_biotype_qc",
