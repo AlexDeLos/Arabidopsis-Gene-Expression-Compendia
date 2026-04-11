@@ -846,15 +846,7 @@ def run_exploration_on_dataframe(
         else:
             emb = run_func(pca_embedding)
         embeddings_out[method] = emb
-      
-    # --- ADDED BULKFORMER INTEGRATION ---
-    # print(f"\nGenerating BulkFormer Embedding for {experiment_name}...")
-    # try:
-    #     bf_emb = run_bulkformer(df_aligned)
-    #     embeddings_out["BulkFormer"] = bf_emb
-    # except Exception as e:
-    #     print(f"  [!] BulkFormer failed: {e}")
-    # ------------------------------------
+
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     

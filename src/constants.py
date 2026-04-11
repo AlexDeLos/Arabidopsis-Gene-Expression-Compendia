@@ -11,7 +11,7 @@ if CLUSTER_RUN:
 else:
     STORAGE_DIR = f'./new_storage/'
 
-RNA_USED= False
+RNA_USED= True
 
 DATA_IMPORT_DIR = './data/downloads_new/'
 GEO_DOWNLOAD_DIR = f'{DATA_IMPORT_DIR}geo_downloads_new/'
@@ -43,7 +43,7 @@ STATUS_ERROR = 4
 
 try:
     if RNA_USED:
-        SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'/final_data/Salmon_RNAseq_Combined_sample_map.csv', index_col=0)
+        SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'final_data/rnaseq_processed/Salmon_RNAseq_Combined_TPM_sample_map.csv', index_col=0)
     else:
         SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR+'/final_data/RMA_Microarray_Combined_sample_map.csv', index_col=0)
 except FileNotFoundError:

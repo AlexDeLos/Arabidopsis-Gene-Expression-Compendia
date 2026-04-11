@@ -390,14 +390,16 @@ def load_labels_study(labels_dir: str) -> dict:
  
             for cov_axis, cov_val in [
                 ("alignment_coverage", bucket),
-                ("alignment_rate",     rate_str),
-            ]:
+                # ("alignment_rate",     rate_str)
+                ]:
+
                 if cov_axis not in axis_map:
                     axis_map[cov_axis] = {}
                 axis_map[cov_axis][gsm_upper] = cov_val
  
             # ── 2. Platform from per-sample metadata JSON ──────────────────────
             if "platform" not in axis_map:
+                #only the first time
                 axis_map["platform"] = {}
             axis_map["platform"][gsm_upper] = _load_sample_platform(
                 study_id, gsm_upper
