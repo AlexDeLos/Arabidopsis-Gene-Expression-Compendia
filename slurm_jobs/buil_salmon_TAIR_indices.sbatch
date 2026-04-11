@@ -10,36 +10,32 @@
 
 set -eo pipefail
 
-# --- Environment: use conda tools directly ---
-module purge
-module use /opt/insy/modulefiles
-module load miniconda/3.9
-eval "$(conda shell.bash hook)"
-conda activate download_env
-
-# Verify all required tools are present
-echo "Verifying tools..."
-for tool in gffread salmon; do
-    if ! command -v "$tool" &>/dev/null; then
-        echo "ERROR: '$tool' not found in download_env."
-        echo "       Install with: conda install -c bioconda $tool"
-        exit 1
-    fi
-    echo "  OK: $tool -> $(which $tool)"
-done
-echo ""
-
-STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-REF_BASE="$STORAGE/files_for_rna_seq"
+# ── User configuration ─────────────────────────────────────────────────────────
+BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+REF_BASE="$BIG_STORAGE/files_for_rna_seq"
 TAIR12_DIR="$REF_BASE/tair12"
+
+# Paths to your newly downloaded SIFs
+GFFREAD_SIF="$REF_BASE/gffread.sif"
+SALMON_SIF="$REF_BASE/salmon.sif"
+# ──────────────────────────────────────────────────────────────────────────────
 
 echo "============================================="
 echo " Arabidopsis TAIR12 Salmon Index Builder"
+echo " Node:  $(hostname)"
 echo " Start: $(date)"
 echo "============================================="
 
+# Verify the containers exist before running
+for SIF in "$GFFREAD_SIF" "$SALMON_SIF"; do
+    if [ ! -f "$SIF" ]; then
+        echo "ERROR: Container not found -> $SIF"
+        exit 1
+    fi
+done
+
 # =============================================================================
-# HELPER: build a Salmon index
+# HELPER: build a Salmon index using Apptainer
 # =============================================================================
 build_index() {
     local ECOTYPE="$1"
@@ -66,14 +62,17 @@ build_index() {
 
     mkdir -p "$INDEX_DIR"
 
-    # Step 1: Temporarily decompress files for gffread compatibility
+    # Step 1: Temporarily uncompress files (done natively on the host)
     echo "[1/3] Temporarily uncompressing genome and GFF..."
     gunzip -c "$GENOME_GZ" > "$TMP_FA"
     gunzip -c "$GFF_GZ" > "$TMP_GFF"
 
-    # Step 2: Extract transcripts
+    # Step 2: Extract transcripts via local Apptainer Container
     echo "[2/3] Extracting transcripts with gffread..."
-    gffread "$TMP_GFF" -g "$TMP_FA" -w "$TRANSCRIPT_FA"
+    apptainer exec \
+        --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+        "$GFFREAD_SIF" \
+        gffread "$TMP_GFF" -g "$TMP_FA" -w "$TRANSCRIPT_FA"
     
     if [ ! -s "$TRANSCRIPT_FA" ]; then
         echo "ERROR: gffread produced an empty transcript FASTA."
@@ -81,14 +80,17 @@ build_index() {
     fi
     echo "      $(grep -c '^>' "$TRANSCRIPT_FA") transcripts extracted."
 
-    # Step 3: Build index directly from transcript FASTA
+    # Step 3: Build Salmon index via local Apptainer Container
     echo "[3/3] Running salmon index (8 threads)..."
-    salmon index \
+    apptainer exec \
+        --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+        "$SALMON_SIF" \
+        salmon index \
         --threads 8 \
         --transcripts "$TRANSCRIPT_FA" \
         --index "$INDEX_DIR"
 
-    # Clean up temporary files
+    # Clean up temporary files (done natively on the host)
     echo "Cleaning up temporary uncompressed files..."
     rm -f "$TRANSCRIPT_FA" "$TMP_FA" "$TMP_GFF"
 
@@ -98,27 +100,21 @@ build_index() {
 }
 
 # =============================================================================
-# SECTION 1: TAIR12 index
+# RUN: Build TAIR12 index
 # =============================================================================
 echo ""
 echo "=== SECTION 1: TAIR12 Salmon index ==="
 
-[ -f "$TAIR12_DIR/tair12.fasta.gz" ] || { echo "ERROR: $TAIR12_DIR/tair12.fasta.gz not found."; exit 1; }
-[ -f "$TAIR12_DIR/tair12_annotation.gff.gz" ] || { echo "ERROR: $TAIR12_DIR/tair12_annotation.gff.gz not found."; exit 1; }
+[ -f "$TAIR12_DIR/tair12.fasta.gz" ] || { echo "ERROR: tair12.fasta.gz not found."; exit 1; }
+[ -f "$TAIR12_DIR/tair12_annotation.gff.gz" ] || { echo "ERROR: tair12_annotation.gff.gz not found."; exit 1; }
 
 build_index "tair12" \
     "$TAIR12_DIR/tair12.fasta.gz" \
     "$TAIR12_DIR/tair12_annotation.gff.gz" \
     "$TAIR12_DIR/salmon_index"
 
-# =============================================================================
-# Done
-# =============================================================================
 echo ""
 echo "============================================="
 echo " All indices complete."
 echo " End: $(date)"
 echo "============================================="
-echo ""
-echo "Final structure of TAIR12 directory:"
-find "$TAIR12_DIR" -maxdepth 2 | sort
