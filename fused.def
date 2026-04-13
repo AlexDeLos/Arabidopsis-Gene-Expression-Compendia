@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: pytorch/pytorch:2.2.1-cuda11.8-cudnn8-devel
+From: pytorch/pytorch:2.4.0-cuda11.8-cudnn9-devel
 
 %labels
     Author      alexdelossanto
@@ -21,7 +21,7 @@ From: pytorch/pytorch:2.2.1-cuda11.8-cudnn8-devel
     export LANG=C.UTF-8
     export LC_ALL=C.UTF-8
 
-# =========================================================================
+    # =========================================================================
     # 1. System dependencies + R
     # =========================================================================
     apt-get update && apt-get install -y --no-install-recommends \
@@ -75,18 +75,18 @@ From: pytorch/pytorch:2.2.1-cuda11.8-cudnn8-devel
     # =========================================================================
     pip install --no-cache-dir --upgrade pip setuptools wheel
 
-    # These MUST come from the PyG wheel URL to get CUDA-compiled .so files matching PyTorch 2.2.1
+    # These MUST come from the PyG wheel URL to get CUDA-compiled .so files matching PyTorch 2.4.0
     pip install --no-cache-dir torch_geometric==2.5.3
     pip install --no-cache-dir pyg_lib torch_scatter torch_sparse \
-        -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+        -f https://data.pyg.org/whl/torch-2.4.0+cu118.html
 
     # =========================================================================
     # 4. Data Science, Bioinformatics, and ML Dependencies
     # =========================================================================
-    # IMPORTANT: "torch==2.2.1" is pinned so pip doesn't auto-upgrade PyTorch 
+    # IMPORTANT: "torch==2.4.0" is pinned so pip doesn't auto-upgrade PyTorch 
     # and break the C++ ABI of the PyG sparse libraries!
     pip install --no-cache-dir \
-        "torch==2.2.1" \
+        "torch==2.4.0" \
         "numpy<2.0.0" \
         pandas \
         scipy \
