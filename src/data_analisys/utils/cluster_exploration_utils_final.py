@@ -924,7 +924,7 @@ BULKFORMER_FILES = {
     'gene_info':     f'{STORAGE_DIR}bulkformer/gene_metadata/arabidopsis_gene_info.csv',
 }
 
-def run_bulkformer(df_aligned: pd.DataFrame, batch_size=8):
+def run_bulkformer(df_aligned: pd.DataFrame, batch_size=4):
     """
     Takes an aligned expression dataframe (Samples x Genes), runs it through 
     the BulkFormer model to extract 128-dim representations, and reduces 
