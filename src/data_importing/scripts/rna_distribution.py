@@ -3,8 +3,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+import sys
+
+module_dir = './'
+sys.path.append(module_dir)
+
+# Import the new map alongside the others
+from src.constants import FIGURES_DIR,STORAGE_DIR
 # 1. Configuration
-INPUT_FILE = "new_storage/final_data/Salmon_RNAseq_Combined_TPM.csv"
+INPUT_FILE = f"{STORAGE_DIR}/final_data/rnaseq_processed/Salmon_RNAseq_Combined_TPM.csv"
 
 
 def read_id(path):
@@ -12,7 +19,7 @@ def read_id(path):
         return f.read().strip()
 
 def evaluate_distributions():
-    OUTPUT_PLOT = "mathematical_study_evaluation_TMP.png"
+    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_study_evaluation_TMP.svg"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
@@ -149,7 +156,7 @@ def evaluate_distributions():
     
 
 def evaluate_distributions_samples():
-    OUTPUT_PLOT = "mathematical_distribution_evaluation_sample_TMP.png"
+    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_sample_evaluation_TMP.svg"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
