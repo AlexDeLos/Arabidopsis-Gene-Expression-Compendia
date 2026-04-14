@@ -416,7 +416,7 @@ class RNASeq_processor:
             "-profile", self.profile,
             "-c", config_path,
             "-with-dag", f'{batch_out_dir}/flow_diagram.svg',
-            "-revision", "3.14.0",
+            "-revision", "3.14.0", #New version might be worth use
             "-ansi-log", "false",
             "--slurm_account", "testusers",
             "--slurm_partition", "all",

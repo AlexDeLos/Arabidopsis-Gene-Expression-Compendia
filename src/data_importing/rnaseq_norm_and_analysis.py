@@ -40,7 +40,7 @@ from src.data_importing.data_norm_and_analisys import run_rank_in_normalization
 # Paths  (edit RNASEQ_DATA_DIR / RNASEQ_FIGURES_DIR in src/constants.py
 #         or override here)
 # ---------------------------------------------------------------------------
-RNASEQ_COMBINED   = os.path.join(STORAGE_DIR, "final_data", "Salmon_RNAseq_Combined_TPM.csv")
+RNASEQ_COMBINED   = os.path.join(STORAGE_DIR, "final_data/rnaseq_processed", "Salmon_RNAseq_Combined_TPM.csv")
 RNASEQ_DATA_DIR   = os.path.join(STORAGE_DIR, "final_data", "rnaseq_processed")
 RNASEQ_FIGURES    = os.path.join(STORAGE_DIR, "figures", "rnaseq_filtering")
 
@@ -106,8 +106,8 @@ def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, outp
 
 def run_filtering(
     raw_df: pd.DataFrame,
-    gene_nan_pct: float = 20.0,
-    sample_nan_pct: float = 20.0
+    gene_nan_pct: float = 100.0,
+    sample_nan_pct: float = 60.0
 ) -> pd.DataFrame:
     """
     RNA-seq sample and gene filtering:
@@ -267,7 +267,7 @@ def run_rnaseq_preprocessing():
         )
         filtered_df.to_csv(filter_path)
         print(f"Saved filtered matrix → {filter_path}")
-    return
+    # return
     # ── Stage 2: ComBat-seq ──────────────────────────────────────────────────
     if os.path.exists(combat_seq_path):
         print("Loading cached combat_seq.csv...")
