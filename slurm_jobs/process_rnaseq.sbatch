@@ -35,6 +35,13 @@ if [ ! -f "${SIF}" ]; then
     find "${STORAGE}" -name "*.sif" 2>/dev/null
     exit 1
 fi
+srun apptainer exec \
+    --bind "${STORAGE}:${STORAGE}" \
+    --bind "${REPO}:${REPO}" \
+    "${SIF}" \
+    python src/data_importing/scripts/combine_rna.py
+
+echo "Done with data combination. generating new data matrices"
 
 srun apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
