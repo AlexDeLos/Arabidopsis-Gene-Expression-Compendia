@@ -12,11 +12,12 @@
 # ── User configuration ─────────────────────────────────────────────────────────
 SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
-
-# Explicitly define your repository directory!
 REPO="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
-# ──────────────────────────────────────────────────────────────────────────────
 
+# ADD THESE TWO LINES TO FIX THE UMAP/NUMBA CACHE CRASH:
+mkdir -p "${STORAGE}/numba_cache"
+export APPTAINERENV_NUMBA_CACHE_DIR="${STORAGE}/numba_cache"
+# ──────────────────────────────────────────────────────────────────────────────
 # Make sure the log directory exists before the job starts writing to it
 mkdir -p "$(dirname "$SLURM_STDOUT")" 2>/dev/null || true
 mkdir -p "${STORAGE}/logs"
