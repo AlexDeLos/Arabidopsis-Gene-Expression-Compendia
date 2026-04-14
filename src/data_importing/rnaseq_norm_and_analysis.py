@@ -263,7 +263,7 @@ def run_rnaseq_preprocessing():
 
         plot_filtering_summary(
             raw_df, filtered_df,
-            os.path.join(RNASEQ_FIGURES, "filtering_summary.png"),
+            os.path.join(RNASEQ_FIGURES, "filtering_summary.svg"),
         )
         filtered_df.to_csv(filter_path)
         print(f"Saved filtered matrix → {filter_path}")

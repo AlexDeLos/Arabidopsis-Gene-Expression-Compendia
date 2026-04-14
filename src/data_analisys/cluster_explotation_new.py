@@ -874,7 +874,7 @@ if __name__ == "__main__":
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
     if RNA_USED:
-      stages = ['Salmon_RNAseq_Combined_TPM']
+      stages = ['Salmon_RNAseq_Combined_TPM', 'filter','combat_seq', 'rankin']
     else:
       stages = ['filter', 'study_corrected', 'rankin']
     for file in stages:
