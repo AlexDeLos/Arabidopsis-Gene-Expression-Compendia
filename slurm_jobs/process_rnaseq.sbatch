@@ -33,11 +33,10 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-# Use srun, but explicitly tell it to use the 1 task and 4 CPUs we allocated
 srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:${REPO}" \
-    --pwd "${REPO}" \
+    --bind "${REPO}:/repo" \
+    --pwd "/repo" \
     "${SIF}" \
     python src/data_importing/scripts/combine_rna.py
 
@@ -45,8 +44,8 @@ echo "Done with data combination. generating new data matrices"
 
 srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:${REPO}" \
-    --pwd "${REPO}" \
+    --bind "${REPO}:/repo" \
+    --pwd "/repo" \
     "${SIF}" \
     python src/data_importing/rnaseq_norm_and_analysis.py
 
