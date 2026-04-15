@@ -847,8 +847,6 @@ def run_exploration_on_dataframe(
             emb = run_func(pca_embedding)
         embeddings_out[method] = emb
 
-    res_df = pd.DataFrame(results_summary)
-    res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     #---- ADDED:
     print('Generating metric values for Bulk latent space data...')
     for cat in metric_categories:
@@ -899,6 +897,8 @@ def run_exploration_on_dataframe(
             })
 
     # --- END OF ADDED
+    res_df = pd.DataFrame(results_summary)
+    res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     return res_df, embeddings_out, meta_df
 
 
