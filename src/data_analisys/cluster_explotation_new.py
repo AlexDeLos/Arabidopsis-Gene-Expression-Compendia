@@ -849,14 +849,14 @@ def run_exploration_on_dataframe(
 
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
-    
+    #---- ADDED:
     print('Generating metric values for Bulk latent space data...')
     for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
         text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
         valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
-        X_metric =embeddings_out['bulk']
+        X_metric =embeddings_out['bulk'][valid_mask]
         text_labels_metric = text_labels_np[valid_mask]
         batch_text_labels_metric = np.array(meta_df['study_id'].tolist(), dtype=str)[valid_mask]
 
@@ -898,7 +898,7 @@ def run_exploration_on_dataframe(
                 'Value': val
             })
 
-
+    # --- END OF ADDED
     return res_df, embeddings_out, meta_df
 
 
