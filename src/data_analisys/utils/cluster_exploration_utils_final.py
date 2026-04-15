@@ -892,11 +892,11 @@ def plot_metrics_comparison(metrics_dict: dict,
     output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
     try:
         plt.savefig(output_path, format='svg', bbox_inches='tight')
-        plt.savefig(output_path.replace('.svg', '.png'), format='png', bbox_inches='tight', dpi=300)
+        plt.savefig(output_path, format='svg', bbox_inches='tight', dpi=300)
     except Exception as e:
          print(f"[Warning] Could not save with tight bbox layout: {e}. Saving standard layout.")
          plt.savefig(output_path, format='svg')
-         plt.savefig(output_path.replace('.svg', '.png'), format='png', dpi=300)
+         plt.savefig(output_path, format='svg', dpi=300)
 
     print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.png')}")
     plt.close()

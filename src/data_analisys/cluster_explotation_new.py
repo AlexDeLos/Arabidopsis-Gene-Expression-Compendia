@@ -850,6 +850,55 @@ def run_exploration_on_dataframe(
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
     
+    print('Generating metric values for Bulk latent space data...')
+    for cat in metric_categories:
+        print(f"\n[Metrics: {cat.upper()}]")
+        text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
+        valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
+
+        X_metric =embeddings_out['bulk']
+        text_labels_metric = text_labels_np[valid_mask]
+        batch_text_labels_metric = np.array(meta_df['study_id'].tolist(), dtype=str)[valid_mask]
+
+        unique_classes = np.unique(text_labels_metric)
+        
+        # Convert text labels to numeric codes for sklearn metrics
+        if len(unique_classes) > 0:
+            num_labels_metric = pd.Series(text_labels_metric).astype('category').cat.codes.values
+        else:
+            num_labels_metric = []
+
+        if X_metric.shape[0] < 5 or len(unique_classes) < 2:
+            print(f"  Not enough valid samples/classes for {cat}.")
+            sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
+        else:
+            X_rep_metric = X_metric
+            sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
+            
+            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init='auto').fit(X_rep_metric)
+            ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
+
+            knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
+            knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
+
+            var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
+            batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
+            
+            print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
+
+        # Format strictly for the plot_metrics_comparison (long-format DataFrame)
+        for metric_name, val in [
+            ('Bulk Silhouette', sil_score), ('Bulk ARI', ari_score), 
+            ('Bulk KNN_Purity', knn_purity), ('Bulk Variance_Explained', var_explained), 
+            ('Bulk Batch_ASW_within_Bio', batch_asw)
+        ]:
+            results_summary.append({
+                'Label_Axis': cat, 
+                'Metric': metric_name,
+                'Value': val
+            })
+
+
     return res_df, embeddings_out, meta_df
 
 
@@ -914,7 +963,7 @@ if __name__ == "__main__":
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
-            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_RNA/{file}"
+            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
             
             metrics_df, embeddings, meta_df = run_exploration_on_dataframe(
                 data_df=df,
@@ -935,7 +984,7 @@ if __name__ == "__main__":
     # Generate the Comparison Plots 
     # if len(all_metrics) > 1:
     if True:
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_RNA/Comparisons"
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
         
         print("\nGenerating Metric Comparisons...")
