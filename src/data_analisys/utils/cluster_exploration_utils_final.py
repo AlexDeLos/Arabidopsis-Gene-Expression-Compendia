@@ -10,8 +10,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 from scipy.stats import chi2_contingency
 from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.model_selection import KFold
-
+import math
 import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
