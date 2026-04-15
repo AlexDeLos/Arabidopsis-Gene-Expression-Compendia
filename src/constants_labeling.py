@@ -108,7 +108,7 @@ TREATMENT_SYNONYMS = {
 
     # --- Temperature Stresses ---
     TreatmentEnum.HEAT: [
-        "Heat", "High Temperature", "Heat shock", "Elevated temperature", "Warm"
+        "Heat", "High Temperature", "Heat shock", "Elevated temperature", "Warm","high ambient temperature"
     ],
     TreatmentEnum.COLD: [
         "Cold", "Low Temperature", "Freezing", "Chilling", "Frost", 
@@ -118,7 +118,7 @@ TREATMENT_SYNONYMS = {
     # --- Light and Radiation ---
     TreatmentEnum.LOW_LIGHT: [
         "Dark", "Shade", "Low intensity light", "Darkness", "Etiolated", 
-        "Far-red light", "Green light"
+        "Far-red light", "Green light", "Short day"
     ],
     TreatmentEnum.HIGH_LIGHT: [
         "High Light", "High intensity light", "UV-B", "UV-A", "Ultraviolet", 

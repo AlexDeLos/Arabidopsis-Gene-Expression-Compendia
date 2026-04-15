@@ -148,13 +148,12 @@ def generate_system_prompt():
                 
             # Fetch the definition instead of synonyms
             descriptions_dict = config.get('descriptions', {})
+            synonyms_dict = config.get('synonyms',{})
+            synonyms = synonyms_dict.get(enum_item, "")
             description = descriptions_dict.get(enum_item, "")
             
             # Format cleanly: "- Canonical - Definition"
-            if description:
-                prompt += f"    - {canonical} - {description}\n"
-            else:
-                prompt += f"    - {canonical}\n"
+            prompt += f"    - {canonical}: <Description> {description} </Description><Synonyms>{synonyms}</Synonyms>\n"
 
         # Handle Sub-Attributes (like Treatment Intensity)
         if 'sub_attributes' in config:
