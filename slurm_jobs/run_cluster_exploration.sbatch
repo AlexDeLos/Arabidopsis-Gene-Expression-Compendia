@@ -4,7 +4,7 @@
 #SBATCH --partition=all
 #SBATCH --time=4:00:00
 #SBATCH --mem=320G
-#SBATCH --gres=gpu:nvidia_a40:1
+#SBATCH --gres=gpu
 #SBATCH --cpus-per-task=4
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 # ── User configuration ─────────────────────────────────────────────────────────
