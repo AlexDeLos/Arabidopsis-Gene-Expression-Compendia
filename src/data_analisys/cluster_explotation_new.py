@@ -846,10 +846,11 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
         emb = run_func(df_aligned) if method == "bulk" else run_func(pca_embedding)
         embeddings_out[method] = emb
 
-    # ---- ADDED:
+    # ---- Bulk latent space metrics (separate summary list)
     print("Generating metric values for Bulk latent space data...")
+    bulk_results_summary = []
     for cat in metric_categories:
-        print(f"\n[Metrics: {cat.upper()}]")
+        print(f"\n[Bulk Metrics: {cat.upper()}]")
         text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
         valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
@@ -880,20 +881,25 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
             print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
-        # Format strictly for the plot_metrics_comparison (long-format DataFrame)
+        # Use the same canonical metric names as the gene-space df so
+        # plot_metrics_comparison can pivot and plot both identically.
         for metric_name, val in [
-            ("Bulk Silhouette", sil_score),
-            ("Bulk ARI", ari_score),
-            ("Bulk KNN_Purity", knn_purity),
-            ("Bulk Variance_Explained", var_explained),
-            ("Bulk Batch_ASW_within_Bio", batch_asw),
+            ("Silhouette", sil_score),
+            ("ARI", ari_score),
+            ("KNN_Purity", knn_purity),
+            ("Variance_Explained", var_explained),
+            ("Batch_ASW_within_Bio", batch_asw),
         ]:
-            results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
+            bulk_results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
 
-    # --- END OF ADDED
+    # --- Build and persist both DataFrames separately
     res_df = pd.DataFrame(results_summary)
     res_df.to_csv(f"{output_folder}/{experiment_name}_metrics.csv", index=False)
-    return res_df, embeddings_out, meta_df
+
+    bulk_res_df = pd.DataFrame(bulk_results_summary)
+    bulk_res_df.to_csv(f"{output_folder}/{experiment_name}_bulk_metrics.csv", index=False)
+
+    return res_df, bulk_res_df, embeddings_out, meta_df
 
 
 # ==========================================
@@ -907,6 +913,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
     N_SAMPLES = None
     all_metrics = {}
+    all_bulk_metrics = {}
     all_umaps = {}
     all_tsnes = {}
     all_metas = {}
@@ -948,9 +955,10 @@ if __name__ == "__main__":
 
             output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
 
-            metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+            metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
 
             all_metrics[file] = metrics_df
+            all_bulk_metrics[file] = bulk_metrics_df
             all_umaps[file] = embeddings["UMAP"]
             all_tsnes[file] = embeddings["TSNE"]
             all_bulk[file] = embeddings["bulk"]
@@ -965,9 +973,11 @@ if __name__ == "__main__":
         comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
 
-        print("\nGenerating Metric Comparisons...")
-        # Ironed out the argument name to properly use 'output_dir' as expected by plot_metrics_comparison
+        print("\nGenerating Metric Comparisons (gene expression space)...")
         plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+
+        print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
+        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
         print("Generating linked multi-stage UMAP comparison...")
         plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
