@@ -1,17 +1,21 @@
-import os
-import json
 import ast
+import json
+import os
 import sys
-import matplotlib
+
+import matplotlib as mpl
+
 # Force matplotlib to use a non-interactive backend so it doesn't crash looking for a GUI
-matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
+mpl.use("Agg")
 from collections import Counter
 
+import matplotlib.pyplot as plt
+
 # Ensure the script can find your src modules if run from the root directory
-sys.path.append(os.path.abspath('./'))
-from src.constants import LABELS_PATH, FIGURES_DIR, RNA_USED
+sys.path.append(os.path.abspath("./"))
+from src.constants import FIGURES_DIR, LABELS_PATH, RNA_USED
 from src.constants_labeling import LABELS
+
 
 def load_all_labels(labels_dir):
     """Loads all sample JSON files from the labels directory."""
@@ -21,12 +25,12 @@ def load_all_labels(labels_dir):
         return all_samples
 
     for file in os.listdir(labels_dir):
-        if file.endswith('.json') and not file.startswith('map_'):
+        if file.endswith(".json") and not file.startswith("map_"):
             file_path = os.path.join(labels_dir, file)
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 try:
                     study_data = json.load(f)
-                    
+
                     # Fix: Safely handle both Lists and Dictionaries
                     if isinstance(study_data, dict):
                         # Extract the sample data from the dictionary values
@@ -34,11 +38,12 @@ def load_all_labels(labels_dir):
                     elif isinstance(study_data, list):
                         # If it's already a list of samples, just extend
                         all_samples.extend(study_data)
-                        
+
                 except Exception as e:
                     print(f"Error reading {file_path}: {e}")
-                    
+
     return all_samples
+
 
 def clean_and_format_str(s):
     """Safely cleans strings and applies Title Case to merge casing fractures."""
@@ -47,12 +52,13 @@ def clean_and_format_str(s):
     s = str(s).strip("[]'\" {}")
     if not s or s.lower() in ["none", "null", "na"]:
         return ""
-    return s.title() # Title Case merges "heat stress" and "Heat Stress"
+    return s.title()  # Title Case merges "heat stress" and "Heat Stress"
+
 
 def aggregate_label_counts(samples, label_category):
     """Counts the occurrences of each grounded term in a specific category."""
     counter = Counter()
-    
+
     ignore_words = {"none", "unspecified", "unknown", "na", "n/a", "null", "", "false", "undefined"}
     ignore_keys = {"value", "confidence", "reasoning", "evidence", "explanation", "source"}
 
@@ -60,63 +66,61 @@ def aggregate_label_counts(samples, label_category):
         # Some items in list might not be dicts if formatting is off, handle safely
         if not isinstance(sample, dict):
             continue
-            
+
         raw_items = sample.get(label_category, [])
-        
+
         # NORMALIZATION: Prevent iterating over dict keys or single strings
-        if isinstance(raw_items, dict) or isinstance(raw_items, str):
+        if isinstance(raw_items, (dict, str)):
             items = [raw_items]
         elif raw_items is None:
             items = []
         else:
             items = list(raw_items)
-            
+
         if not items:
             items = ["Unspecified"]
-        
+
         for item in items:
             # Catch stringified JSON dicts from the LLM
-            if isinstance(item, str) and item.strip().startswith('{'):
-                try:
-                    item = ast.literal_eval(item)
+            if isinstance(item, str) and item.strip().startswith("{"):
+                try:  # noqa: SIM105
+                    item = ast.literal_eval(item)  # noqa: PLW2901
                 except (ValueError, SyntaxError):
-                    pass # Fallback to treating it as a string
-            
+                    pass  # Fallback to treating it as a string
+
             if isinstance(item, dict):
                 base_val_raw = item.get("value", "Unspecified")
                 if isinstance(base_val_raw, list):
                     base_val_raw = base_val_raw[0] if base_val_raw else "Unspecified"
-                    
+
                 base_value = clean_and_format_str(base_val_raw)
-                
+
                 sub_vals = []
                 for key, val in item.items():
                     if key.lower() in ignore_keys:
                         continue
-                    
+
                     if isinstance(val, list):
-                        val = ", ".join([str(v) for v in val])
-                        
+                        val = ", ".join([str(v) for v in val])  # noqa: PLW2901
+
                     clean_val = str(val).strip("[]'\" ")
                     if clean_val.lower() not in ignore_words:
                         sub_vals.append(clean_and_format_str(clean_val))
-                
-                if sub_vals:
-                    formatted_term = f"{base_value} ({', '.join(sub_vals)})"
-                else:
-                    formatted_term = base_value
-                    
+
+                formatted_term = f"{base_value} ({', '.join(sub_vals)})" if sub_vals else base_value
+
                 counter.update([formatted_term])
             else:
                 # Standard string lists
                 clean_item = clean_and_format_str(item)
                 counter.update([clean_item if clean_item else "Unspecified"])
-                
+
     return counter
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     LABELS_DIR = LABELS_PATH
-    
+
     print(f"Loading data from: {LABELS_DIR}")
     samples = load_all_labels(LABELS_DIR)
     print(f"Loaded {len(samples)} samples.")
@@ -131,33 +135,30 @@ if __name__ == '__main__':
     for label in LABELS:
         counts = aggregate_label_counts(samples, label)
         top_counts = counts.most_common(20)
-        
+
         if not top_counts:
             continue
-            
-        terms = [t[0] for t in top_counts][::-1] 
+
+        terms = [t[0] for t in top_counts][::-1]
         frequencies = [t[1] for t in top_counts][::-1]
 
         fig, ax = plt.subplots(figsize=(10, 8))
-        colors = ['#cccccc' if 'unspecified' in t.lower() or 'unknown' in t.lower() else '#4C72B0' for t in terms]
-        
-        bars = ax.barh(terms, frequencies, color=colors, edgecolor='black', alpha=0.8)
-        
-        for bar in bars:
-            ax.text(bar.get_width() + (max(frequencies)*0.01), 
-                    bar.get_y() + bar.get_height()/2, 
-                    f'{int(bar.get_width())}', 
-                    va='center', ha='left', fontsize=10)
+        colors = ["#cccccc" if "unspecified" in t.lower() or "unknown" in t.lower() else "#4C72B0" for t in terms]
 
-        ax.set_title(f'Distribution of Grounded {label.capitalize()} Labels', fontsize=14, pad=15)
-        ax.set_xlabel('Number of Samples', fontsize=12)
-        ax.set_ylabel(f'{label.capitalize()} Terms', fontsize=12)
-        
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+        bars = ax.barh(terms, frequencies, color=colors, edgecolor="black", alpha=0.8)
+
+        for bar in bars:
+            ax.text(bar.get_width() + (max(frequencies) * 0.01), bar.get_y() + bar.get_height() / 2, f"{int(bar.get_width())}", va="center", ha="left", fontsize=10)
+
+        ax.set_title(f"Distribution of Grounded {label.capitalize()} Labels", fontsize=14, pad=15)
+        ax.set_xlabel("Number of Samples", fontsize=12)
+        ax.set_ylabel(f"{label.capitalize()} Terms", fontsize=12)
+
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
         plt.tight_layout()
-        
-        save_path = os.path.join(output_dir, f'{'RNA' if RNA_USED else 'Microarray'}_{label}_distribution.png')
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+        save_path = os.path.join(output_dir, f"{'RNA' if RNA_USED else 'Microarray'}_{label}_distribution.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"Saved plot: {save_path}")

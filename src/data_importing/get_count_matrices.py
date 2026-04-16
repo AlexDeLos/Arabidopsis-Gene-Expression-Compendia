@@ -1,11 +1,11 @@
+import gzip
 import os
 import re
-import gzip
 import shutil
-import requests
-import pandas as pd
+
 import GEOparse
-from typing import Optional
+import pandas as pd
+import requests
 
 # ---------------------------------------------------------------------------
 # Patterns
@@ -13,39 +13,34 @@ from typing import Optional
 
 # Explicit count keywords — high confidence
 _COUNT_KEYWORDS = re.compile(
-    r'(count|counts|rawcount|raw_count|gene_count|read_count|'
-    r'htseq|featurecount|rsem|salmon|kallisto|star|expression_matrix|'
-    r'read_matrix|gene_expression)',
-    re.IGNORECASE
+    r"(count|counts|rawcount|raw_count|gene_count|read_count|"
+    r"htseq|featurecount|rsem|salmon|kallisto|star|expression_matrix|"
+    r"read_matrix|gene_expression)",
+    re.IGNORECASE,
 )
 
 # Normalised metrics — reject these even if they pass other filters
-_NORMALISED = re.compile(
-    r'(fpkm|rpkm|tpm|cpm|normalized|normalised|vst|rlog|log2)',
-    re.IGNORECASE
-)
+_NORMALISED = re.compile(r"(fpkm|rpkm|tpm|cpm|normalized|normalised|vst|rlog|log2)", re.IGNORECASE)
 
 # File extensions that could be count matrices
-_TABULAR_EXT = re.compile(
-    r'\.(txt|tsv|csv|tab|xls|xlsx)(\.gz)?$',
-    re.IGNORECASE
-)
+_TABULAR_EXT = re.compile(r"\.(txt|tsv|csv|tab|xls|xlsx)(\.gz)?$", re.IGNORECASE)
 
 # Hard-skip: archives, known non-count files
 _HARD_SKIP = re.compile(
-    r'(RAW\.tar|\.tar(\.gz)?$|\.bam$|\.fastq|\.fq|\.bed$|'
-    r'README|\.pdf$|\.xml$|\.json$|peak|junction|splice|snp|vcf|'
-    r'differential|DE_|DEG_|DESeq_[0-9]|edgeR|fold.?change|padj|pvalue)',
-    re.IGNORECASE
+    r"(RAW\.tar|\.tar(\.gz)?$|\.bam$|\.fastq|\.fq|\.bed$|"
+    r"README|\.pdf$|\.xml$|\.json$|peak|junction|splice|snp|vcf|"
+    r"differential|DE_|DEG_|DESeq_[0-9]|edgeR|fold.?change|padj|pvalue)",
+    re.IGNORECASE,
 )
 
 # ---------------------------------------------------------------------------
 # URL helpers
 # ---------------------------------------------------------------------------
 
+
 def _ftp_to_https(url: str) -> str:
-    if url.startswith('ftp://ftp.ncbi.nlm.nih.gov/'):
-        return url.replace('ftp://ftp.ncbi.nlm.nih.gov/', 'https://ftp.ncbi.nlm.nih.gov/', 1)
+    if url.startswith("ftp://ftp.ncbi.nlm.nih.gov/"):
+        return url.replace("ftp://ftp.ncbi.nlm.nih.gov/", "https://ftp.ncbi.nlm.nih.gov/", 1)
     return url
 
 
@@ -54,7 +49,7 @@ def _list_geo_suppl_dir(gse_id: str) -> list[str]:
     Fetch the GEO series supplementary directory listing via HTTPS and return
     all file URLs found. GEO uses an Apache-style HTML directory index.
     """
-    prefix = gse_id[:-3] + 'nnn'
+    prefix = gse_id[:-3] + "nnn"
     index_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{prefix}/{gse_id}/suppl/"
     try:
         r = requests.get(index_url, timeout=30)
@@ -62,14 +57,13 @@ def _list_geo_suppl_dir(gse_id: str) -> list[str]:
     except Exception as e:
         print(f"  Could not list FTP directory for {gse_id}: {e}")
         return []
-    return [
-        index_url + m.group(1)
-        for m in re.finditer(r'href="([^"?/][^"]*)"', r.text)
-    ]
+    return [index_url + m.group(1) for m in re.finditer(r'href="([^"?/][^"]*)"', r.text)]
+
 
 # ---------------------------------------------------------------------------
 # File scoring
 # ---------------------------------------------------------------------------
+
 
 def _score_candidate(filename: str) -> int:
     """
@@ -87,10 +81,10 @@ def _score_candidate(filename: str) -> int:
     if _COUNT_KEYWORDS.search(filename):
         score += 10
     # Series-wide files (prefixed with GSE ID) are preferred over per-sample
-    if re.match(r'GSE\d+', filename, re.IGNORECASE):
+    if re.match(r"GSE\d+", filename, re.IGNORECASE):
         score += 5
     # Compressed files slightly preferred (suggests larger, merged matrices)
-    if filename.endswith('.gz'):
+    if filename.endswith(".gz"):
         score += 2
 
     return score
@@ -99,6 +93,7 @@ def _score_candidate(filename: str) -> int:
 # ---------------------------------------------------------------------------
 # Filename extraction from data_processing text
 # ---------------------------------------------------------------------------
+
 
 def _extract_filenames_from_metadata(gse: GEOparse.GEOTypes.GSE) -> list[str]:
     """
@@ -109,11 +104,11 @@ def _extract_filenames_from_metadata(gse: GEOparse.GEOTypes.GSE) -> list[str]:
     filenames = []
     seen = set()
     for gsm in gse.gsms.values():
-        for entry in gsm.metadata.get('data_processing', []):
-            if 'Supplementary_files_format_and_content' not in entry:
+        for entry in gsm.metadata.get("data_processing", []):
+            if "Supplementary_files_format_and_content" not in entry:
                 continue
             # Extract anything that looks like a filename (has an extension)
-            for match in re.finditer(r'[\w\-\.]+\.(txt|tsv|csv|tab|gz|xlsx?)', entry, re.IGNORECASE):
+            for match in re.finditer(r"[\w\-\.]+\.(txt|tsv|csv|tab|gz|xlsx?)", entry, re.IGNORECASE):
                 fname = match.group(0)
                 if fname not in seen:
                     seen.add(fname)
@@ -125,32 +120,28 @@ def _extract_filenames_from_metadata(gse: GEOparse.GEOTypes.GSE) -> list[str]:
 # Parsing
 # ---------------------------------------------------------------------------
 
-def _parse_count_file(path: str) -> Optional[pd.DataFrame]:
+
+def _parse_count_file(path: str) -> pd.DataFrame | None:
     """
     Parse a tabular file into a DataFrame and validate it looks like raw counts.
     Returns None if the file cannot be parsed or fails the count sanity check.
     """
     try:
-        compression = 'gzip' if path.endswith('.gz') else None
+        compression = "gzip" if path.endswith(".gz") else None
 
         # Sniff separator
         opener = gzip.open if compression else open
-        with opener(path, 'rt') as f:
+        with opener(path, "rt") as f:
             first_line = f.readline()
-        sep = '\t' if first_line.count('\t') >= first_line.count(',') else ','
+        sep = "\t" if first_line.count("\t") >= first_line.count(",") else ","
 
-        df = pd.read_csv(
-            path, sep=sep, index_col=0,
-            compression=compression,
-            comment='#',
-            low_memory=False
-        )
+        df = pd.read_csv(path, sep=sep, index_col=0, compression=compression, comment="#", low_memory=False)
 
         # Drop HTSeq summary rows (__no_feature etc.)
-        df = df[~df.index.astype(str).str.startswith('__')]
+        df = df[~df.index.astype(str).str.startswith("__")]
 
         # Keep only numeric columns
-        df = df.select_dtypes(include='number')
+        df = df.select_dtypes(include="number")
 
         if df.empty or df.shape[1] == 0:
             return None
@@ -178,7 +169,7 @@ def _download_file(url: str, save_path: str) -> bool:
     try:
         r = requests.get(_ftp_to_https(url), stream=True, timeout=120)
         r.raise_for_status()
-        with open(save_path, 'wb') as f:
+        with open(save_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
         return True
@@ -193,7 +184,8 @@ def _download_file(url: str, save_path: str) -> bool:
 # Main function
 # ---------------------------------------------------------------------------
 
-def download_processed_counts(gse_id: str, output_dir: str) -> Optional[pd.DataFrame]:
+
+def download_processed_counts(gse_id: str, output_dir: str) -> pd.DataFrame | None:
     """
     Attempt to retrieve a pre-computed gene-level raw count matrix for an
     RNA-seq GEO study. Returns a DataFrame (genes × samples) or None.
@@ -223,19 +215,15 @@ def download_processed_counts(gse_id: str, output_dir: str) -> Optional[pd.DataF
         series_urls = _list_geo_suppl_dir(gse_id)
         print(f"  FTP directory: {len(series_urls)} file(s) found")
 
-        scored = sorted(
-            [(url, _score_candidate(url.split('/')[-1])) for url in series_urls],
-            key=lambda x: -x[1]
-        )
+        scored = sorted([(url, _score_candidate(url.split("/")[-1])) for url in series_urls], key=lambda x: -x[1])
         # Only try files with score >= 0 (not disqualified)
         candidates = [(url, score) for url, score in scored if score >= 0]
 
         if candidates:
-            print(f"  {len(candidates)} tabular candidate(s): "
-                  f"{[u.split('/')[-1] for u, _ in candidates]}")
+            print(f"  {len(candidates)} tabular candidate(s): {[u.split('/')[-1] for u, _ in candidates]}")
 
         for url, score in candidates:
-            filename = url.split('/')[-1]
+            filename = url.split("/")[-1]
             save_path = os.path.join(study_dir, filename)
             print(f"  Trying [{score:+d}] {filename} ...")
 
@@ -249,7 +237,7 @@ def download_processed_counts(gse_id: str, output_dir: str) -> Optional[pd.DataF
         # ---------------------------------------------------------------
         # Step 2: Filenames mentioned in data_processing text
         # ---------------------------------------------------------------
-        print(f"  Checking data_processing metadata for named files...")
+        print("  Checking data_processing metadata for named files...")
         try:
             gse = GEOparse.get_GEO(geo=gse_id, destdir=study_dir, silent=True)
         except Exception as e:
@@ -262,7 +250,7 @@ def download_processed_counts(gse_id: str, output_dir: str) -> Optional[pd.DataF
                 print(f"  Files mentioned in metadata: {mentioned_filenames}")
 
             # Build candidate URLs: try GSE-prefixed FTP path for each filename
-            prefix = gse_id[:-3] + 'nnn'
+            prefix = gse_id[:-3] + "nnn"
             base_ftp = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{prefix}/{gse_id}/suppl/"
 
             for fname in mentioned_filenames:
@@ -281,17 +269,17 @@ def download_processed_counts(gse_id: str, output_dir: str) -> Optional[pd.DataF
             # ---------------------------------------------------------------
             # Step 3: Sample-level supplementary files — merge per-sample counts
             # ---------------------------------------------------------------
-            print(f"  Checking sample-level supplementary files...")
+            print("  Checking sample-level supplementary files...")
             sample_dfs: list[pd.DataFrame] = []
 
             for gsm_id, gsm in gse.gsms.items():
                 for key, val_list in gsm.metadata.items():
-                    if 'supplementary_file' not in key:
+                    if "supplementary_file" not in key:
                         continue
                     for url in val_list:
-                        if not url or url.strip().upper() == 'NONE':
+                        if not url or url.strip().upper() == "NONE":
                             continue
-                        filename = url.split('/')[-1]
+                        filename = url.split("/")[-1]
                         score = _score_candidate(filename)
                         if score < 0:
                             continue

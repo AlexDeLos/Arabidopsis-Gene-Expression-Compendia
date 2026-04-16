@@ -43,18 +43,18 @@ import argparse
 import json
 import logging
 import os
-from dotenv import load_dotenv
 import re
 import sys
-from typing import Dict, List, Optional
 
+from dotenv import load_dotenv
+from openai import OpenAI
 from tqdm import tqdm
 
-module_dir = './'
+module_dir = "./"
 sys.path.append(module_dir)
 
-from src.constants import STORAGE_DIR, EXPERIMENT_NAME, LABELS_PATH, RNA_USED
-from src.constants_labeling import LABEL_CONFIG, UNIQUE_LABELS, LABELS, BUCKET_KEYWORDS, EXPLICIT_KEYWORDS
+from src.constants import LABELS_PATH  # noqa: E402
+from src.constants_labeling import BUCKET_KEYWORDS, LABEL_CONFIG, LABELS, UNIQUE_LABELS  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -65,18 +65,22 @@ logging.basicConfig(
 
 # ── TULIP constants ────────────────────────────────────────────────────────────
 load_dotenv()
-TULIP_BASE_URL   = "https://api.tulip.tudelft.nl/chat/v1"
-TULIP_MODEL      = "chat"
-TULIP_API_KEY    = os.getenv("TULIP_API_KEY", "DUMMY_API_KEY")
-TULIP_MAX_TOKENS = 2048   # Reasoning model writes chain-of-thought before JSON
+TULIP_BASE_URL = "https://api.tulip.tudelft.nl/chat/v1"
+TULIP_MODEL = "chat"
+TULIP_API_KEY = os.getenv("TULIP_API_KEY", "DUMMY_API_KEY")
+TULIP_MAX_TOKENS = 2048  # Reasoning model writes chain-of-thought before JSON
 
 # Output subfolder name — kept separate from the vector pipeline so results
 # don't overwrite each other and can be compared side-by-side.
 TULIP_MODEL_NAME = "tulip_llm"
 
 _SAMPLE_FIELDS = [
-    "title", "source_name_ch1", "characteristics_ch1",
-    "description", "molecule_ch1", "extract_protocol_ch1",
+    "title",
+    "source_name_ch1",
+    "characteristics_ch1",
+    "description",
+    "molecule_ch1",
+    "extract_protocol_ch1",
     "data_processing",
 ]
 _STUDY_FIELDS = ["summary", "overall_design"]
@@ -95,7 +99,7 @@ Analyze the following GEO metadata and extract the requested labels according to
 </study_context>
 </input>
 """
-import json
+
 
 def generate_system_prompt():
     prompt = (
@@ -108,14 +112,14 @@ def generate_system_prompt():
         "</instructions>\n\n"
         "<rules>\n"
     )
-    
+
     # 1. Enforce Unique Labels & Globalize Fallbacks
     for label in LABELS:
         if label in UNIQUE_LABELS:
             prompt += f"- '{label}': EXACTLY ONE canonical value.\n"
         else:
             prompt += f"- '{label}': ONE OR MULTIPLE canonical values.\n"
-            
+
     prompt += "- FALLBACK: If a category is missing/unclear, output 'unspecified'. If explicitly stated as unknown, output 'unknown'.\n"
     prompt += "</rules>\n\n"
 
@@ -123,7 +127,7 @@ def generate_system_prompt():
     # samples reliably rather than guessing from "standard conditions".
     prompt += (
         "<control_conditions>\n"
-        "A sample should be labelled treatment=[{\"val\": \"Control\", \"intensity\": 0}] when ANY of the following apply:\n"
+        'A sample should be labelled treatment=[{"val": "Control", "intensity": 0}] when ANY of the following apply:\n'
         "  - No stress or treatment is mentioned (mock, untreated, water-treated, vehicle control)\n"
         "  - The sample is described as a 0h / 0 day timepoint in a time-course experiment\n"
         "  - The sample is described as 'unstressed', 'normal conditions', or 'ambient conditions'\n"
@@ -133,50 +137,50 @@ def generate_system_prompt():
         "IMPORTANT: intensity MUST be 0 whenever val is 'Control'. Never assign intensity > 0 to a Control treatment.\n"
         "</control_conditions>\n\n"
     )
-            
+
     # 2. Dynamically build ontology using Definitions
     prompt += "<ontology>\n"
     for label, config in LABEL_CONFIG.items():
         prompt += f"  <{label}>\n"
-        
-        for enum_item in config['enum']:
+
+        for enum_item in config["enum"]:
             canonical = enum_item.value
-            
+
             # Skip printing unknown/unspecified since we made them global rules
-            if canonical.lower() in ['unknown', 'unspecified']:
+            if canonical.lower() in ["unknown", "unspecified"]:
                 continue
-                
+
             # Fetch the definition instead of synonyms
-            descriptions_dict = config.get('descriptions', {})
-            synonyms_dict = config.get('synonyms',{})
+            descriptions_dict = config.get("descriptions", {})
+            synonyms_dict = config.get("synonyms", {})
             synonyms = synonyms_dict.get(enum_item, "")
             description = descriptions_dict.get(enum_item, "")
-            
+
             # Format cleanly: "- Canonical - Definition"
             prompt += f"    - {canonical}: <Description> {description} </Description><Synonyms>{synonyms}</Synonyms>\n"
 
         # Handle Sub-Attributes (like Treatment Intensity)
-        if 'sub_attributes' in config:
-            for sub_key, sub_config in config['sub_attributes'].items():
+        if "sub_attributes" in config:
+            for sub_key, sub_config in config["sub_attributes"].items():
                 prompt += f"\n    <sub_attribute name='{sub_key}'>\n"
                 prompt += f"      {sub_config['instruction']}\n"
-                for val_enum, desc in sub_config['descriptions'].items():
-                     val_str = getattr(val_enum, 'value', val_enum)
-                     prompt += f"        - {val_str} = {desc}\n"
-                prompt += f"    </sub_attribute>\n"
-                
+                for val_enum, desc in sub_config["descriptions"].items():
+                    val_str = getattr(val_enum, "value", val_enum)
+                    prompt += f"        - {val_str} = {desc}\n"
+                prompt += "    </sub_attribute>\n"
+
         prompt += f"  </{label}>\n"
     prompt += "</ontology>\n\n"
 
     # 3. Output Format
     prompt += "<output_format>\n"
-    
+
     schema_template = {}
     for label, config in LABEL_CONFIG.items():
-        if 'sub_attributes' in config:
+        if "sub_attributes" in config:
             obj_schema = {"val": f"CANONICAL_{label.upper()}"}
-            for sub_key, sub_config in config['sub_attributes'].items():
-                obj_schema[sub_key] = sub_config.get('type_hint', "integer") 
+            for sub_key, sub_config in config["sub_attributes"].items():
+                obj_schema[sub_key] = sub_config.get("type_hint", "integer")
             schema_template[label] = [obj_schema]
         else:
             schema_template[label] = [f"CANONICAL_{label.upper()}"]
@@ -185,11 +189,12 @@ def generate_system_prompt():
     prompt += f"{schema_json_str}\n"
     prompt += "</output_format>\n\n"
     prompt += "FINAL REMINDER: Output ONLY valid JSON."
-    
+
     return prompt
 
 
 # ── TulipLabelGenerator ────────────────────────────────────────────────────────
+
 
 class TulipLabelGenerator:
     """
@@ -210,47 +215,37 @@ class TulipLabelGenerator:
 
     def __init__(
         self,
-        in_folder:    str  = "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/",#TODO: un-hardcode this
-        saving_path:  str  = None,
-        model:        str  = TULIP_MODEL,
-        timeout:      int  = 60,
+        in_folder: str = "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/",  # TODO: un-hardcode this
+        saving_path: str | None = None,  # noqa: ARG002
+        model: str = TULIP_MODEL,
+        timeout: int = 60,
     ) -> None:
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "The 'openai' package is required. Install with: pip install openai"
-            ) from exc
 
-        self.in_folder   = in_folder
+        self.in_folder = in_folder
         self.saving_path = LABELS_PATH
         # saving_path or os.path.join(
         #     STORAGE_DIR, "labels", TULIP_MODEL_NAME, EXPERIMENT_NAME
         # )
-        self.model   = model
+        self.model = model
         self._client = OpenAI(
-            base_url = TULIP_BASE_URL,
-            api_key  = TULIP_API_KEY,
-            timeout  = timeout,
+            base_url=TULIP_BASE_URL,
+            api_key=TULIP_API_KEY,
+            timeout=timeout,
         )
 
         # Build canonical options once from BUCKET_KEYWORDS (canonical names only,
         # no synonyms — keeps the prompt short and the model on-ontology).
-        self.canonical_options: Dict[str, List[str]] = {
-            label: list(BUCKET_KEYWORDS[label]) for label in LABELS
-        }
+        self.canonical_options: dict[str, list[str]] = {label: list(BUCKET_KEYWORDS[label]) for label in LABELS}
         self.system_prompt = generate_system_prompt()
         os.makedirs(self.saving_path, exist_ok=True)
-        logger.info(
-            "TulipLabelGenerator ready — saving to %s", self.saving_path
-        )
+        logger.info("TulipLabelGenerator ready — saving to %s", self.saving_path)
 
     # ── Public entry point ─────────────────────────────────────────────────────
 
     def run(
         self,
-        studies:     Optional[List[str]] = None,
-        max_samples: Optional[int]       = None,
+        studies: list[str] | None = None,
+        max_samples: int | None = None,
     ) -> None:
         """
         Label all studies (or a subset) and write results to saving_path.
@@ -262,10 +257,7 @@ class TulipLabelGenerator:
         max_samples : int, optional
             Cap on samples processed per study — useful for quick testing.
         """
-        study_dirs = [
-            d for d in os.listdir(self.in_folder)
-            if os.path.isdir(os.path.join(self.in_folder, d))
-        ]
+        study_dirs = [d for d in os.listdir(self.in_folder) if os.path.isdir(os.path.join(self.in_folder, d))]
 
         for study_id in tqdm(study_dirs, desc="Labelling studies"):
             if studies and study_id not in studies:
@@ -290,19 +282,17 @@ class TulipLabelGenerator:
 
     def _process_study(
         self,
-        study_id:    str,
+        study_id: str,
         output_file: str,
-        max_samples: Optional[int],
+        max_samples: int | None,
     ) -> None:
         study_path = os.path.join(self.in_folder, study_id)
-        sample_files = sorted(
-            f for f in os.listdir(study_path) if f.endswith(".json")
-        )
+        sample_files = sorted(f for f in os.listdir(study_path) if f.endswith(".json"))
         if max_samples:
             sample_files = sample_files[:max_samples]
 
         # Load all samples first so we can build the study context once
-        samples: List[Dict] = []
+        samples: list[dict] = []
         for sample_file in sample_files:
             try:
                 with open(os.path.join(study_path, sample_file)) as f:
@@ -317,7 +307,7 @@ class TulipLabelGenerator:
         # Study metadata is the same for every sample — extract once
         study_meta = samples[0].get("study_metadata", {})
 
-        final_output: Dict[str, Dict] = {}
+        final_output: dict[str, dict] = {}
 
         # Process in batches. Each batch is one multi-turn conversation where
         # the model sees the previous samples and their assigned labels before
@@ -336,10 +326,10 @@ class TulipLabelGenerator:
 
     def _label_study_batch(
         self,
-        samples:    List[Dict],
-        study_meta: Dict,
-        study_id:   str,
-    ) -> Dict[str, Dict]:
+        samples: list[dict],
+        study_meta: dict,
+        study_id: str,
+    ) -> dict[str, dict]:
         """
         Label a batch of samples from the same study in a single multi-turn
         conversation, giving the model memory of previously assigned labels.
@@ -364,33 +354,29 @@ class TulipLabelGenerator:
         #     # {"role": "assistant", "content": self.system_prompt}
         # ]
 
-        results: Dict[str, Dict] = {}
+        results: dict[str, dict] = {}
 
         for i, data in enumerate(samples):
-            #! BY moving it here we are deleting the use of history
-            message: List[Dict[str, str]] = [
+            #! BY moving it here we are deleting the use of history  # noqa: EXE001, EXE003, EXE005
+            message: list[dict[str, str]] = [
                 {"role": "system", "content": self.system_prompt},
                 # {"role": "assistant", "content": self.system_prompt}
             ]
-            sample_id   = data.get("sample_id", f"unknown_{i}")
+            sample_id = data.get("sample_id", f"unknown_{i}")
             sample_meta = data.get("sample_metadata", {})
 
             # First sample includes the study context so the model understands
             # the experiment before seeing any individual sample metadata.
             if i == 0:
                 user_content = _USER_PROMPT_TEMPLATE.format(
-                    sample_block = self._format_sample_block(sample_meta),
-                    study_block  = study_block,
+                    sample_block=self._format_sample_block(sample_meta),
+                    study_block=study_block,
                 )
             else:
                 # Subsequent samples: study context is already in history,
                 # so we only send the new sample metadata. This keeps each
                 # turn short while the model retains full prior context.
-                user_content = (
-                    f"Next sample ({sample_id}):\n"
-                    f"{self._format_sample_block(sample_meta)}\n\n"
-                    "Provide only the JSON object for this sample."
-                )
+                user_content = f"Next sample ({sample_id}):\n{self._format_sample_block(sample_meta)}\n\nProvide only the JSON object for this sample."
 
             message.append({"role": "user", "content": user_content})
 
@@ -400,12 +386,12 @@ class TulipLabelGenerator:
             for attempt in range(max_retries):
                 try:
                     response = self._client.chat.completions.create(
-                        model      = self.model,
-                        messages   = message,
-                        max_tokens = TULIP_MAX_TOKENS,
-                        temperature = 0.1 * attempt,
+                        model=self.model,
+                        messages=message,  # type: ignore  # noqa: PGH003
+                        max_tokens=TULIP_MAX_TOKENS,
+                        temperature=0.1 * attempt,
                     )
-                    msg      = response.choices[0].message
+                    msg = response.choices[0].message
                     raw_text = msg.content or ""
 
                     if not raw_text:
@@ -415,14 +401,17 @@ class TulipLabelGenerator:
 
                     # break  # success
 
-
-                    labels = self._parse_labels(raw_text) # generates default unspecified schema
+                    labels = self._parse_labels(raw_text)  # generates default unspecified schema
                     results[sample_id] = labels
 
                 except Exception as exc:
                     logger.warning(
                         "TULIP call failed (study=%s sample=%s attempt %d/%d): %s",
-                        study_id, sample_id, attempt + 1, max_retries, exc,
+                        study_id,
+                        sample_id,
+                        attempt + 1,
+                        max_retries,
+                        exc,
                     )
                     if attempt == max_retries - 1:
                         raw_text = ""
@@ -435,7 +424,7 @@ class TulipLabelGenerator:
 
     # ── Prompt construction ────────────────────────────────────────────────────
 
-    def _format_sample_block(self, sample_metadata: Dict) -> str:
+    def _format_sample_block(self, sample_metadata: dict) -> str:
         """Format sample-level metadata fields into a prompt string."""
         sample_lines = []
         for field in _SAMPLE_FIELDS:
@@ -450,30 +439,27 @@ class TulipLabelGenerator:
                 sample_lines.append(f"  [{field.upper()}]: {str(val).strip()}")
         return "\n".join(sample_lines) if sample_lines else "  (No sample metadata available)"
 
-    def _format_study_block(self, study_metadata: Dict) -> str:
+    def _format_study_block(self, study_metadata: dict) -> str:
         """Format study-level metadata fields into a prompt string."""
         study_lines = []
         for field in _STUDY_FIELDS:
             val = study_metadata.get(field, "")
-            if isinstance(val, list):
-                val = " ".join([str(v) for v in val])
-            else:
-                val = str(val).strip()
+            val = " ".join([str(v) for v in val]) if isinstance(val, list) else str(val).strip()
             if val:
                 truncated = val[:1500] + ("..." if len(val) > 1500 else "")
                 study_lines.append(f"  [{field.upper()}]: {truncated}")
         return "\n".join(study_lines) if study_lines else "  (No study context available)"
 
-    def _build_prompt(self, sample_metadata: Dict, study_metadata: Dict) -> str:
+    def _build_prompt(self, sample_metadata: dict, study_metadata: dict) -> str:
         """Build the full user prompt for a single isolated sample call."""
         return _USER_PROMPT_TEMPLATE.format(
-            sample_block = self._format_sample_block(sample_metadata),
-            study_block  = self._format_study_block(study_metadata),
+            sample_block=self._format_sample_block(sample_metadata),
+            study_block=self._format_study_block(study_metadata),
         )
 
     # ── Response parsing ───────────────────────────────────────────────────────
 
-    def _parse_labels(self, raw_text: str) -> Dict[str, List[str]]:
+    def _parse_labels(self, raw_text: str) -> dict[str, list[str]]:
         """
         Parse the JSON label assignment from the model response.
         Returns {label: [canonical_value]} for all LABELS.
@@ -490,51 +476,52 @@ class TulipLabelGenerator:
                 try:
                     parsed = json.loads(match.group())
                 except json.JSONDecodeError:
-                    raise ValueError('invalid response')
+                    msg = "invalid response"
+                    raise ValueError(msg)  # noqa: B904
                     logger.debug("Could not parse label JSON: %s", cleaned[:200])
             else:
+                msg = "invalid response"
+                raise ValueError(msg)  # noqa: B904
 
-                    raise ValueError('invalid response')
-
-        result: Dict[str, List] = {}  # Changed List[str] to List
+        result: dict[str, list] = {}  # Changed List[str] to List
         for label in LABELS:
             raw_val = parsed.get(label, "unspecified")
-            
+
             # Coerce into a list if it's a single item or single string
             if not isinstance(raw_val, list):
                 raw_val = [raw_val] if raw_val != "unspecified" else []
 
             validated = []
-            sub_attr_cfg = LABEL_CONFIG[label].get('sub_attributes', {})
+            sub_attr_cfg = LABEL_CONFIG[label].get("sub_attributes", {})
 
             for r in raw_val:
                 # Handle cases where the LLM might return a flat string instead of a dict
-                item_dict = r if isinstance(r, dict) else {'val': str(r)}
-                
+                item_dict = r if isinstance(r, dict) else {"val": str(r)}
+
                 # 1. Validate the primary value ('val')
-                main_val = self._validate_label(item_dict.get('val', 'unspecified'), label)
-                
+                main_val = self._validate_label(item_dict.get("val", "unspecified"), label)
+
                 if sub_attr_cfg:
-                    valid_item = {'val': main_val}
-                    
+                    valid_item = {"val": main_val}
+
                     # 2. Dynamically validate all sub-attributes
                     for sub_key, sub_cfg in sub_attr_cfg.items():
                         raw_sub_val = item_dict.get(sub_key)
-                        enum_cls = sub_cfg['enum']
-                        
+                        enum_cls = sub_cfg["enum"]
+
                         try:
                             # Infer the expected type from the first enum value (e.g. int vs str)
-                            expected_type = type(list(enum_cls)[0].value)
+                            expected_type = type(next(iter(enum_cls)).value)
                             typed_val = expected_type(raw_sub_val)
-                            
+
                             if any(typed_val == e.value for e in enum_cls):
                                 valid_item[sub_key] = typed_val
                             else:
-                                valid_item[sub_key] = list(enum_cls)[0].value
+                                valid_item[sub_key] = next(iter(enum_cls)).value
                         except (TypeError, ValueError, IndexError):
                             # Fallback if the parsing fails or value is missing
-                            valid_item[sub_key] = list(enum_cls)[0].value if list(enum_cls) else "unspecified"
-                    
+                            valid_item[sub_key] = next(iter(enum_cls)).value if list(enum_cls) else "unspecified"
+
                     validated.append(valid_item)
                 else:
                     # Simple label validation without sub-attributes
@@ -542,18 +529,17 @@ class TulipLabelGenerator:
 
             # Ensure we always return at least one entry per label
             if not validated:
-                validated = ["unspecified"] if not sub_attr_cfg else [{"val": "unspecified", **{k: list(v['enum'])[0].value for k,v in sub_attr_cfg.items()}}]
+                validated = ["unspecified"] if not sub_attr_cfg else [{"val": "unspecified", **{k: next(iter(v["enum"])).value for k, v in sub_attr_cfg.items()}}]
 
             # Rule: a single sample cannot have the same treatment val at multiple
             # intensities simultaneously (e.g. Heat@1 + Heat@2 + Heat@3 is nonsensical).
             # When duplicates exist, keep only the entry with the highest intensity.
-            if sub_attr_cfg and label == 'treatment':
+            if sub_attr_cfg and label == "treatment":
                 validated = self._deduplicate_by_intensity(validated)
 
             result[label] = validated
 
         return result
-    
 
     def _validate_sub_attribute(self, raw_value, label: str, sub_key: str):
         """
@@ -561,8 +547,8 @@ class TulipLabelGenerator:
         Discovers type constraints and falls back to a standardized default if invalid.
         """
         try:
-            sub_config = LABEL_CONFIG[label]['sub_attributes'][sub_key]
-            enum_cls = sub_config['enum']
+            sub_config = LABEL_CONFIG[label]["sub_attributes"][sub_key]
+            enum_cls = sub_config["enum"]
         except KeyError:
             return "unspecified"
 
@@ -576,7 +562,7 @@ class TulipLabelGenerator:
         try:
             cleaned = raw_value
             if isinstance(cleaned, str):
-                cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', '', cleaned).strip()
+                cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', "", cleaned).strip()
 
             typed_val = expected_type(cleaned)
             if typed_val in allowed_values:
@@ -590,8 +576,9 @@ class TulipLabelGenerator:
                 return item.value
 
         return allowed_values[0]
+
     @staticmethod
-    def _deduplicate_by_intensity(treatment_list: List) -> List:
+    def _deduplicate_by_intensity(treatment_list: list) -> list:
         """
         Enforce the rule: a single sample cannot have the same treatment val
         at multiple intensity levels simultaneously.
@@ -607,7 +594,7 @@ class TulipLabelGenerator:
                 item["intensity"] = 0
 
         # Step 2: Group by val, keep highest intensity per group
-        best: Dict[str, Dict] = {}
+        best: dict[str, dict] = {}
         for item in treatment_list:
             if not isinstance(item, dict):
                 continue
@@ -635,8 +622,8 @@ class TulipLabelGenerator:
         Accept the value only if it matches a canonical option (case-insensitive).
         Returns "unspecified" otherwise — never stores hallucinated values.
         """
-        
-        cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', '', value).strip()
+
+        cleaned = re.sub(r'^["\'\s]+|["\'\s]+$', "", value).strip()
         if cleaned.lower() == "unspecified":
             return "unspecified"
 
@@ -646,10 +633,7 @@ class TulipLabelGenerator:
         if cleaned.lower() in lower_map:
             return lower_map[cleaned.lower()]
 
-        logger.debug(
-            "TULIP value '%s' for label '%s' not in canonical options; "
-            "falling back to unspecified", cleaned, label
-        )
+        logger.debug("TULIP value '%s' for label '%s' not in canonical options; falling back to unspecified", cleaned, label)
         return "unspecified"
 
     # ── Aggregation ────────────────────────────────────────────────────────────
@@ -664,7 +648,7 @@ class TulipLabelGenerator:
         for fname in os.listdir(saving_path):
             if not fname.endswith(".json") or fname == "tulip_condensed_labels.json":
                 continue
-            study_id = fname.replace(".json", "")
+            fname.replace(".json", "")
             with open(os.path.join(saving_path, fname)) as f:
                 study_data = json.load(f)
             for sample_id, labels in study_data.items():
@@ -680,39 +664,22 @@ class TulipLabelGenerator:
 
 # ── CLI entry point ────────────────────────────────────────────────────────────
 
+
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Label GEO samples using TULIP LLM (replaces extractor+grounder)."
-    )
-    parser.add_argument(
-        "--in-folder", default="new_storage/processed_microarray_data/",
-        help="Root directory of processed microarray data."
-    )
-    parser.add_argument(
-        "--saving-path", default=None,
-        help="Output directory for label JSON files. "
-             "Defaults to {STORAGE_DIR}/labels/tulip_llm/{EXPERIMENT_NAME}."
-    )
-    parser.add_argument(
-        "--studies", nargs="+", default=None,
-        help="Optional list of GSE IDs to process (default: all)."
-    )
-    parser.add_argument(
-        "--max-samples", type=int, default=None,
-        help="Max samples per study (default: all). Useful for quick testing."
-    )
-    parser.add_argument(
-        "--model", default=TULIP_MODEL,
-        help=f"TULIP model to use (default: {TULIP_MODEL})."
-    )
+    parser = argparse.ArgumentParser(description="Label GEO samples using TULIP LLM (replaces extractor+grounder).")
+    parser.add_argument("--in-folder", default="new_storage/processed_microarray_data/", help="Root directory of processed microarray data.")
+    parser.add_argument("--saving-path", default=None, help="Output directory for label JSON files. Defaults to {STORAGE_DIR}/labels/tulip_llm/{EXPERIMENT_NAME}.")
+    parser.add_argument("--studies", nargs="+", default=None, help="Optional list of GSE IDs to process (default: all).")
+    parser.add_argument("--max-samples", type=int, default=None, help="Max samples per study (default: all). Useful for quick testing.")
+    parser.add_argument("--model", default=TULIP_MODEL, help=f"TULIP model to use (default: {TULIP_MODEL}).")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
     generator = TulipLabelGenerator(
-        in_folder   = args.in_folder,
-        saving_path = args.saving_path,
-        model       = args.model,
+        in_folder=args.in_folder,
+        saving_path=args.saving_path,
+        model=args.model,
     )
     generator.run(studies=args.studies, max_samples=args.max_samples)

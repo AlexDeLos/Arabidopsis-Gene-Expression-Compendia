@@ -1,11 +1,11 @@
 import json
-from typing import Dict, Optional, List
 import os
+
 from src.constants_labeling import LABELS
 
 
 def load_json(path: str):
-    with open(path, 'r') as file:
+    with open(path) as file:
         return json.load(file)
 
 
@@ -33,7 +33,7 @@ class LabelMap:
     #  Init / Loading                                                      #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: str | None = None):
         self.path = path
 
         if path is not None and not os.path.exists(path):
@@ -51,7 +51,7 @@ class LabelMap:
                 except Exception:
                     print(f"Warning: {file_path} not found or invalid. Starting fresh.")
                     setattr(self, attr_name, {})
-                    with open(file_path, 'w') as f:
+                    with open(file_path, "w") as f:
                         json.dump({}, f)
 
     # ------------------------------------------------------------------ #
@@ -59,7 +59,7 @@ class LabelMap:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _migrate(raw: Dict) -> Dict:
+    def _migrate(raw: dict) -> dict:
         """Upgrade an entire map dict from v0 / v1 to v2."""
         migrated = {}
         for raw_term, entry in raw.items():
@@ -73,7 +73,7 @@ class LabelMap:
                 study_ids = entry[1] if (len(entry) > 1 and isinstance(entry[1], list)) else []
                 # No sample IDs available in v1 — carry studies with empty sample lists
                 migrated[raw_term] = {
-                    "label":   label_val,
+                    "label": label_val,
                     "studies": {sid: [] for sid in study_ids},
                 }
 
@@ -92,16 +92,16 @@ class LabelMap:
     #  Internal helpers                                                    #
     # ------------------------------------------------------------------ #
 
-    def _get_map(self, category: str) -> Optional[Dict]:
+    def _get_map(self, category: str) -> dict | None:
         return getattr(self, f"map_{category}", None)
 
     def _update_entry(
         self,
-        map_dict: Dict,
+        map_dict: dict,
         raw_label: str,
         grounded_label: str,
         study_id: str,
-        sample_id: Optional[str] = None,
+        sample_id: str | None = None,
     ) -> None:
         """
         Insert or update a mapping entry.
@@ -131,7 +131,7 @@ class LabelMap:
     #  Public read                                                         #
     # ------------------------------------------------------------------ #
 
-    def _get_value(self, category: str, raw_label: str) -> Optional[str]:
+    def _get_value(self, category: str, raw_label: str) -> str | None:
         """Return just the canonical label string for a raw term, or None if unseen."""
         map_dict = self._get_map(category)
         if map_dict is None or raw_label not in map_dict:
@@ -139,9 +139,9 @@ class LabelMap:
         entry = map_dict[raw_label]
         if isinstance(entry, dict):
             return entry.get("label")
-        if isinstance(entry, list):   # stale v1 still in memory
+        if isinstance(entry, list):  # stale v1 still in memory
             return entry[0]
-        return entry                  # stale v0 still in memory
+        return entry  # stale v0 still in memory
 
     # ------------------------------------------------------------------ #
     #  Public write                                                        #
@@ -153,7 +153,7 @@ class LabelMap:
         raw_label: str,
         grounded_label: str,
         study_id: str,
-        sample_id: Optional[str] = None,
+        sample_id: str | None = None,
     ) -> None:
         """Add or update a single entry in the correct label map."""
         map_dict = self._get_map(category)
@@ -164,10 +164,10 @@ class LabelMap:
 
     def add_mapping_dict(
         self,
-        mapping: Dict[str, str],
+        mapping: dict[str, str],
         category: str,
         study_id: str,
-        sample_id: Optional[str] = None,
+        sample_id: str | None = None,
     ) -> None:
         """Batch-update from an external {raw: grounded} dict."""
         map_dict = self._get_map(category)
@@ -179,10 +179,10 @@ class LabelMap:
 
     def add_mapping(
         self,
-        og_sample: Dict,
-        grounded_sample: Dict,
+        og_sample: dict,
+        grounded_sample: dict,
         study_id: str,
-        sample_id: Optional[str] = None,
+        sample_id: str | None = None,
     ) -> None:
         """
         Update maps from a (raw_sample, grounded_sample) pair.
@@ -190,21 +190,23 @@ class LabelMap:
         Only 1-to-1 raw->grounded pairs are stored to avoid list-alignment ambiguity.
         """
         if sample_id is None:
-            sample_id = (grounded_sample.get('sample_id')
-                         or og_sample.get('sample_id'))
+            sample_id = grounded_sample.get("sample_id") or og_sample.get("sample_id")
 
         for category in LABELS:
-            raw_val    = og_sample.get(category)
+            raw_val = og_sample.get(category)
             ground_val = grounded_sample.get(category)
 
-            if isinstance(raw_val, set):    raw_val    = list(raw_val)
-            if isinstance(ground_val, set): ground_val = list(ground_val)
-            if isinstance(raw_val, str):    raw_val    = [raw_val]
-            if isinstance(ground_val, str): ground_val = [ground_val]
+            if isinstance(raw_val, set):
+                raw_val = list(raw_val)
+            if isinstance(ground_val, set):
+                ground_val = list(ground_val)
+            if isinstance(raw_val, str):
+                raw_val = [raw_val]
+            if isinstance(ground_val, str):
+                ground_val = [ground_val]
 
             if raw_val and ground_val and len(raw_val) == 1 and len(ground_val) == 1:
-                self.add_entry(category, str(raw_val[0]), str(ground_val[0]),
-                               study_id, sample_id)
+                self.add_entry(category, str(raw_val[0]), str(ground_val[0]), study_id, sample_id)
 
     # ------------------------------------------------------------------ #
     #  Persistence                                                         #
@@ -217,5 +219,5 @@ class LabelMap:
         for label in LABELS:
             file_path = os.path.join(self.path, f"map_{label}.json")
             map_dict = getattr(self, f"map_{label}", {})
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 json.dump(map_dict, f, indent=4)

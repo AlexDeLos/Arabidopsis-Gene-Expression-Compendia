@@ -17,5 +17,3 @@ We trained and released **five BulkFormer models** at different parameter scales
 | **BulkFormer-93M**  | 93M        | 512        | 6      | 8     | [Download](https://drive.google.com/file/d/1s_3XoMaHiBfxi5C8D3bgwwzNrihafaIk/view?usp=drive_link)  |
 | **BulkFormer-127M** | 127M       | 640        | 8      | 8     | [Download](https://drive.google.com/file/d/1-5AdgIpkm8dOm9tuwOXcqS1sUyGN6vHg/view?usp=drive_link) |
 | **BulkFormer-147M** | 147M       | 640        | 12     | 8     | [Download](https://drive.google.com/file/d/1UtqN_vCh3669Fs-GU5CTE7F7UnuQCAzN/view?usp=drive_link) |
-
-

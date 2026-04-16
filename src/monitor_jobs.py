@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 monitor_jobs.py — RNA-seq pipeline SLURM job monitor
 =====================================================
@@ -27,14 +26,14 @@ Discrepancies are highlighted as warnings in the dashboard:
 """
 
 import argparse
+import contextlib
 import glob
 import os
 import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, timezone
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TIME UTILITIES
@@ -47,6 +46,7 @@ from pathlib import Path
 _DATE_FMT = "%a %b %d %H:%M:%S %Y"
 _RE_TZ_NAME = re.compile(r"\s+[A-Z]{2,5}\s+")  # e.g. " CEST " or " UTC "
 
+
 def _parse_log_timestamp(ts: str):
     """Parse a bash `date` string into a datetime, or return None."""
     if not ts:
@@ -57,16 +57,18 @@ def _parse_log_timestamp(ts: str):
     except ValueError:
         return None
 
+
 def _format_duration(seconds: float) -> str:
     """Format elapsed seconds as a human-readable string, e.g. '2h 14m' or '37m 05s'."""
     seconds = int(seconds)
     h, rem = divmod(seconds, 3600)
-    m, s   = divmod(rem, 60)
+    m, s = divmod(rem, 60)
     if h > 0:
         return f"{h}h {m:02d}m"
     if m > 0:
         return f"{m}m {s:02d}s"
     return f"{s}s"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TRACKER READING
@@ -86,37 +88,37 @@ _TRACKER_INT_TO_NAME = {
 
 # Maps tracker state name → (log state name it aligns with, display label, color)
 TRACKER_STATES = {
-    "not_tried":  ("#475569", "Not tried"),
+    "not_tried": ("#475569", "Not tried"),
     "downloaded": ("#a78bfa", "Downloaded"),
-    "processed":  ("#4ade80", "✓ Processed"),
-    "ignore":     ("#94a3b8", "Ignored"),
-    "error":      ("#f87171", "Error"),
-    "unknown":    ("#334155", "Unknown"),
+    "processed": ("#4ade80", "✓ Processed"),
+    "ignore": ("#94a3b8", "Ignored"),
+    "error": ("#f87171", "Error"),
+    "unknown": ("#334155", "Unknown"),
 }
 
 # Log state → closest equivalent tracker state (for comparison)
 _LOG_TO_TRACKER_EQUIV = {
-    "processed":   "processed",
-    "samplesheet": "downloaded",   # samplesheet done = still downloaded in tracker
-    "downloaded":  "downloaded",
-    "processing":  "downloaded",   # mid-flight; tracker might say downloaded already
-    "no_fastq":    "ignore",
-    "ignore":      "ignore",
+    "processed": "processed",
+    "samplesheet": "downloaded",  # samplesheet done = still downloaded in tracker
+    "downloaded": "downloaded",
+    "processing": "downloaded",  # mid-flight; tracker might say downloaded already
+    "no_fastq": "ignore",
+    "ignore": "ignore",
     "skip_compat": "ignore",
-    "error":       "error",
-    "unknown":     "not_tried",
+    "error": "error",
+    "unknown": "not_tried",
 }
 
 # Discrepancy rules: (log_equiv, tracker_state) → warning message
 # Only pairs that actually indicate a real problem are listed.
 _DISCREPANCY_RULES = {
-    ("processed",  "downloaded"): "Log says processed but tracker still shows downloaded — tracker write may have failed",
-    ("processed",  "not_tried"):  "Log says processed but tracker shows not_tried — very unexpected",
-    ("processed",  "error"):      "Log says processed but tracker shows error — stale log or race condition",
-    ("error",      "processed"):  "Log says error but tracker shows processed — log is stale from a prior run",
-    ("ignore",     "not_tried"):  "Log says ignored but tracker not updated — mark_ignore may have failed",
-    ("ignore",     "error"):      "Log says ignored but tracker shows error — minor inconsistency",
-    ("downloaded", "processed"):  "Log says still downloading but tracker already shows processed — log may be from older job",
+    ("processed", "downloaded"): "Log says processed but tracker still shows downloaded — tracker write may have failed",
+    ("processed", "not_tried"): "Log says processed but tracker shows not_tried — very unexpected",
+    ("processed", "error"): "Log says processed but tracker shows error — stale log or race condition",
+    ("error", "processed"): "Log says error but tracker shows processed — log is stale from a prior run",
+    ("ignore", "not_tried"): "Log says ignored but tracker not updated — mark_ignore may have failed",
+    ("ignore", "error"): "Log says ignored but tracker shows error — minor inconsistency",
+    ("downloaded", "processed"): "Log says still downloading but tracker already shows processed — log may be from older job",
 }
 
 
@@ -135,7 +137,7 @@ def read_tracker_dir(tracker_dir: str) -> dict:
         gse_id = fname[:-4]  # strip .txt
         path = os.path.join(tracker_dir, fname)
         try:
-            with open(path, "r") as fh:
+            with open(path) as fh:
                 raw = fh.read().strip()
             try:
                 code = int(raw)
@@ -164,88 +166,91 @@ def compare_log_vs_tracker(log_studies: dict, tracker_states: dict) -> list:
         log_equiv = _LOG_TO_TRACKER_EQUIV.get(log_state, "unknown")
         key = (log_equiv, tracker_state)
         if key in _DISCREPANCY_RULES:
-            discrepancies.append({
-                "gse_id":        gse_id,
-                "log_state":     log_state,
-                "tracker_state": tracker_state,
-                "message":       _DISCREPANCY_RULES[key],
-            })
+            discrepancies.append(
+                {
+                    "gse_id": gse_id,
+                    "log_state": log_state,
+                    "tracker_state": tracker_state,
+                    "message": _DISCREPANCY_RULES[key],
+                }
+            )
     return discrepancies
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # LOG PARSING
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Patterns matched against each log line
-_RE_STUDY       = re.compile(r"=== Processing study: (GSE\d+) ===")
-_RE_DOWNLOADED  = re.compile(r"Download completed for (GSE\d+)")
+_RE_STUDY = re.compile(r"=== Processing study: (GSE\d+) ===")
+_RE_DOWNLOADED = re.compile(r"Download completed for (GSE\d+)")
 _RE_SAMPLESHEET = re.compile(r"DONE generating sample sheet for: (GSE\d+)")
-_RE_NO_FASTQ    = re.compile(r"No valid FASTQ pairs found for (GSE\d+)")
-_RE_IGNORE      = re.compile(r"Marking (GSE\d+) as ignore")
-_RE_ERROR       = re.compile(r"Marking (GSE\d+) as error")
+_RE_NO_FASTQ = re.compile(r"No valid FASTQ pairs found for (GSE\d+)")
+_RE_IGNORE = re.compile(r"Marking (GSE\d+) as ignore")
+_RE_ERROR = re.compile(r"Marking (GSE\d+) as error")
 # _RE_PROCESSED   = re.compile(r"Saved (GSE\d+) counts to ")
-_RE_PROCESSED   = re.compile(r"Marking (GSE\d+) as processed")
+_RE_PROCESSED = re.compile(r"Marking (GSE\d+) as processed")
 _RE_SKIP_COMPAT = re.compile(r"\[!\] Skipping (GSE\d+):")
 _RE_SUPERSERIES = re.compile(r"SuperSeries detected")
-_RE_BATCH_RUN   = re.compile(r"Running nf-core/rnaseq \(Batch Mode\) in .*(batch_\S+)\.\.\.")
-_RE_BATCH_OK    = re.compile(r"Demultiplexing batch results")
-_RE_BATCH_ERR   = re.compile(r"Nextflow Batch Error")
+_RE_BATCH_RUN = re.compile(r"Running nf-core/rnaseq \(Batch Mode\) in .*(batch_\S+)\.\.\.")
+_RE_BATCH_OK = re.compile(r"Demultiplexing batch results")
+_RE_BATCH_ERR = re.compile(r"Nextflow Batch Error")
 _RE_BATCH_FATAL = re.compile(r"\[!\] No bad samples identified")
-_RE_NF_START    = re.compile(r"N E X T F L O W  ~  version")
-_RE_NF_DONE     = re.compile(r"Pipeline completed")
-_RE_NF_ERROR    = re.compile(r"Pipeline completed with errors")
-_RE_RETRY       = re.compile(r"\[Retry (\d+)/(\d+)\] Re-downloading (\d+) failed SRRs")
-_RE_ARRAY_JOB   = re.compile(r"--- ARRAY JOB #(\d+) ---")
-_RE_BATCH_IDS   = re.compile(r"IDs: (\[.*?\])")
-_RE_JOB_ID      = re.compile(r"Job ID: (\d+)")
-_RE_NODE        = re.compile(r"Node: (\S+)")
-_RE_DATE        = re.compile(r"^Date: (.+)$")
-_RE_JOB_DONE    = re.compile(r"^Job (finished|Completed)")
-_RE_TMP_NODEV   = re.compile(r"nodev.*mount option|chmod.*operation not permitted")
+_RE_NF_START = re.compile(r"N E X T F L O W  ~  version")
+_RE_NF_DONE = re.compile(r"Pipeline completed")
+_RE_NF_ERROR = re.compile(r"Pipeline completed with errors")
+_RE_RETRY = re.compile(r"\[Retry (\d+)/(\d+)\] Re-downloading (\d+) failed SRRs")
+_RE_ARRAY_JOB = re.compile(r"--- ARRAY JOB #(\d+) ---")
+_RE_BATCH_IDS = re.compile(r"IDs: (\[.*?\])")
+_RE_JOB_ID = re.compile(r"Job ID: (\d+)")
+_RE_NODE = re.compile(r"Node: (\S+)")
+_RE_DATE = re.compile(r"^Date: (.+)$")
+_RE_JOB_DONE = re.compile(r"^Job (finished|Completed)")
+_RE_TMP_NODEV = re.compile(r"nodev.*mount option|chmod.*operation not permitted")
 _RE_SKIP_PROCESSED = re.compile(r"Skipped — already processed \(\d+\): (\[.*?\])")
-_RE_SKIP_IGNORED   = re.compile(r"Skipped — ignored \(\d+\): (\[.*?\])")
-_RE_SKIP_ERROR     = re.compile(r"Skipped — error \(\d+\): (\[.*?\])")
+_RE_SKIP_IGNORED = re.compile(r"Skipped — ignored \(\d+\): (\[.*?\])")
+_RE_SKIP_ERROR = re.compile(r"Skipped — error \(\d+\): (\[.*?\])")
 
 STUDY_STATES = {
-    "processing":   ("#60a5fa", "Processing"),
-    "downloaded":   ("#a78bfa", "Downloaded"),
-    "samplesheet":  ("#34d399", "Samplesheet ready"),
-    "no_fastq":     ("#f59e0b", "No FASTQs"),
-    "ignore":       ("#94a3b8", "Ignored"),
-    "error":        ("#f87171", "Error"),
-    "processed":    ("#4ade80", "✓ Processed"),
-    "skip_compat":  ("#fb923c", "Incompatible"),
-    "unknown":      ("#475569", "Unknown"),
+    "processing": ("#60a5fa", "Processing"),
+    "downloaded": ("#a78bfa", "Downloaded"),
+    "samplesheet": ("#34d399", "Samplesheet ready"),
+    "no_fastq": ("#f59e0b", "No FASTQs"),
+    "ignore": ("#94a3b8", "Ignored"),
+    "error": ("#f87171", "Error"),
+    "processed": ("#4ade80", "✓ Processed"),
+    "skip_compat": ("#fb923c", "Incompatible"),
+    "unknown": ("#475569", "Unknown"),
 }
 
 BATCH_STATES = {
-    "running":   ("#60a5fa", "Running"),
-    "success":   ("#4ade80", "Success"),
-    "error":     ("#f87171", "Error"),
-    "unknown":   ("#94a3b8", "Pending"),
+    "running": ("#60a5fa", "Running"),
+    "success": ("#4ade80", "Success"),
+    "error": ("#f87171", "Error"),
+    "unknown": ("#94a3b8", "Pending"),
 }
 
 
 def parse_log_file(path: str) -> dict:
     """Parse a single log file and return a structured result dict."""
     result = {
-        "path":         path,
-        "job_id":       None,
-        "array_index":  None,
-        "node":         None,
-        "start_time":   None,
-        "end_time":     None,
-        "duration_secs": None,   # computed after parsing; None if job still running
-        "finished":     False,
-        "studies":      {},   # gse_id -> state string
-        "study_order":  [],   # ordered list of gse_ids seen
-        "batches":      {},   # batch_id -> state
-        "retries":      defaultdict(list),  # gse_id -> list of retry counts
-        "errors":       [],   # free-text error lines
-        "warnings":     [],
-        "nf_runs":      0,
-        "nodev_error":  False,
-        "raw_lines":    0,
+        "path": path,
+        "job_id": None,
+        "array_index": None,
+        "node": None,
+        "start_time": None,
+        "end_time": None,
+        "duration_secs": None,  # computed after parsing; None if job still running
+        "finished": False,
+        "studies": {},  # gse_id -> state string
+        "study_order": [],  # ordered list of gse_ids seen
+        "batches": {},  # batch_id -> state
+        "retries": defaultdict(list),  # gse_id -> list of retry counts
+        "errors": [],  # free-text error lines
+        "warnings": [],
+        "nf_runs": 0,
+        "nodev_error": False,
+        "raw_lines": 0,
     }
 
     if not os.path.exists(path):
@@ -256,19 +261,22 @@ def parse_log_file(path: str) -> dict:
     current_batch = None
 
     try:
-        with open(path, "r", errors="replace") as fh:
+        with open(path, errors="replace") as fh:
             for line in fh:
                 result["raw_lines"] += 1
-                line = line.rstrip()
+                line = line.rstrip()  # noqa: PLW2901
 
                 m = _RE_JOB_ID.search(line)
-                if m: result["job_id"] = m.group(1)
+                if m:
+                    result["job_id"] = m.group(1)
 
                 m = _RE_ARRAY_JOB.search(line)
-                if m: result["array_index"] = m.group(1)
+                if m:
+                    result["array_index"] = m.group(1)
 
                 m = _RE_NODE.search(line)
-                if m: result["node"] = m.group(1)
+                if m:
+                    result["node"] = m.group(1)
 
                 m = _RE_DATE.match(line)
                 if m:
@@ -283,10 +291,8 @@ def parse_log_file(path: str) -> dict:
 
                 m = _RE_BATCH_IDS.search(line)
                 if m:
-                    try:
+                    with contextlib.suppress(Exception):
                         result["studies_in_batch"] = eval(m.group(1))
-                    except Exception:
-                        pass
 
                 # Study state transitions
                 m = _RE_STUDY.search(line)
@@ -354,10 +360,8 @@ def parse_log_file(path: str) -> dict:
 
                 m = _RE_RETRY.search(line)
                 if m and current_study:
-                    result["retries"][current_study].append(
-                        f"Retry {m.group(1)}/{m.group(2)}: {m.group(3)} SRRs"
-                    )
-                
+                    result["retries"][current_study].append(f"Retry {m.group(1)}/{m.group(2)}: {m.group(3)} SRRs")
+
                 m = _RE_SKIP_PROCESSED.search(line)
                 if m:
                     try:
@@ -393,7 +397,7 @@ def parse_log_file(path: str) -> dict:
 
     # Compute duration from timestamps
     t_start = _parse_log_timestamp(result["start_time"])
-    t_end   = _parse_log_timestamp(result["end_time"])
+    t_end = _parse_log_timestamp(result["end_time"])
     if t_start and t_end:
         result["duration_secs"] = (t_end - t_start).total_seconds()
     elif t_start and not result["finished"]:
@@ -425,6 +429,7 @@ def find_log_files(job_ids: list, log_dir: str) -> dict:
 # HTML GENERATION
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _bar(value, total, color):
     pct = (value / total * 100) if total > 0 else 0
     return f'<div class="bar-fill" style="width:{pct:.1f}%;background:{color}"></div>'
@@ -437,13 +442,12 @@ def _state_counts(studies_dict):
     return counts
 
 
-def generate_html(all_results: list, refresh_s: int, generated_at: str,
-                  tracker_states = None) -> str:
+def generate_html(all_results: list, refresh_s: int, generated_at: str, tracker_states=None) -> str:
     total_studies_all = sum(len(r["studies"]) for r in all_results)
-    total_processed   = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
-    total_errors      = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
-    total_ignored     = sum(1 for r in all_results for s in r["studies"].values() if s in ("ignore", "skip_compat", "no_fastq"))
-    active_jobs       = sum(1 for r in all_results if not r["finished"])
+    total_processed = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
+    total_errors = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
+    total_ignored = sum(1 for r in all_results for s in r["studies"].values() if s in ("ignore", "skip_compat", "no_fastq"))
+    active_jobs = sum(1 for r in all_results if not r["finished"])
 
     # ── TRACKER SIDEBAR ──────────────────────────────────────────────────────
     # Aggregate tracker states globally — this is the ground truth view
@@ -461,7 +465,7 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
             if n == 0:
                 continue
             pct = n / tracker_total * 100 if tracker_total else 0
-            tk_legend += f'''
+            tk_legend += f"""
             <div class="legend-item">
               <span class="legend-dot" style="background:{color}"></span>
               <span class="legend-label">{label}</span>
@@ -470,23 +474,20 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
             <div class="tk-bar-row">
               <div class="tk-bar"><div class="tk-bar-fill" style="width:{pct:.1f}%;background:{color}"></div></div>
               <span class="tk-pct">{pct:.0f}%</span>
-            </div>'''
+            </div>"""
 
         # Count discrepancies across all jobs
-        total_discrepancies = sum(
-            len(compare_log_vs_tracker(r["studies"], tracker_states))
-            for r in all_results
-        )
+        total_discrepancies = sum(len(compare_log_vs_tracker(r["studies"], tracker_states)) for r in all_results)
         disc_badge = ""
         if total_discrepancies:
-            disc_badge = f'<div class="disc-total">⚠ {total_discrepancies} discrepanc{"y" if total_discrepancies==1 else "ies"} found</div>'
+            disc_badge = f'<div class="disc-total">⚠ {total_discrepancies} discrepanc{"y" if total_discrepancies == 1 else "ies"} found</div>'
 
-        tracker_sidebar_html = f'''
+        tracker_sidebar_html = f"""
         <div class="sidebar-card">
           <div class="sidebar-title">Tracker on disk ({tracker_total} GSEs)</div>
           {disc_badge}
           {tk_legend}
-        </div>'''
+        </div>"""
 
     # Aggregate state counts across all results
     agg_states = defaultdict(int)
@@ -511,8 +512,8 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
             sweep = (n / total) * 360
             # SVG arc
             start_rad = angle * 3.14159 / 180
-            end_rad   = (angle + sweep) * 3.14159 / 180
-            x1 = cx + r * (end_rad - start_rad if False else 1) * 0  # simplified
+            end_rad = (angle + sweep) * 3.14159 / 180
+            _x1 = cx + r * (end_rad - start_rad if False else 1) * 0  # simplified
             # Use stroke-dasharray technique on a circle instead
             pct = n / total
             segs.append((pct, color, state, n))
@@ -521,7 +522,7 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
         # Build using stroke-dashoffset technique
         result = []
         offset = 0
-        for pct, color, state, n in segs:
+        for pct, color, _state, _n in segs:
             dash = pct * circumference
             result.append(
                 f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" '
@@ -539,30 +540,26 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
         n = agg_states.get(state, 0)
         if n == 0:
             continue
-        legend_html += f'''
+        legend_html += f"""
         <div class="legend-item">
           <span class="legend-dot" style="background:{color}"></span>
           <span class="legend-label">{label}</span>
           <span class="legend-count">{n}</span>
-        </div>'''
+        </div>"""
 
     # Per-job cards
     job_cards_html = ""
     for r in all_results:
-        counts   = _state_counts(r["studies"])
-        n_total  = len(r["studies"])
+        counts = _state_counts(r["studies"])
+        n_total = len(r["studies"])
         finished = r["finished"]
-        status_badge = ('<span class="badge badge-green">Finished</span>' if finished
-                        else '<span class="badge badge-blue anim-pulse">Running</span>')
+        status_badge = '<span class="badge badge-green">Finished</span>' if finished else '<span class="badge badge-blue anim-pulse">Running</span>'
 
         # Duration display
         dur_secs = r.get("duration_secs")
         if dur_secs is not None:
             dur_str = _format_duration(dur_secs)
-            if finished:
-                duration_html = f'<span class="duration-chip dur-done">⏱ {dur_str}</span>'
-            else:
-                duration_html = f'<span class="duration-chip dur-live">⟳ {dur_str} elapsed</span>'
+            duration_html = f'<span class="duration-chip dur-done">⏱ {dur_str}</span>' if finished else f'<span class="duration-chip dur-live">⟳ {dur_str} elapsed</span>'
         else:
             duration_html = ""
 
@@ -604,12 +601,12 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
 
             tracker_col = f"<td>{tracker_cell}</td>{disc_cell}" if tracker_states else ""
 
-            study_rows += f'''
+            study_rows += f"""
             <tr{"" if not disc else ' class="row-warn"'}>
               <td class="mono">{gse_id}</td>
               <td><span class="state-pill" style="--c:{log_color}">{log_label}</span>{retry_html}</td>
               {tracker_col}
-            </tr>'''
+            </tr>"""
 
         # Studies table header
         extra_headers = "<th>Tracker</th><th></th>" if tracker_states else ""
@@ -618,11 +615,11 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
         batch_rows = ""
         for batch_id, state in r.get("batches", {}).items():
             color, label = BATCH_STATES.get(state, BATCH_STATES["unknown"])
-            batch_rows += f'''
+            batch_rows += f"""
             <tr>
               <td class="mono small">{batch_id}</td>
               <td><span class="state-pill" style="--c:{color}">{label}</span></td>
-            </tr>'''
+            </tr>"""
         if not batch_rows:
             batch_rows = '<tr><td colspan="2" class="muted small">No batches started yet</td></tr>'
 
@@ -642,23 +639,23 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
             errs_html += f'<div class="error-line">{e}</div>'
 
         path_name = os.path.basename(r["path"])
-        job_cards_html += f'''
+        job_cards_html += f"""
         <div class="job-card">
           <div class="job-header">
             <div>
-              <span class="job-title">Job {r.get("job_id","?")} · Array task {r.get("array_index","?")}</span>
-              <span class="job-node">{r.get("node","")}</span>
+              <span class="job-title">Job {r.get("job_id", "?")} · Array task {r.get("array_index", "?")}</span>
+              <span class="job-node">{r.get("node", "")}</span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">{duration_html}{status_badge}</div>
           </div>
           <div class="job-meta mono small">
             {path_name}<br>
-            Started: {r.get("start_time","—")} &nbsp;·&nbsp; {"Ended: " + r.get("end_time","—") if finished else "still running"}
+            Started: {r.get("start_time", "—")} &nbsp;·&nbsp; {"Ended: " + r.get("end_time", "—") if finished else "still running"}
           </div>
           {nodev_warn}
           {bar_html}
           <div class="counts-row">
-            {"".join(f'<span class="count-chip" style="--c:{STUDY_STATES[s][0]}">{counts.get(s,0)} {STUDY_STATES[s][1]}</span>' for s in bar_order if counts.get(s,0))}
+            {"".join(f'<span class="count-chip" style="--c:{STUDY_STATES[s][0]}">{counts.get(s, 0)} {STUDY_STATES[s][1]}</span>' for s in bar_order if counts.get(s, 0))}
           </div>
 
           <div class="section-grid">
@@ -668,15 +665,15 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str,
                 <thead><tr><th>GSE</th><th>Log</th>{extra_headers}</tr></thead>
                 <tbody>{study_rows}</tbody>
               </table>
-              {f'<div class="disc-summary">⚠ {len(discrepancies)} discrepanc{"y" if len(discrepancies)==1 else "ies"} — hover ⚠ for details</div>' if discrepancies else ""}
+              {f'<div class="disc-summary">⚠ {len(discrepancies)} discrepanc{"y" if len(discrepancies) == 1 else "ies"} — hover ⚠ for details</div>' if discrepancies else ""}
             </div>
             <div>
-              <div class="sub-title">Nextflow Batches ({len(r.get("batches",{}))})</div>
+              <div class="sub-title">Nextflow Batches ({len(r.get("batches", {}))})</div>
               <table class="inner-table">{batch_rows}</table>
             </div>
           </div>
           {errs_html}
-        </div>'''
+        </div>"""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -811,51 +808,28 @@ header{{padding:28px 40px 22px;border-bottom:1px solid var(--border);display:fle
 </div>
 
 </body>
-</html>"""
+</html>"""  # noqa: E501
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Monitor RNA-seq SLURM job logs and generate an HTML dashboard."
-    )
+    parser = argparse.ArgumentParser(description="Monitor RNA-seq SLURM job logs and generate an HTML dashboard.")
+    parser.add_argument("job_ids", nargs="+", help="SLURM job IDs to monitor (e.g. 12348004 12351666)")
+    parser.add_argument("--log-dir", default=None, help="Directory containing log files. Defaults to ~/Dataset_fusion_Microarray/logs_slurm")
     parser.add_argument(
-        "job_ids", nargs="+",
-        help="SLURM job IDs to monitor (e.g. 12348004 12351666)"
+        "--tracker-dir", default=None, help="Path to the FileTracker directory (contains GSExxx.txt files). Defaults to /tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker"
     )
-    parser.add_argument(
-        "--log-dir", default=None,
-        help="Directory containing log files. Defaults to "
-             "~/Dataset_fusion_Microarray/logs_slurm"
-    )
-    parser.add_argument(
-        "--tracker-dir", default=None,
-        help="Path to the FileTracker directory (contains GSExxx.txt files). "
-             "Defaults to /tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker"
-    )
-    parser.add_argument(
-        "--out", default="pipeline_monitor.html",
-        help="Output HTML file (default: pipeline_monitor.html)"
-    )
-    parser.add_argument(
-        "--interval", type=int, default=20,
-        help="Refresh interval in seconds (default: 20)"
-    )
-    parser.add_argument(
-        "--once", action="store_true",
-        help="Run once and exit (no loop)"
-    )
+    parser.add_argument("--out", default="pipeline_monitor.html", help="Output HTML file (default: pipeline_monitor.html)")
+    parser.add_argument("--interval", type=int, default=20, help="Refresh interval in seconds (default: 20)")
+    parser.add_argument("--once", action="store_true", help="Run once and exit (no loop)")
     args = parser.parse_args()
 
-    log_dir = args.log_dir or os.path.expanduser(
-        "~/Dataset_fusion_Microarray/logs_slurm"
-    )
-    tracker_dir = args.tracker_dir or (
-        "/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker"
-    )
+    log_dir = args.log_dir or os.path.expanduser("~/Dataset_fusion_Microarray/logs_slurm")
+    tracker_dir = args.tracker_dir or ("/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/file_tracker")
 
     if not os.path.isdir(log_dir):
         print(f"Error: log directory not found: {log_dir}", file=sys.stderr)
@@ -879,30 +853,25 @@ def main():
         tracker_states = read_tracker_dir(tracker_dir) if tracker_dir else {}
 
         if not log_files:
-            print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] "
-                  f"No log files found for job IDs {args.job_ids} in {log_dir}")
+            print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] No log files found for job IDs {args.job_ids} in {log_dir}")
         else:
             results = []
-            for key, path in sorted(log_files.items()):
+            for _key, path in sorted(log_files.items()):
                 r = parse_log_file(path)
                 results.append(r)
 
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            html = generate_html(results, args.interval, now_str,
-                                 tracker_states=tracker_states)
+            html = generate_html(results, args.interval, now_str, tracker_states=tracker_states)
 
             with open(args.out, "w") as fh:
                 fh.write(html)
 
             # Count discrepancies for terminal summary
-            total_disc = sum(
-                len(compare_log_vs_tracker(r["studies"], tracker_states))
-                for r in results
-            )
+            total_disc = sum(len(compare_log_vs_tracker(r["studies"], tracker_states)) for r in results)
 
-            total   = sum(len(r["studies"]) for r in results)
-            done    = sum(1 for r in results for s in r["studies"].values() if s == "processed")
-            errors  = sum(1 for r in results for s in r["studies"].values() if s == "error")
+            total = sum(len(r["studies"]) for r in results)
+            done = sum(1 for r in results for s in r["studies"].values() if s == "processed")
+            errors = sum(1 for r in results for s in r["studies"].values() if s == "error")
             running = sum(1 for r in results if not r["finished"])
             disc_str = f" | ⚠ {total_disc} discrepancies" if total_disc else ""
             print(

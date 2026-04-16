@@ -1,4 +1,3 @@
-
 # # BulkFormer-147M
 # model_params = {
 #     'dim': 640,
@@ -11,13 +10,13 @@
 # }
 # BulkFormer-37M  Arabidopsis
 model_params = {
-    'dim':         128,
-    'bins':        0,
-    'gb_repeat':   1,
-    'p_repeat':    1,
-    'bin_head':    12,
-    'full_head':   8,
-    'gene_length': 21040   # from your graph build output
+    "dim": 128,
+    "bins": 0,
+    "gb_repeat": 1,
+    "p_repeat": 1,
+    "bin_head": 12,
+    "full_head": 8,
+    "gene_length": 21040,  # from your graph build output
 }
 # # BulkFormer-37M
 # model_params = {
@@ -65,15 +64,3 @@ model_params = {
 #     'full_head': 8,
 #     'gene_length': 20010
 # }
-
-
-
-
-
-
-
-
-
-
-
-

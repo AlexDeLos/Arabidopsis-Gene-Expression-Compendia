@@ -1,7 +1,9 @@
-import streamlit as st
-import pandas as pd
+import contextlib
 import json
 import os
+
+import pandas as pd
+import streamlit as st
 
 # ==========================================
 # CONFIGURATION & AUTHENTICATION
@@ -10,11 +12,7 @@ PAYLOAD_FILE = "src/label_evaluation/data/survey_data.json"
 RESULTS_FILE = "src/label_evaluation/data/evaluation_results.csv"
 
 # Barebones Authentication Dictionary
-VALID_USERS = {
-    "researcher1": "pass123",
-    "researcher2": "tulip2026",
-    "alex": "admin"
-}
+VALID_USERS = {"researcher1": "pass123", "researcher2": "tulip2026", "alex": "admin"}
 
 st.set_page_config(layout="wide", page_title="Label Evaluation Tool")
 
@@ -26,12 +24,12 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.title("🔒 Login Required")
     st.write("Please log in to access the Label Evaluation Tool.")
-    
+
     with st.form("login_form"):
         user_input = st.text_input("Username")
         pwd_input = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login")
-        
+
         if submitted:
             if user_input in VALID_USERS and VALID_USERS[user_input] == pwd_input:
                 st.session_state.authenticated = True
@@ -45,36 +43,34 @@ if not st.session_state.authenticated:
 # MAIN APPLICATION
 # ==========================================
 
+
 @st.cache_data
 def load_survey_data():
     if not os.path.exists(PAYLOAD_FILE):
         return []
-    with open(PAYLOAD_FILE, 'r', encoding='utf-8') as f:
+    with open(PAYLOAD_FILE, encoding="utf-8") as f:
         return json.load(f)
+
 
 def load_results():
     if os.path.exists(RESULTS_FILE):
         df = pd.read_csv(RESULTS_FILE)
-        if 'username' not in df.columns:
-            df['username'] = "unknown_legacy_user"
+        if "username" not in df.columns:
+            df["username"] = "unknown_legacy_user"
         return df
     return pd.DataFrame(columns=["username", "study_id", "sample_id", "label_scores", "comments"])
 
+
 def save_evaluation(username, study_id, sample_id, label_scores, comments):
     df = load_results()
-    df = df[~((df['study_id'] == study_id) & (df['sample_id'] == sample_id) & (df['username'] == username))]
-    
-    new_row = pd.DataFrame([{
-        "username": username,
-        "study_id": study_id,
-        "sample_id": sample_id,
-        "label_scores": json.dumps(label_scores),
-        "comments": comments.strip() if comments else ""
-    }])
-    
+    df = df[~((df["study_id"] == study_id) & (df["sample_id"] == sample_id) & (df["username"] == username))]
+
+    new_row = pd.DataFrame([{"username": username, "study_id": study_id, "sample_id": sample_id, "label_scores": json.dumps(label_scores), "comments": comments.strip() if comments else ""}])
+
     df = pd.concat([df, new_row], ignore_index=True)
     os.makedirs(os.path.dirname(RESULTS_FILE), exist_ok=True)
     df.to_csv(RESULTS_FILE, index=False)
+
 
 if "current_idx" not in st.session_state:
     st.session_state.current_idx = 0
@@ -88,8 +84,8 @@ if not data:
     st.stop()
 
 results_df = load_results()
-user_results = results_df[results_df['username'] == st.session_state.username]
-evaluated_samples = user_results['sample_id'].unique().tolist()
+user_results = results_df[results_df["username"] == st.session_state.username]
+evaluated_samples = user_results["sample_id"].unique().tolist()
 
 # Sidebar
 st.sidebar.header(f"👤 User: {st.session_state.username}")
@@ -105,21 +101,17 @@ st.sidebar.write(f"**Your Progress:** {len(evaluated_samples)} / {total_samples}
 
 sample_options = [f"{item['study_id']} - {item['sample_id']} {'✅' if item['sample_id'] in evaluated_samples else ''}" for item in data]
 
+
 def sync_sidebar():
     selected = st.session_state.sidebar_selector
     st.session_state.current_idx = sample_options.index(selected)
 
-st.sidebar.selectbox(
-    "Jump to Sample:", 
-    options=sample_options,
-    index=st.session_state.current_idx,
-    key="sidebar_selector",
-    on_change=sync_sidebar
-)
+
+st.sidebar.selectbox("Jump to Sample:", options=sample_options, index=st.session_state.current_idx, key="sidebar_selector", on_change=sync_sidebar)
 
 current_sample = data[st.session_state.current_idx]
-study_id = current_sample['study_id']
-sample_id = current_sample['sample_id']
+study_id = current_sample["study_id"]
+sample_id = current_sample["sample_id"]
 
 # Header Navigation
 st.header(f"Evaluating: {sample_id} ({study_id})")
@@ -136,23 +128,21 @@ with nav_col3:
 
 st.divider()
 
-col1, col2 = st.columns([1, 1.5]) 
+col1, col2 = st.columns([1, 1.5])
 
 # --- LEFT COLUMN: AI SCORES ---
 with col1:
     st.subheader("📝 Algorithm Labels & Scoring")
-    label_entries = current_sample.get('label_entries', [])
-    
-    prev_eval = user_results[user_results['sample_id'] == sample_id]
+    label_entries = current_sample.get("label_entries", [])
+
+    prev_eval = user_results[user_results["sample_id"] == sample_id]
     prev_scores = {}
     default_comm = ""
-    
+
     if not prev_eval.empty:
-        try:
-            prev_scores = json.loads(prev_eval.iloc[0]['label_scores'])
-        except json.JSONDecodeError:
-            pass
-        default_comm = str(prev_eval.iloc[0]['comments'])
+        with contextlib.suppress(json.JSONDecodeError):
+            prev_scores = json.loads(prev_eval.iloc[0]["label_scores"])
+        default_comm = str(prev_eval.iloc[0]["comments"])
         if default_comm == "nan":
             default_comm = ""
 
@@ -160,44 +150,38 @@ with col1:
 
     with st.form(key=f"form_{sample_id}"):
         current_scores = {}
-        
+
         if label_entries:
             st.markdown("**Evaluate Each Label Category:**")
-            
+
             for entry in label_entries:
-                cat = entry.get('label_category', 'unknown')
-                val = entry.get('display_value', 'unknown')
-                
+                cat = entry.get("label_category", "unknown")
+                val = entry.get("display_value", "unknown")
+
                 st.markdown(f"🔹 **{cat.capitalize()}**: `{val}`")
-                
+
                 default_val = prev_scores.get(cat, "Select...")
                 try:
                     idx = acc_options.index(default_val)
                 except ValueError:
                     idx = 0
-                
-                current_scores[cat] = st.selectbox(
-                    f"Accuracy for {cat}", 
-                    options=acc_options, 
-                    index=idx,
-                    key=f"sb_{sample_id}_{cat}",
-                    label_visibility="collapsed" 
-                )
+
+                current_scores[cat] = st.selectbox(f"Accuracy for {cat}", options=acc_options, index=idx, key=f"sb_{sample_id}_{cat}", label_visibility="collapsed")
                 st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-                
+
             with st.expander("View Raw JSON Array (including intensities)"):
                 st.json(label_entries)
-                
+
         else:
             st.info("No labels found for this sample.")
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-        
+
         comments = st.text_area("General Corrections / Comments:", value=default_comm, height=100)
         submit_button = st.form_submit_button(label="💾 Save & Go to Next", use_container_width=True)
-        
+
         if submit_button:
             unanswered = [cat for cat, score in current_scores.items() if score == "Select..."]
-            
+
             if unanswered:
                 st.error(f"Please select an accuracy rating for: **{', '.join(unanswered)}**")
             else:
@@ -206,18 +190,18 @@ with col1:
                     st.session_state.current_idx += 1
                 else:
                     st.success("You have reached the end of the dataset!")
-                st.rerun() 
+                st.rerun()
 
 # --- RIGHT COLUMN: METADATA ---
 with col2:
     st.subheader("📄 Reference Metadata")
     st.info(f"**Study ID:** `{study_id}` &nbsp; | &nbsp; **Sample ID:** `{sample_id}`")
-    
+
     # 1. Characteristics
     st.markdown("### 🔬 Sample Characteristics")
-    chars = current_sample.get('characteristics', 'No characteristics provided.')
+    chars = current_sample.get("characteristics", "No characteristics provided.")
     if isinstance(chars, str):
-        char_lines = chars.split('\n')
+        char_lines = chars.split("\n")
         st.success("\n".join([f"- {c}" for c in char_lines if c.strip()]))
     elif isinstance(chars, list):
         st.success("\n".join([f"- {c}" for c in chars]))
@@ -225,14 +209,14 @@ with col2:
         st.success(chars)
 
     # 2. FULL SAMPLE METADATA (NEW)
-    full_sample_meta = current_sample.get('full_sample_metadata', {})
+    full_sample_meta = current_sample.get("full_sample_metadata", {})
     if full_sample_meta:
         with st.expander("🔍 View Full Sample Metadata"):
             for key, val in full_sample_meta.items():
                 # Skip characteristics since they are already rendered beautifully above
                 if "characteristics" in key:
                     continue
-                
+
                 # Format single-item lists cleanly (e.g. ['accession: Col-0'] -> 'accession: Col-0')
                 if isinstance(val, list) and len(val) == 1:
                     clean_val = val[0]
@@ -240,13 +224,13 @@ with col2:
                     clean_val = ", ".join([str(v) for v in val])
                 else:
                     clean_val = val
-                    
+
                 st.markdown(f"**{key}**: {clean_val}")
 
     # 3. Study Context
-    st.markdown("<br>", unsafe_allow_html=True) 
+    st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("📚 Study Context (Click to hide full study context)", expanded=True):
-        st.text(current_sample.get('study_context', 'No study context provided.'))
+        st.text(current_sample.get("study_context", "No study context provided."))
 
 # View Results
 with st.expander("View Global Saved Evaluations (Results CSV)"):

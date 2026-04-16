@@ -1,36 +1,36 @@
-import pandas as pd
+import json
 import os
 import sys
-import argparse
+
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
-
-from sklearn.metrics import silhouette_score, adjusted_rand_score
-from sklearn.cluster import KMeans, MiniBatchKMeans
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.metrics import adjusted_rand_score, silhouette_score
 from sklearn.model_selection import cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
 
-module_dir = './'
+module_dir = "./"
 sys.path.append(module_dir)
 
-from src.constants import *
-from src.constants_labeling import LABELS as LABEL_AXES
-from src.data_analisys.utils.cluster_exploration_utils_final import (
-    load_labels_study, 
-    make_df_from_labels, 
-    get_study,
-    prepare_data_structure, 
-    align_labels_to_data, 
-    run_pca, 
-    run_umap, 
-    run_tsne,
-    run_bulkformer,
+from src.constants import CLUSTER_EXPLORATION_FIGURES_DIR, LABELS_PATH, RNA_USED, SAMPLE_STUDY_MAP, STORAGE_DIR  # noqa: E402
+from src.constants_labeling import LABELS as LABEL_AXES  # noqa: E402
+from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E402
+    align_labels_to_data,
     calculate_asw_batch_within_biology,
+    load_labels_study,
+    make_df_from_labels,
+    plot_metrics_comparison,
+    prepare_data_structure,
+    run_bulkformer,
+    run_pca,
+    run_tsne,
+    run_umap,
     variance_explained_by_label,
-    plot_metrics_comparison
 )
+
+
 # ==========================================
 # --- VISUALIZATION FUNCTIONS ---
 # ==========================================
@@ -58,7 +58,8 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
     # visualiser gets clean flat values for colour-by and legend building.
     def _flatten_cell(v) -> str:
         if isinstance(v, list):
-            if not v: return "unspecified"
+            if not v:
+                return "unspecified"
             first = v[0]
             if isinstance(first, dict):
                 return str(first.get("val", "unspecified"))
@@ -67,34 +68,52 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
             return str(v.get("val", "unspecified"))
         return str(v) if v is not None else "unspecified"
 
-    meta_dicts = {
-        stage: df.apply(lambda col: col.map(_flatten_cell))
-        for stage, df in meta_dicts.items()
-    }
+    meta_dicts = {stage: df.apply(lambda col: col.map(_flatten_cell)) for stage, df in meta_dicts.items()}
 
     # --- Build a stable, vivid color palette ---
     PALETTE = [
-        "#00d4ff", "#ff6b6b", "#51cf66", "#ffd43b", "#cc5de8",
-        "#ff922b", "#20c997", "#f06595", "#74c0fc", "#a9e34b",
-        "#e599f7", "#66d9e8", "#ffec99", "#ff8787", "#63e6be",
-        "#d0bfff", "#ffa94d", "#38d9a9", "#f783ac", "#4dabf7",
-        "#ffe066", "#c0eb75", "#e599f7", "#94d82d", "#3bc9db",
+        "#00d4ff",
+        "#ff6b6b",
+        "#51cf66",
+        "#ffd43b",
+        "#cc5de8",
+        "#ff922b",
+        "#20c997",
+        "#f06595",
+        "#74c0fc",
+        "#a9e34b",
+        "#e599f7",
+        "#66d9e8",
+        "#ffec99",
+        "#ff8787",
+        "#63e6be",
+        "#d0bfff",
+        "#ffa94d",
+        "#38d9a9",
+        "#f783ac",
+        "#4dabf7",
+        "#ffe066",
+        "#c0eb75",
+        "#e599f7",
+        "#94d82d",
+        "#3bc9db",
     ]
 
     # Collect all classes per category, build stable color maps
-    cat_class_map = {}       # cat -> sorted list of classes
-    cat_color_map = {}       # cat -> {cls: color}
+    cat_class_map = {}  # cat -> sorted list of classes
+    cat_color_map = {}  # cat -> {cls: color}
     for cat in categories:
         all_classes = set()
         for stage in stages:
             all_classes.update(meta_dicts[stage][cat].astype(str).unique())
-        all_classes = sorted(list(all_classes))
+        all_classes = sorted(all_classes)
         cat_class_map[cat] = all_classes
         cat_color_map[cat] = {cls: PALETTE[i % len(PALETTE)] for i, cls in enumerate(all_classes)}
 
     # --- Build Plotly figure (one subplot per stage) ---
     fig = make_subplots(
-        rows=1, cols=num_stages,
+        rows=1,
+        cols=num_stages,
         subplot_titles=[f"<b>{s}</b>" for s in stages],
         horizontal_spacing=0.03,
     )
@@ -120,25 +139,22 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
                     go.Scatter(
                         x=x_data,
                         y=y_data,
-                        mode='markers',
-                        marker=dict(
-                            size=5,
-                            color=color_map[cls],
-                            opacity=0.82,
-                            line=dict(width=0),
-                        ),
+                        mode="markers",
+                        marker={
+                            "size": 5,
+                            "color": color_map[cls],
+                            "opacity": 0.82,
+                            "line": {"width": 0},
+                        },
                         name=str(cls),
                         legendgroup=str(cls),
-                        showlegend=False,   # Legend is handled by sidebar HTML
+                        showlegend=False,  # Legend is handled by sidebar HTML
                         text=text_data,
                         customdata=custom_data,
-                        hovertemplate=(
-                            "<b>%{text}</b><br>"
-                            + "<br>".join([f"{c}: %{{customdata[{i}]}}" for i, c in enumerate(categories)])
-                            + "<extra></extra>"
-                        ),
+                        hovertemplate=("<b>%{text}</b><br>" + "<br>".join([f"{c}: %{{customdata[{i}]}}" for i, c in enumerate(categories)]) + "<extra></extra>"),
                     ),
-                    row=1, col=stage_idx + 1,
+                    row=1,
+                    col=stage_idx + 1,
                 )
 
                 for c in categories:
@@ -148,38 +164,46 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
     fig.update_layout(
         paper_bgcolor="#0d1117",
         plot_bgcolor="#161b22",
-        font=dict(family="'JetBrains Mono', 'Fira Code', monospace", color="#c9d1d9", size=11),
-        hovermode='closest',
+        font={"family": "'JetBrains Mono', 'Fira Code', monospace", "color": "#c9d1d9", "size": 11},
+        hovermode="closest",
         autosize=True,
-        margin=dict(l=8, r=8, t=42, b=8),
+        margin={"l": 8, "r": 8, "t": 42, "b": 8},
         showlegend=False,
-        title=dict(
-            text=f"<b>{title}</b>",
-            x=0.5, y=0.99,
-            xanchor='center', yanchor='top',
-            font=dict(size=14, color="#58a6ff"),
-        ),
+        title={
+            "text": f"<b>{title}</b>",
+            "x": 0.5,
+            "y": 0.99,
+            "xanchor": "center",
+            "yanchor": "top",
+            "font": {"size": 14, "color": "#58a6ff"},
+        },
     )
 
     fig.update_xaxes(
-        showgrid=True, gridcolor="#21262d", gridwidth=1,
-        zeroline=False, showticklabels=False,
+        showgrid=True,
+        gridcolor="#21262d",
+        gridwidth=1,
+        zeroline=False,
+        showticklabels=False,
         showline=False,
     )
     fig.update_yaxes(
-        showgrid=True, gridcolor="#21262d", gridwidth=1,
-        zeroline=False, showticklabels=False,
+        showgrid=True,
+        gridcolor="#21262d",
+        gridwidth=1,
+        zeroline=False,
+        showticklabels=False,
         showline=False,
     )
 
     # Style subplot titles
     for ann in fig.layout.annotations:
-        ann.font = dict(color="#8b949e", size=12, family="'JetBrains Mono', monospace")
-        ann.y = ann.y + 0.01  # type: ignore
+        ann.font = {"color": "#8b949e", "size": 12, "family": "'JetBrains Mono', monospace"}
+        ann.y = ann.y + 0.01
 
     # Set initial visibility to first category
     for i, trace in enumerate(fig.data):
-        trace.visible = trace_visibility_by_cat[categories[0]][i]  # type: ignore
+        trace.visible = trace_visibility_by_cat[categories[0]][i]
 
     # Serialize data needed by JS sidebar
     js_data = {
@@ -191,12 +215,12 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
         "stages": stages,
     }
 
-    fig.write_html(output_path, include_plotlyjs='cdn', full_html=True)
+    fig.write_html(output_path, include_plotlyjs="cdn", full_html=True)
 
     # --- Inject polished CSS + sidebar + JS ---
-    sidebar_html = _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map)
+    sidebar_html = _build_sidebar_html(categories, cat_color_map)
 
-    with open(output_path, 'r') as f:
+    with open(output_path) as f:
         html_content = f.read()
 
     # Inject Google Fonts + sidebar CSS before </head>
@@ -204,29 +228,25 @@ def plot_combined_interactive_projections(embeddings_dict, meta_dicts, title, ou
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Space+Grotesk:wght@300;400;600&display=swap" rel="stylesheet">'
     )
-    html_content = html_content.replace('</head>', font_link + '\n</head>', 1)
+    html_content = html_content.replace("</head>", font_link + "\n</head>", 1)
 
     # Wrap existing plotly div in a layout shell, inject sidebar
     shell_open = '<div id="app-shell" style="display:flex;width:100vw;height:100vh;overflow:hidden;background:#0d1117;">'
-    shell_close = '</div>'
+    shell_close = "</div>"
     sidebar = sidebar_html
 
-    html_content = html_content.replace(
-        '<body>',
-        f'<body>\n{shell_open}\n{sidebar}\n<div id="plot-area" style="flex:1;min-width:0;height:100vh;">',
-        1
-    )
-    html_content = html_content.replace('</body>', f'</div>\n{shell_close}\n</body>', 1)
+    html_content = html_content.replace("<body>", f'<body>\n{shell_open}\n{sidebar}\n<div id="plot-area" style="flex:1;min-width:0;height:100vh;">', 1)
+    html_content = html_content.replace("</body>", f"</div>\n{shell_close}\n</body>", 1)
 
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(html_content)
 
     # Append JS + global CSS
-    with open(output_path, 'a') as f:
+    with open(output_path, "a") as f:
         f.write(_build_enhancement_script(js_data, categories))
 
 
-def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map):
+def _build_sidebar_html(categories, cat_color_map):
     """Build the HTML for the left sidebar with category buttons and legend."""
     cat_buttons = ""
     for i, cat in enumerate(categories):
@@ -234,21 +254,18 @@ def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map
         shortcut = str(i + 1) if i < 9 else ""
         shortcut_badge = f'<span class="shortcut" title="hover + {shortcut} to highlight by this category">{shortcut}</span>' if shortcut else ""
         cat_buttons += (
-            f'<button class="cat-btn {active_cls}" data-cat="{cat}" onclick="selectCategory(\'{cat}\')">'
-            f'{shortcut_badge}<span class="cat-label">{cat.replace("_", " ").title()}</span>'
-            f'</button>\n'
+            f'<button class="cat-btn {active_cls}" data-cat="{cat}" onclick="selectCategory(\'{cat}\')">{shortcut_badge}<span class="cat-label">{cat.replace("_", " ").title()}</span></button>\n'
         )
 
     # Legend for first category
     first_cat = categories[0]
     legend_items = ""
     for cls, color in cat_color_map[first_cat].items():
-        count_info = ""  # Will be filled dynamically by JS
         legend_items += (
             f'<div class="legend-item" data-class="{cls}" onclick="highlightClass(\'{cls}\')" title="{cls}">'
             f'<span class="legend-dot" style="background:{color};box-shadow:0 0 6px {color}66;"></span>'
             f'<span class="legend-label">{cls}</span>'
-            f'</div>\n'
+            f"</div>\n"
         )
 
     return f"""
@@ -525,7 +542,6 @@ def _build_sidebar_html(js_data, title, categories, cat_class_map, cat_color_map
 
 def _build_enhancement_script(js_data, categories):
     """Build the JS block that powers sidebar interaction and hover-highlight."""
-    import json
     cat_class_map_json = json.dumps(js_data["cat_class_map"])
     cat_color_map_json = json.dumps(js_data["cat_color_map"])
     trace_visibility_json = json.dumps(js_data["trace_visibility"])
@@ -745,32 +761,29 @@ def _build_enhancement_script(js_data, categories):
 }})();
 </script>
 """
-        
+
+
 # ==========================================
 # --- CORE PIPELINE FUNCTION ---
 # ==========================================
 
-def run_exploration_on_dataframe(
-    data_df: pd.DataFrame, 
-    labels_dict: dict, 
-    experiment_name: str,
-    output_folder: str
-):
+
+def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, experiment_name: str, output_folder: str):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     print(f"  >>> Using standard PCA preprocessing for {experiment_name}...")
     df_aligned = prepare_data_structure(data_df)
-    
+
     # Define X_base for metric calculations
     X_base = df_aligned.values
 
-    # Dynamically grab all axes available in the parsed labels_dict 
+    # Dynamically grab all axes available in the parsed labels_dict
     # (this now automatically includes 'treatment_intensity'!)
     available_axes = list(labels_dict.keys())
-    if 'study_id' not in available_axes:
-        available_axes.append('study_id')
-    
+    if "study_id" not in available_axes:
+        available_axes.append("study_id")
+
     # Build meta_df simply and cleanly
     raw_meta = {}
     for axis in available_axes:
@@ -782,10 +795,10 @@ def run_exploration_on_dataframe(
     results_summary = []
 
     # Valid-value exclusions — applies to any label axis
-    INVALID_VALUES = {'unknown', 'unspecified', 'none', 'nan', 'Unknown', 'Unspecified', 'None', ''}
+    INVALID_VALUES = {"unknown", "unspecified", "none", "nan", "Unknown", "Unspecified", "None", ""}
 
     # Calculate metrics for every axis (excluding study_id for general scores)
-    metric_categories = available_axes# [c for c in available_axes if c != 'study_id']
+    metric_categories = available_axes  # [c for c in available_axes if c != 'study_id']
 
     for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
@@ -794,15 +807,12 @@ def run_exploration_on_dataframe(
 
         X_metric = X_base[valid_mask]
         text_labels_metric = text_labels_np[valid_mask]
-        batch_text_labels_metric = np.array(meta_df['study_id'].tolist(), dtype=str)[valid_mask]
+        batch_text_labels_metric = np.array(meta_df["study_id"].tolist(), dtype=str)[valid_mask]
 
         unique_classes = np.unique(text_labels_metric)
-        
+
         # Convert text labels to numeric codes for sklearn metrics
-        if len(unique_classes) > 0:
-            num_labels_metric = pd.Series(text_labels_metric).astype('category').cat.codes.values
-        else:
-            num_labels_metric = []
+        num_labels_metric = pd.Series(text_labels_metric).astype("category").cat.codes.values if len(unique_classes) > 0 else []
 
         if X_metric.shape[0] < 5 or len(unique_classes) < 2:
             print(f"  Not enough valid samples/classes for {cat}.")
@@ -810,8 +820,8 @@ def run_exploration_on_dataframe(
         else:
             X_rep_metric = X_metric
             sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
-            
-            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init='auto').fit(X_rep_metric)
+
+            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
             ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
 
             knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
@@ -819,86 +829,70 @@ def run_exploration_on_dataframe(
 
             var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
             batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
-            
+
             print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
         # Format strictly for the plot_metrics_comparison (long-format DataFrame)
-        for metric_name, val in [
-            ('Silhouette', sil_score), ('ARI', ari_score), 
-            ('KNN_Purity', knn_purity), ('Variance_Explained', var_explained), 
-            ('Batch_ASW_within_Bio', batch_asw)
-        ]:
-            results_summary.append({
-                'Label_Axis': cat, 
-                'Metric': metric_name,
-                'Value': val
-            })
+        for metric_name, val in [("Silhouette", sil_score), ("ARI", ari_score), ("KNN_Purity", knn_purity), ("Variance_Explained", var_explained), ("Batch_ASW_within_Bio", batch_asw)]:
+            results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
 
     print(f"\nGenerating standard UMAP & TSNE for {experiment_name}...")
-    
+
     # Run PCA first to feed into UMAP/TSNE
-    pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0]-1, df_aligned.shape[1]-1))
-        
+    pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0] - 1, df_aligned.shape[1] - 1))
+
     embeddings_out = {}
     for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne), ("bulk", run_bulkformer)]:
-        if method == 'bulk':
-            emb = run_func(df_aligned)
-        else:
-            emb = run_func(pca_embedding)
+        emb = run_func(df_aligned) if method == "bulk" else run_func(pca_embedding)
         embeddings_out[method] = emb
 
-    #---- ADDED:
-    print('Generating metric values for Bulk latent space data...')
+    # ---- ADDED:
+    print("Generating metric values for Bulk latent space data...")
     for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
         text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
         valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
-        X_metric =embeddings_out['bulk'][valid_mask]
+        X_metric = embeddings_out["bulk"][valid_mask]
         text_labels_metric = text_labels_np[valid_mask]
-        batch_text_labels_metric = np.array(meta_df['study_id'].tolist(), dtype=str)[valid_mask]
+        batch_text_labels_metric = np.array(meta_df["study_id"].tolist(), dtype=str)[valid_mask]
 
         unique_classes = np.unique(text_labels_metric)
-        
+
         # Convert text labels to numeric codes for sklearn metrics
-        if len(unique_classes) > 0:
-            num_labels_metric = pd.Series(text_labels_metric).astype('category').cat.codes.values
-        else:
-            num_labels_metric = []
+        num_labels_metric = pd.Series(text_labels_metric).astype("category").cat.codes.values if len(unique_classes) > 0 else []
 
         if X_metric.shape[0] < 5 or len(unique_classes) < 2:
             print(f"  Not enough valid samples/classes for {cat}.")
             sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
         else:
             X_rep_metric = X_metric
-            sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
-            
-            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init='auto').fit(X_rep_metric)
-            ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
+            sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))  # pyright: ignore[reportArgumentType]
+
+            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
+            ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)  # pyright: ignore[reportArgumentType]
 
             knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
-            knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
+            knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()  # pyright: ignore[reportArgumentType]
 
             var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
             batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
-            
+
             print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
         # Format strictly for the plot_metrics_comparison (long-format DataFrame)
         for metric_name, val in [
-            ('Bulk Silhouette', sil_score), ('Bulk ARI', ari_score), 
-            ('Bulk KNN_Purity', knn_purity), ('Bulk Variance_Explained', var_explained), 
-            ('Bulk Batch_ASW_within_Bio', batch_asw)
+            ("Bulk Silhouette", sil_score),
+            ("Bulk ARI", ari_score),
+            ("Bulk KNN_Purity", knn_purity),
+            ("Bulk Variance_Explained", var_explained),
+            ("Bulk Batch_ASW_within_Bio", batch_asw),
         ]:
-            results_summary.append({
-                'Label_Axis': cat, 
-                'Metric': metric_name,
-                'Value': val
-            })
+            results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
 
     # --- END OF ADDED
     res_df = pd.DataFrame(results_summary)
-    res_df.to_csv(f'{output_folder}/{experiment_name}_metrics.csv', index=False)
+    res_df.to_csv(f"{output_folder}/{experiment_name}_metrics.csv", index=False)
     return res_df, embeddings_out, meta_df
 
 
@@ -907,7 +901,6 @@ def run_exploration_on_dataframe(
 # ==========================================
 
 if __name__ == "__main__":
-    
     # parser = argparse.ArgumentParser()
     # # parser.add_argument("--ma", action="store_true", default=False)
     # parser.add_argument("--rna", action="store_true", default=False)
@@ -918,103 +911,68 @@ if __name__ == "__main__":
     all_tsnes = {}
     all_metas = {}
     all_bulk = {}
-    
+
     print("Loading Labels Map...")
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
-    if RNA_USED:
-      stages = ['Salmon_RNAseq_Combined_TPM', 'filter','combat_seq', 'rankin']
-    else:
-      stages = ['filter', 'study_corrected', 'rankin']
+    stages = ["Salmon_RNAseq_Combined_TPM", "filter", "combat_seq", "rankin"] if RNA_USED else ["filter", "study_corrected", "rankin"]
     for file in stages:
-        if RNA_USED:
-          data_path = f'{STORAGE_DIR}final_data/rnaseq_processed/{file}.csv'
-        else:
-          data_path = f'{STORAGE_DIR}final_data/{file}.csv'
-        
+        data_path = f"{STORAGE_DIR}final_data/rnaseq_processed/{file}.csv" if RNA_USED else f"{STORAGE_DIR}final_data/{file}.csv"
+
         if os.path.exists(data_path):
-            print(f"\n{'='*50}\nProcessing {file}\n{'='*50}")
+            print(f"\n{'=' * 50}\nProcessing {file}\n{'=' * 50}")
             # df = pd.read_csv(data_path, index_col=0)
             if N_SAMPLES is not None:
-                # imputed.csv is genes × samples, so columns 1..N_SAMPLES+1 = first N samples
-                print(f'Loading first {data_path} samples (memory-saving mode)...')
-                df = pd.read_csv(data_path, index_col=0,
-                                usecols=list(range(N_SAMPLES + 1)))
+                # imputed.csv is genes * samples, so columns 1..N_SAMPLES+1 = first N samples
+                print(f"Loading first {data_path} samples (memory-saving mode)...")
+                df = pd.read_csv(data_path, index_col=0, usecols=list(range(N_SAMPLES + 1)))
             else:
                 df = pd.read_csv(data_path, index_col=0)
             # df = df.iloc[:, :200]
             print("  Cleaning sample IDs...")
-            df.columns = [c.split('.')[0].upper() for c in df.columns]
+            df.columns = [c.split(".")[0].upper() for c in df.columns]
 
             print("  Backfilling missing study_ids using get_study()...")
-            if 'study_id' not in labels_map:
-                labels_map['study_id'] = {}
-                
+            if "study_id" not in labels_map:
+                labels_map["study_id"] = {}
+
             count_filled = 0
             for sample in df.columns:
-                if sample not in labels_map['study_id']:
+                if sample not in labels_map["study_id"]:
                     # Look up the sample in the map's index; default to "Unknown_Study" if missing
-                    if sample in SAMPLE_STUDY_MAP.index:
-                        study_val = str(SAMPLE_STUDY_MAP.at[sample, 'StudyID'])
-                    else:
-                        study_val = "Unknown_Study"
-                    
-                    labels_map['study_id'][sample.upper()] = study_val
+                    study_val = str(SAMPLE_STUDY_MAP.at[sample, "StudyID"]) if sample in SAMPLE_STUDY_MAP.index else "Unknown_Study"
+
+                    labels_map["study_id"][sample.upper()] = study_val
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
             output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
-            
-            metrics_df, embeddings, meta_df = run_exploration_on_dataframe(
-                data_df=df,
-                labels_dict=labels_map,
-                experiment_name=file,
-                output_folder=output_dir
-            )
-            
+
+            metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+
             all_metrics[file] = metrics_df
-            all_umaps[file] = embeddings['UMAP']
-            all_tsnes[file] = embeddings['TSNE']
-            all_bulk[file] = embeddings['bulk']
+            all_umaps[file] = embeddings["UMAP"]
+            all_tsnes[file] = embeddings["TSNE"]
+            all_bulk[file] = embeddings["bulk"]
             all_metas[file] = meta_df
-            
+
         else:
             print(f"Error: Data file not found at {data_path}")
 
-    # Generate the Comparison Plots 
+    # Generate the Comparison Plots
     # if len(all_metrics) > 1:
     if True:
         comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
         os.makedirs(comparison_output_dir, exist_ok=True)
-        
+
         print("\nGenerating Metric Comparisons...")
         # Ironed out the argument name to properly use 'output_dir' as expected by plot_metrics_comparison
-        plot_metrics_comparison(
-            metrics_dict=all_metrics, 
-            metadata_df=pd.DataFrame(labels_map),
-            bio_targets = LABEL_AXES,
-            output_folder=comparison_output_dir
-        )
-        
+        plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+
         print("Generating linked multi-stage UMAP comparison...")
-        plot_combined_interactive_projections(
-            embeddings_dict=all_umaps, 
-            meta_dicts=all_metas, 
-            title="UMAP Cross-Stage Comparison", 
-            output_path=f"{comparison_output_dir}/Combined_UMAP.html"
-        )
-        
+        plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
+
         print("Generating linked multi-stage t-SNE comparison...")
-        plot_combined_interactive_projections(
-            embeddings_dict=all_tsnes, 
-            meta_dicts=all_metas, 
-            title="t-SNE Cross-Stage Comparison", 
-            output_path=f"{comparison_output_dir}/Combined_TSNE.html"
-        )
+        plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
         print("Generating Bulk comparison...")
-        plot_combined_interactive_projections(
-            embeddings_dict=all_bulk, 
-            meta_dicts=all_metas, 
-            title="Bulk Cross-Stage Comparison", 
-            output_path=f"{comparison_output_dir}/Combined_bulk.html"
-        )
+        plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")

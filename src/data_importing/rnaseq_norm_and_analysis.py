@@ -18,36 +18,36 @@ ComBat-seq reference:
 
 import os
 import sys
+from collections import Counter
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from collections import Counter
-from sklearn.decomposition import TruncatedSVD
-import matplotlib.pyplot as plt
 
 # --- R integration ---
 import rpy2.robjects as ro
-from rpy2.robjects import numpy2ri, pandas2ri
-from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
+from rpy2.robjects.packages import importr
 
-module_dir = './'
+module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import *   # provides STORAGE_DIR, COMBINED_DATA_OUTPUT_FILE, etc.
-from src.data_importing.data_norm_and_analisys import run_rank_in_normalization
-from src.data_importing.data_norm_and_analisys import run_rank_in_normalization
+from src.constants import STORAGE_DIR  # provides STORAGE_DIR, COMBINED_DATA_OUTPUT_FILE, etc.  # noqa: E402
+from src.data_importing.data_norm_and_analisys import run_rank_in_normalization  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths  (edit RNASEQ_DATA_DIR / RNASEQ_FIGURES_DIR in src/constants.py
 #         or override here)
 # ---------------------------------------------------------------------------
-RNASEQ_COMBINED   = os.path.join(STORAGE_DIR, "final_data/rnaseq_processed", "Salmon_RNAseq_Combined_TPM.csv")
-RNASEQ_DATA_DIR   = os.path.join(STORAGE_DIR, "final_data", "rnaseq_processed")
-RNASEQ_FIGURES    = os.path.join(STORAGE_DIR, "figures", "rnaseq_filtering")
+RNASEQ_COMBINED = os.path.join(STORAGE_DIR, "final_data/rnaseq_processed", "Salmon_RNAseq_Combined_TPM.csv")
+RNASEQ_DATA_DIR = os.path.join(STORAGE_DIR, "final_data", "rnaseq_processed")
+RNASEQ_FIGURES = os.path.join(STORAGE_DIR, "figures", "rnaseq_filtering")
 
 
 # ---------------------------------------------------------------------------
 # Helpers — batch label extraction
 # ---------------------------------------------------------------------------
+
 
 def get_gse_from_col(col: str) -> str:
     """
@@ -55,7 +55,7 @@ def get_gse_from_col(col: str) -> str:
     Works whether the column has already been renamed to a GSM or still
     carries the original GSE_SRR format.
     """
-    return col.split('_')[0]
+    return col.split("_", maxsplit=1)[0]
 
 
 def get_batch_labels(columns) -> list[str]:
@@ -67,54 +67,54 @@ def get_batch_labels(columns) -> list[str]:
 # 1. Filtering
 # ---------------------------------------------------------------------------
 
+
 def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, output_path: str):
     print("  [Plot] Generating filtering summary...")
     fig = plt.figure(figsize=(16, 12))
-    fig.suptitle('RNA-seq Data Filtering Summary', fontsize=20, fontweight='bold')
+    fig.suptitle("RNA-seq Data Filtering Summary", fontsize=20, fontweight="bold")
 
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 2.5])
 
     ax_bars = fig.add_subplot(gs[0, :])
-    categories = ['Genes (Rows)', 'Samples (Columns)']
+    categories = ["Genes (Rows)", "Samples (Columns)"]
     before_counts = [df_before.shape[0], df_before.shape[1]]
-    after_counts  = [df_after.shape[0],  df_after.shape[1]]
+    after_counts = [df_after.shape[0], df_after.shape[1]]
     x, w = np.arange(2), 0.35
-    ax_bars.bar(x - w/2, before_counts, w, label='Before', color='#ff9999', edgecolor='black')
-    ax_bars.bar(x + w/2, after_counts,  w, label='After',  color='#66b3ff', edgecolor='black')
-    ax_bars.set_xticks(x); ax_bars.set_xticklabels(categories, fontsize=12)
-    ax_bars.set_ylabel('Count'); ax_bars.legend()
-    ax_bars.set_title('Genes and Samples Before vs After Filtering')
+    ax_bars.bar(x - w / 2, before_counts, w, label="Before", color="#ff9999", edgecolor="black")
+    ax_bars.bar(x + w / 2, after_counts, w, label="After", color="#66b3ff", edgecolor="black")
+    ax_bars.set_xticks(x)
+    ax_bars.set_xticklabels(categories, fontsize=12)
+    ax_bars.set_ylabel("Count")
+    ax_bars.legend()
+    ax_bars.set_title("Genes and Samples Before vs After Filtering")
     for i, v in enumerate(before_counts):
-        ax_bars.text(i - w/2, v * 1.01, f"{v:,}", ha='center', fontweight='bold')
+        ax_bars.text(i - w / 2, v * 1.01, f"{v:,}", ha="center", fontweight="bold")
     for i, v in enumerate(after_counts):
-        ax_bars.text(i + w/2, v * 1.01, f"{v:,}", ha='center', fontweight='bold')
+        ax_bars.text(i + w / 2, v * 1.01, f"{v:,}", ha="center", fontweight="bold")
 
     for ax, df, label in [
-        (fig.add_subplot(gs[1, 0]), df_before, 'Before'),
-        (fig.add_subplot(gs[1, 1]), df_after,  'After'),
+        (fig.add_subplot(gs[1, 0]), df_before, "Before"),
+        (fig.add_subplot(gs[1, 1]), df_after, "After"),
     ]:
-        ax.imshow((df.isna() | (df == 0)), aspect='auto', cmap='viridis', interpolation='nearest')
+        ax.imshow((df.isna() | (df == 0)), aspect="auto", cmap="viridis", interpolation="nearest")
         pct = ((df.isna() | (df == 0)).sum().sum() / df.size) * 100
-        ax.set_title(f'Missingness {label}\n({pct:.1f}% missing)')
-        ax.set_xlabel('Samples'); ax.set_ylabel('Genes')
+        ax.set_title(f"Missingness {label}\n({pct:.1f}% missing)")
+        ax.set_xlabel("Samples")
+        ax.set_ylabel("Genes")
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # pyright: ignore[reportArgumentType]
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  [Plot] Saved to {output_path}")
 
 
-def run_filtering(
-    raw_df: pd.DataFrame,
-    gene_nan_pct: float = 100.0,
-    sample_nan_pct: float = 60.0
-) -> pd.DataFrame:
+def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_pct: float = 60.0) -> pd.DataFrame:
     """
     RNA-seq sample and gene filtering:
 
-    1. Removes genes (rows) if they have a value of NaN or 0 in more than 
+    1. Removes genes (rows) if they have a value of NaN or 0 in more than
        `gene_nan_pct`% of the samples.
-    2. Removes samples (columns) if they have a value of NaN or 0 in more than 
+    2. Removes samples (columns) if they have a value of NaN or 0 in more than
        `sample_nan_pct`% of the remaining genes.
 
     Parameters
@@ -129,13 +129,13 @@ def run_filtering(
     # STEP 1: Filter Genes (Rows)
     # ==========================================
     is_zero_or_nan = raw_df.isna() | (raw_df == 0)
-    
+
     # Calculate the percentage of 0/NaN values per gene (across columns -> axis=1)
     invalid_pct_per_gene = is_zero_or_nan.mean(axis=1) * 100
-    
+
     # Keep only the genes (rows) that fall below or equal to the threshold
     raw_df = raw_df.loc[invalid_pct_per_gene <= gene_nan_pct, :]
-    
+
     print(f"  [Filter] After gene filtering (≤{gene_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
     # ==========================================
@@ -143,21 +143,22 @@ def run_filtering(
     # ==========================================
     # Recalculate 0/NaN mask for the newly reduced dataframe
     is_zero_or_nan = raw_df.isna() | (raw_df == 0)
-    
+
     # Calculate the percentage of 0/NaN values per sample (across rows -> axis=0)
     invalid_pct_per_sample = is_zero_or_nan.mean(axis=0) * 100
-    
+
     # Keep only the samples (columns) that fall below or equal to the threshold
     raw_df = raw_df.loc[:, invalid_pct_per_sample <= sample_nan_pct]
 
     print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
-    
+
     return raw_df
 
 
 # ---------------------------------------------------------------------------
 # 2. ComBat-seq  (count-space batch correction via R's sva package)
 # ---------------------------------------------------------------------------
+
 
 def run_combat_seq(
     counts_df: pd.DataFrame,
@@ -179,33 +180,31 @@ def run_combat_seq(
     """
     print("  [ComBat-seq] Loading R sva package...")
     try:
-        sva  = importr('sva')
-        base = importr('base')
+        sva = importr("sva")
+        base = importr("base")
     except Exception as e:
-        raise ImportError(
-            "R package 'sva' not found. Install with:\n"
-            "  BiocManager::install('sva')"
-        ) from e
+        msg = "R package 'sva' not found. Install with:\n  BiocManager::install('sva')"
+        raise ImportError(msg) from e
 
     # ComBat-seq requires integer counts — coerce
     counts_int = counts_df.fillna(0).astype(int)
     print(f"  [ComBat-seq] Input: {counts_int.shape[0]} genes × {counts_int.shape[1]} samples")
 
-    # Genes × samples matrix → R integer matrix
+    # Genes * samples matrix → R integer matrix
     counts_r = ro.r.matrix(
-        ro.IntVector(counts_int.values.flatten(order='F')),
+        ro.IntVector(counts_int.values.flatten(order="F")),
         nrow=counts_int.shape[0],
         ncol=counts_int.shape[1],
-    )
+    )  # pyright: ignore[reportCallIssue]
 
     batch_r = ro.StrVector(batch_labels)
 
     # Build covariate model matrix if provided
-    covar_mod_r = ro.r('NULL')
+    covar_mod_r = ro.r("NULL")
     if covar_df is not None and not covar_df.empty:
         print(f"  [ComBat-seq] Building covariate model for: {list(covar_df.columns)}")
         covar_df = covar_df.astype(str)
-        stats = importr('stats')
+        stats = importr("stats")
         with localconverter(ro.default_converter + pandas2ri.converter):
             covar_r = ro.conversion.py2rpy(covar_df)
         formula = ro.Formula("~ " + " + ".join(covar_df.columns))
@@ -213,9 +212,9 @@ def run_combat_seq(
 
     print("  [ComBat-seq] Running sva::ComBat_seq (this may take several minutes)...")
     corrected_r = sva.ComBat_seq(
-        counts  = counts_r,
-        batch   = batch_r,
-        covar_mod = covar_mod_r,
+        counts=counts_r,
+        batch=batch_r,
+        covar_mod=covar_mod_r,
     )
 
     # Free R memory before allocating Python copy
@@ -242,13 +241,14 @@ def run_combat_seq(
 # 4. Main pipeline
 # ---------------------------------------------------------------------------
 
+
 def run_rnaseq_preprocessing():
     os.makedirs(RNASEQ_DATA_DIR, exist_ok=True)
-    os.makedirs(RNASEQ_FIGURES,  exist_ok=True)
+    os.makedirs(RNASEQ_FIGURES, exist_ok=True)
 
-    filter_path      = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
-    combat_seq_path  = os.path.join(RNASEQ_DATA_DIR, "combat_seq.csv")
-    rankin_path      = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
+    filter_path = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
+    combat_seq_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq.csv")
+    rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
     if os.path.exists(filter_path):
@@ -262,7 +262,8 @@ def run_rnaseq_preprocessing():
         filtered_df = run_filtering(raw_df)
 
         plot_filtering_summary(
-            raw_df, filtered_df,
+            raw_df,
+            filtered_df,
             os.path.join(RNASEQ_FIGURES, "filtering_summary.svg"),
         )
         filtered_df.to_csv(filter_path)
@@ -283,7 +284,7 @@ def run_rnaseq_preprocessing():
         if single_batches:
             print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
 
-        valid_cols    = [c for c, b in zip(filtered_df.columns, batch_labels) if b not in single_batches]
+        valid_cols = [c for c, b in zip(filtered_df.columns, batch_labels, strict=False) if b not in single_batches]
         valid_batches = [b for b in batch_labels if b not in single_batches]
         df_for_combat = filtered_df[valid_cols]
 
@@ -310,9 +311,7 @@ def run_rnaseq_preprocessing():
             columns=combat_df.columns,
         )
 
-        rankin_df = run_rank_in_normalization(
-            df=log_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path
-        )
+        rankin_df = run_rank_in_normalization(df=log_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path)
         print(f"Saved Rank-in result → {rankin_path}")
 
     print("\n=== Pipeline Complete ===")
@@ -322,5 +321,5 @@ def run_rnaseq_preprocessing():
     return filtered_df, combat_df, rankin_df
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_rnaseq_preprocessing()

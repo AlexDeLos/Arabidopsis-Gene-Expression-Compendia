@@ -1,14 +1,12 @@
 import torch
 import torch.nn as nn
 
+
 class PositionalExprEmbedding(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.mask_token_id = -10
-        self.inv_freq = nn.Parameter(
-            1. / (100 ** (torch.arange(0, dim, 2).float() / dim)),
-            requires_grad=False
-        )
+        self.inv_freq = nn.Parameter(1.0 / (100 ** (torch.arange(0, dim, 2).float() / dim)), requires_grad=False)
 
     def forward(self, x):
         x_mask_idx = (x == self.mask_token_id).nonzero(as_tuple=False)

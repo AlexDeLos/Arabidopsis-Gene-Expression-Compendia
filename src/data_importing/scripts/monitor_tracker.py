@@ -1,42 +1,37 @@
-import os
 import json
-import time
-from datetime import datetime, timedelta
+import os
 import sys
+import time
+from datetime import datetime
 
-module_dir = './'
+module_dir = "./"
 sys.path.append(module_dir)
 
-from src.constants import *
+from src.constants import STATUS_DOWNLOADED, STATUS_ERROR, STATUS_IGNORE, STATUS_LOCKED, STATUS_PROCESSED, STORAGE_DIR  # noqa: E402
+
 
 def monitor_tracker(tracker_dir):
     if not os.path.exists(tracker_dir):
         print(f"Error: Tracker directory not found: {tracker_dir}")
         return
 
-    print(f"\n{'='*60}")
-    print(f"  CLUSTER MONITORING DASHBOARD")
+    print(f"\n{'=' * 60}")
+    print("  CLUSTER MONITORING DASHBOARD")
     print(f"  Source: {tracker_dir}")
     print(f"  Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # --- COUNTERS ---
-    stats = {
-        STATUS_LOCKED: 0,
-        STATUS_DOWNLOADED: 0,
-        STATUS_PROCESSED: 0,
-        STATUS_IGNORE: 0,
-        STATUS_ERROR: 0
-    }
-    
-    platform_stats = {} # {"GPL123": {"studies": 0, "samples": 0}}
+    stats = {STATUS_LOCKED: 0, STATUS_DOWNLOADED: 0, STATUS_PROCESSED: 0, STATUS_IGNORE: 0, STATUS_ERROR: 0}
+
+    platform_stats = {}  # {"GPL123": {"studies": 0, "samples": 0}}
     errors = []
-    
+
     # --- SPEED METRICS ---
     now = time.time()
     files_last_hour = 0
     files_last_24h = 0
-    
+
     # Get all files
     try:
         all_files = os.listdir(tracker_dir)
@@ -49,54 +44,56 @@ def monitor_tracker(tracker_dir):
     # --- SCAN LOOP ---
     for filename in all_files:
         filepath = os.path.join(tracker_dir, filename)
-        
+
         # 1. Process Status Files (.txt)
         if filename.endswith(".txt"):
             try:
                 # Get modification time for speed calculation
                 mtime = os.path.getmtime(filepath)
-                if now - mtime < 3600: # 1 hour
+                if now - mtime < 3600:  # 1 hour
                     files_last_hour += 1
-                if now - mtime < 86400: # 24 hours
+                if now - mtime < 86400:  # 24 hours
                     files_last_24h += 1
 
-                with open(filepath, 'r') as f:
+                with open(filepath) as f:
                     code = int(f.read().strip())
-                    
+
                 if code in stats:
                     stats[code] += 1
-                
+
                 if code == STATUS_ERROR:
                     errors.append(filename.replace(".txt", ""))
 
-            except:
-                pass # Ignore unreadable files
+            except Exception as e:
+                print(f"Found exception {e}, ignoring file {filename}")
 
         # 2. Process Metadata Files (.json) - For Platform stats
         elif filename.endswith("_meta.json"):
             try:
-                with open(filepath, 'r') as f:
+                with open(
+                    filepath,
+                ) as f:
                     data = json.load(f)
                     plat = data.get("platform", "Unknown")
                     samps = data.get("num_samples", 0)
-                    
+
                     if plat not in platform_stats:
                         platform_stats[plat] = {"studies": 0, "samples": 0}
-                    
+
                     platform_stats[plat]["studies"] += 1
                     platform_stats[plat]["samples"] += samps
-            except:
-                pass
+            except Exception as e:
+                print(f"Found exception {e}, ignoring file {filename}")
 
     # --- REPORTING ---
     total_processed = sum(stats.values())
-    
+
     # 1. STATUS BARS
     print("--- JOB STATUS ---")
     print(f"TOTAL FILES SEEN: {total_processed}")
-    
+
     # Helper for progress bar
-    def print_bar(label, count, total, color_code=""):
+    def print_bar(label, count, total, color_code=""):  # noqa: ARG001
         percent = (count / total * 100) if total > 0 else 0
         bar_len = 30
         filled = int(bar_len * percent / 100)
@@ -110,7 +107,7 @@ def monitor_tracker(tracker_dir):
     print_bar("PENDING (0)", stats[STATUS_LOCKED], total_processed)
 
     # 2. SPEED ESTIMATION
-    print(f"\n--- CLUSTER SPEED ---")
+    print("\n--- CLUSTER SPEED ---")
     print(f"Activity (Last 60 mins): {files_last_hour} files updated/created")
     print(f"Activity (Last 24 hrs):  {files_last_24h} files updated/created")
     if files_last_hour > 0:
@@ -120,14 +117,14 @@ def monitor_tracker(tracker_dir):
         print("Status:                  IDLE (No activity in last hour)")
 
     # 3. PLATFORM STATISTICS
-    print(f"\n--- TOP PLATFORMS (By Sample Count) ---")
+    print("\n--- TOP PLATFORMS (By Sample Count) ---")
     print(f"{'PLATFORM':<15} {'STUDIES':<10} {'SAMPLES':<10}")
     print("-" * 40)
-    
+
     # Sort by sample count descending
-    sorted_plats = sorted(platform_stats.items(), key=lambda item: item[1]['samples'], reverse=True)
-    
-    for plat, data in sorted_plats[:5]: # Show top 5
+    sorted_plats = sorted(platform_stats.items(), key=lambda item: item[1]["samples"], reverse=True)
+
+    for plat, data in sorted_plats[:5]:  # Show top 5
         print(f"{plat:<15} {data['studies']:<10} {data['samples']:<10}")
 
     # 4. ERROR LOG
@@ -140,12 +137,12 @@ def monitor_tracker(tracker_dir):
     else:
         print("\n--- NO ERRORS DETECTED ---")
 
-    print(f"\n{'='*60}\n")
+    print(f"\n{'=' * 60}\n")
+
 
 if __name__ == "__main__":
     # CONFIGURATION
     # Update this path to match your actual tracker storage location
 
     TRACKER_DIR = os.path.join(STORAGE_DIR, "rnaseq_data/file_tracker")
-    
     monitor_tracker(TRACKER_DIR)

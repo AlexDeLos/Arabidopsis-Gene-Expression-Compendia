@@ -61,9 +61,9 @@ import json
 import logging
 import os
 import re
-import sys
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -73,14 +73,14 @@ logging.basicConfig(
 )
 
 # ── TULIP constants ────────────────────────────────────────────────────────────
-TULIP_BASE_URL    = "https://api.tulip.tudelft.nl/chat/v1"
-TULIP_CHAT_MODEL  = "chat"
-TULIP_API_KEY     = os.environ.get("TULIP_API_KEY", "DUMMY_API_KEY")
-TULIP_MAX_TOKENS  = 2048  # Must be large enough for reasoning trace + JSON output.
-                          # The TULIP chat model is a reasoning model — it writes a
-                          # chain-of-thought into reasoning_content before producing
-                          # the final answer in content. 512 was too small; the model
-                          # exhausted the budget on thinking and left content empty.
+TULIP_BASE_URL = "https://api.tulip.tudelft.nl/chat/v1"
+TULIP_CHAT_MODEL = "chat"
+TULIP_API_KEY = os.environ.get("TULIP_API_KEY", "DUMMY_API_KEY")
+TULIP_MAX_TOKENS = 2048  # Must be large enough for reasoning trace + JSON output.
+# The TULIP chat model is a reasoning model — it writes a
+# chain-of-thought into reasoning_content before producing
+# the final answer in content. 512 was too small; the model
+# exhausted the budget on thinking and left content empty.
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
 _SYSTEM_PROMPT = """\
@@ -132,20 +132,25 @@ Evaluate each assigned label and return your verdict as a JSON object.
 # Metadata fields to pull from the raw sample JSON, in priority order.
 # We keep this list lean — enough context for the LLM without hitting token limits.
 _METADATA_FIELDS = [
-    "title", "source_name_ch1", "characteristics_ch1",
-    "description", "molecule_ch1", "data_processing",
+    "title",
+    "source_name_ch1",
+    "characteristics_ch1",
+    "description",
+    "molecule_ch1",
+    "data_processing",
     "extract_protocol_ch1",
 ]
 _STUDY_FIELDS = ["summary", "overall_design"]
 
 # Verdict constants
-VERDICT_CORRECT   = "correct"
+VERDICT_CORRECT = "correct"
 VERDICT_INCORRECT = "incorrect"
 VERDICT_UNCERTAIN = "uncertain"
-VALID_VERDICTS    = {VERDICT_CORRECT, VERDICT_INCORRECT, VERDICT_UNCERTAIN}
+VALID_VERDICTS = {VERDICT_CORRECT, VERDICT_INCORRECT, VERDICT_UNCERTAIN}
 
 
 # ── TulipEvaluator ─────────────────────────────────────────────────────────────
+
 
 class TulipEvaluator:
     """
@@ -170,27 +175,21 @@ class TulipEvaluator:
 
     def __init__(
         self,
-        labels_path:   str,
+        labels_path: str,
         raw_data_path: str,
-        output_path:   str,
-        model:         str = TULIP_CHAT_MODEL,
-        timeout:       int = 60,
+        output_path: str,
+        model: str = TULIP_CHAT_MODEL,
+        timeout: int = 60,
     ) -> None:
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "The 'openai' package is required. Install with: pip install openai"
-            ) from exc
 
-        self.labels_path   = labels_path
+        self.labels_path = labels_path
         self.raw_data_path = raw_data_path
-        self.output_path   = output_path
-        self.model         = model
-        self._client       = OpenAI(
-            base_url = TULIP_BASE_URL,
-            api_key  = TULIP_API_KEY,
-            timeout  = timeout,
+        self.output_path = output_path
+        self.model = model
+        self._client = OpenAI(
+            base_url=TULIP_BASE_URL,
+            api_key=TULIP_API_KEY,
+            timeout=timeout,
         )
         os.makedirs(output_path, exist_ok=True)
         logger.info("TulipEvaluator ready (model=%s)", self.model)
@@ -199,9 +198,9 @@ class TulipEvaluator:
 
     def run(
         self,
-        studies:     Optional[List[str]] = None,
-        max_samples: Optional[int]       = None,
-    ) -> Dict:
+        studies: list[str] | None = None,
+        max_samples: int | None = None,
+    ) -> dict:
         """
         Evaluate all studies (or a subset) and write results to output_path.
 
@@ -234,7 +233,7 @@ class TulipEvaluator:
             {k: len(v) for k, v in canonical_options.items()},
         )
 
-        global_counts: Dict[str, Dict[str, int]] = {}   # label → verdict → count
+        global_counts: dict[str, dict[str, int]] = {}  # label → verdict → count
 
         for study_id, label_file in study_files.items():
             study_result_path = os.path.join(self.output_path, f"{study_id}_eval.json")
@@ -248,10 +247,10 @@ class TulipEvaluator:
 
             logger.info("Evaluating %s ...", study_id)
             study_result = self._evaluate_study(
-                study_id        = study_id,
-                label_file      = label_file,
-                canonical_options = canonical_options,
-                max_samples     = max_samples,
+                study_id=study_id,
+                label_file=label_file,
+                canonical_options=canonical_options,
+                max_samples=max_samples,
             )
 
             # Write per-study result immediately (crash-safe)
@@ -268,11 +267,11 @@ class TulipEvaluator:
 
     def _evaluate_study(
         self,
-        study_id:          str,
-        label_file:        str,
-        canonical_options: Dict[str, List[str]],
-        max_samples:       Optional[int],
-    ) -> Dict:
+        study_id: str,
+        label_file: str,
+        canonical_options: dict[str, list[str]],
+        max_samples: int | None,
+    ) -> dict:
         """Evaluate all samples in one study and return the full result dict."""
         labels = self._load_json(label_file)
         raw_study_dir = os.path.join(self.raw_data_path, study_id)
@@ -280,7 +279,7 @@ class TulipEvaluator:
         # Load the study-level metadata once (used as context for all samples)
         study_meta = self._load_study_metadata(raw_study_dir)
 
-        per_sample: Dict[str, Dict] = {}
+        per_sample: dict[str, dict] = {}
         sample_ids = list(labels.keys())
         if max_samples:
             sample_ids = sample_ids[:max_samples]
@@ -290,11 +289,11 @@ class TulipEvaluator:
             raw_sample_meta = self._load_sample_metadata(raw_study_dir, sample_id)
 
             verdict = self._evaluate_sample(
-                sample_id         = sample_id,
-                assigned          = assigned,
-                sample_metadata   = raw_sample_meta,
-                study_metadata    = study_meta,
-                canonical_options = canonical_options,
+                sample_id=sample_id,
+                assigned=assigned,
+                sample_metadata=raw_sample_meta,
+                study_metadata=study_meta,
+                canonical_options=canonical_options,
             )
             per_sample[sample_id] = verdict
 
@@ -305,32 +304,32 @@ class TulipEvaluator:
 
     def _evaluate_sample(
         self,
-        sample_id:         str,
-        assigned:          Dict[str, List[str]],
-        sample_metadata:   Dict,
-        study_metadata:    Dict,
-        canonical_options: Dict[str, List[str]],
-    ) -> Dict:
+        sample_id: str,
+        assigned: dict[str, list[str]],
+        sample_metadata: dict,
+        study_metadata: dict,
+        canonical_options: dict[str, list[str]],
+    ) -> dict:
         """
         Ask TULIP to evaluate the assigned labels for one sample.
         Returns the raw verdicts dict plus any parse error info.
         """
         prompt = self._build_eval_prompt(
-            assigned          = assigned,
-            sample_metadata   = sample_metadata,
-            study_metadata    = study_metadata,
-            canonical_options = canonical_options,
+            assigned=assigned,
+            sample_metadata=sample_metadata,
+            study_metadata=study_metadata,
+            canonical_options=canonical_options,
         )
 
         try:
             response = self._client.chat.completions.create(
-                model       = self.model,
-                messages    = [
+                model=self.model,
+                messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt},
+                    {"role": "user", "content": prompt},
                 ],
-                max_tokens  = TULIP_MAX_TOKENS,
-                temperature = 0.0,
+                max_tokens=TULIP_MAX_TOKENS,
+                temperature=0.0,
             )
             msg = response.choices[0].message
 
@@ -344,14 +343,12 @@ class TulipEvaluator:
                 reasoning = getattr(msg, "reasoning_content", None) or ""
                 if reasoning:
                     logger.warning(
-                        "content was empty (finish_reason=%s); "
-                        "attempting to extract JSON from reasoning_content",
+                        "content was empty (finish_reason=%s); attempting to extract JSON from reasoning_content",
                         response.choices[0].finish_reason,
                     )
                     raw_text = reasoning
 
-            verdicts = self._parse_verdicts(raw_text, list(assigned.keys()),
-                                            canonical_options=canonical_options)
+            verdicts = self._parse_verdicts(raw_text, list(assigned.keys()), canonical_options=canonical_options)
             return {
                 "assigned": assigned,
                 "verdicts": verdicts,
@@ -372,10 +369,10 @@ class TulipEvaluator:
 
     def _build_eval_prompt(
         self,
-        assigned:          Dict[str, List[str]],
-        sample_metadata:   Dict,
-        study_metadata:    Dict,
-        canonical_options: Dict[str, List[str]],
+        assigned: dict[str, list[str]],
+        sample_metadata: dict,
+        study_metadata: dict,
+        canonical_options: dict[str, list[str]],
     ) -> str:
         # --- Metadata block ---
         meta_lines = []
@@ -410,15 +407,14 @@ class TulipEvaluator:
         assigned_block = "\n".join(assigned_lines)
 
         return _USER_PROMPT_TEMPLATE.format(
-            metadata_block = metadata_block,
-            options_block  = options_block,
-            assigned_block = assigned_block,
+            metadata_block=metadata_block,
+            options_block=options_block,
+            assigned_block=assigned_block,
         )
 
     # ── Response parsing ───────────────────────────────────────────────────────
 
-    def _parse_verdicts(self, raw_text: str, expected_labels: List[str],
-                        canonical_options: Optional[Dict[str, List[str]]] = None) -> Dict:
+    def _parse_verdicts(self, raw_text: str, expected_labels: list[str], canonical_options: dict[str, list[str]] | None = None) -> dict:
         """
         Parse the JSON verdict block from the model response.
         Falls back gracefully if the model returns malformed output.
@@ -450,8 +446,7 @@ class TulipEvaluator:
         return result
 
     @staticmethod
-    def _normalise_verdict(raw: Dict, label: str,
-                           allowed_values: Optional[List[str]] = None) -> Dict:
+    def _normalise_verdict(raw: dict, label: str, allowed_values: list[str] | None = None) -> dict:
         """
         Ensure a single verdict dict has the expected structure.
 
@@ -463,9 +458,9 @@ class TulipEvaluator:
         """
         if not isinstance(raw, dict):
             return {
-                "verdict":    VERDICT_UNCERTAIN,
+                "verdict": VERDICT_UNCERTAIN,
                 "suggestion": None,
-                "reason":     "Malformed verdict from model",
+                "reason": "Malformed verdict from model",
             }
         verdict = raw.get("verdict", VERDICT_UNCERTAIN)
         if verdict not in VALID_VERDICTS:
@@ -480,40 +475,32 @@ class TulipEvaluator:
             lower_map = {v.lower(): v for v in allowed_values}
             canonical = lower_map.get(suggestion.lower())
             if canonical:
-                suggestion = canonical          # correct capitalisation
+                suggestion = canonical  # correct capitalisation
             else:
                 # Model suggested a value outside the ontology — downgrade
-                logger.debug(
-                    "Suggestion '%s' for label '%s' not in canonical options; "
-                    "downgrading verdict to uncertain", suggestion, label
-                )
-                verdict    = VERDICT_UNCERTAIN
+                logger.debug("Suggestion '%s' for label '%s' not in canonical options; downgrading verdict to uncertain", suggestion, label)
+                verdict = VERDICT_UNCERTAIN
                 suggestion = None
 
         return {
-            "verdict":    verdict,
+            "verdict": verdict,
             "suggestion": suggestion if verdict == VERDICT_INCORRECT else None,
-            "reason":     str(raw.get("reason", ""))[:300],
+            "reason": str(raw.get("reason", ""))[:300],
         }
 
     @staticmethod
-    def _unknown_verdicts(labels: List[str], reason: str = "") -> Dict:
-        return {
-            label: {"verdict": VERDICT_UNCERTAIN, "suggestion": None, "reason": reason}
-            for label in labels
-        }
+    def _unknown_verdicts(labels: list[str], reason: str = "") -> dict:
+        return {label: {"verdict": VERDICT_UNCERTAIN, "suggestion": None, "reason": reason} for label in labels}
 
     # ── Summary helpers ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_study_summary(per_sample: Dict) -> Dict:
+    def _build_study_summary(per_sample: dict) -> dict:
         """
         Aggregate verdicts across all samples in a study.
         Returns per-label counts and accuracy (correct / (correct + incorrect)).
         """
-        counts: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: {VERDICT_CORRECT: 0, VERDICT_INCORRECT: 0, VERDICT_UNCERTAIN: 0}
-        )
+        counts: dict[str, dict[str, int]] = defaultdict(lambda: {VERDICT_CORRECT: 0, VERDICT_INCORRECT: 0, VERDICT_UNCERTAIN: 0})
         for sample_data in per_sample.values():
             for label, verdict_obj in sample_data.get("verdicts", {}).items():
                 v = verdict_obj.get("verdict", VERDICT_UNCERTAIN)
@@ -522,15 +509,12 @@ class TulipEvaluator:
         summary = {}
         for label, vc in counts.items():
             total_decided = vc[VERDICT_CORRECT] + vc[VERDICT_INCORRECT]
-            accuracy = (
-                round(vc[VERDICT_CORRECT] / total_decided, 3)
-                if total_decided > 0 else None
-            )
+            accuracy = round(vc[VERDICT_CORRECT] / total_decided, 3) if total_decided > 0 else None
             summary[label] = {**vc, "accuracy": accuracy}
         return summary
 
     @staticmethod
-    def _accumulate_global(per_sample: Dict, global_counts: Dict) -> None:
+    def _accumulate_global(per_sample: dict, global_counts: dict) -> None:
         """Merge a study's per-sample verdicts into the global counter."""
         for sample_data in per_sample.values():
             for label, verdict_obj in sample_data.get("verdicts", {}).items():
@@ -544,29 +528,26 @@ class TulipEvaluator:
                 global_counts[label][v] += 1
 
     @staticmethod
-    def _build_global_summary(global_counts: Dict) -> Dict:
+    def _build_global_summary(global_counts: dict) -> dict:
         summary = {}
         for label, vc in global_counts.items():
             total_decided = vc[VERDICT_CORRECT] + vc[VERDICT_INCORRECT]
-            accuracy = (
-                round(vc[VERDICT_CORRECT] / total_decided, 3)
-                if total_decided > 0 else None
-            )
+            accuracy = round(vc[VERDICT_CORRECT] / total_decided, 3) if total_decided > 0 else None
             summary[label] = {**vc, "accuracy": accuracy}
         return summary
 
     # ── Canonical options ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _derive_canonical_options(study_files: Dict[str, str]) -> Dict[str, List[str]]:
+    def _derive_canonical_options(study_files: dict[str, str]) -> dict[str, list[str]]:
         """
         Scan all label files and collect unique values per label axis.
         This keeps the evaluator in sync with whatever ontology the pipeline used.
         """
-        options: Dict[str, set] = defaultdict(set)
+        options: dict[str, set] = defaultdict(set)
         for path in study_files.values():
             try:
-                data = json.loads(open(path).read())
+                data = json.loads(open(path).read())  # noqa: SIM115
                 for sample_labels in data.values():
                     if not isinstance(sample_labels, dict):
                         continue
@@ -575,16 +556,15 @@ class TulipEvaluator:
                             for v in values:
                                 if v not in ("unspecified", "unknown"):
                                     options[label].add(v)
-                        elif isinstance(values, str):
-                            if values not in ("unspecified", "unknown"):
-                                options[label].add(values)
+                        elif isinstance(values, str) and values not in ("unspecified", "unknown"):
+                            options[label].add(values)
             except Exception:
                 pass
         return {label: sorted(vals) for label, vals in options.items()}
 
     # ── File / path helpers ────────────────────────────────────────────────────
 
-    def _discover_studies(self, studies: Optional[List[str]]) -> Dict[str, str]:
+    def _discover_studies(self, studies: list[str] | None) -> dict[str, str]:
         """Return {study_id: label_file_path} for studies to evaluate."""
         result = {}
         for fname in os.listdir(self.labels_path):
@@ -596,16 +576,16 @@ class TulipEvaluator:
             result[study_id] = os.path.join(self.labels_path, fname)
         return result
 
-    def _load_sample_metadata(self, study_dir: str, sample_id: str) -> Dict:
+    def _load_sample_metadata(self, study_dir: str, sample_id: str) -> dict:
         """Load the raw sample JSON and return only the sample_metadata dict."""
-        path = os.path.join(study_dir, f"{study_dir.split('/')[-1]}_{sample_id}.json")
+        path = os.path.join(study_dir, f"{study_dir.rsplit('/', maxsplit=1)[-1]}_{sample_id}.json")
         try:
             raw = self._load_json(path)
             return raw.get("sample_metadata", {})
         except Exception:
             return {}
 
-    def _load_study_metadata(self, study_dir: str) -> Dict:
+    def _load_study_metadata(self, study_dir: str) -> dict:
         """
         Load study-level metadata. The pipeline stores it in each sample file
         under the 'study_metadata' key — we only need to read one sample file.
@@ -620,87 +600,56 @@ class TulipEvaluator:
         return {}
 
     @staticmethod
-    def _load_json(path: str) -> Dict:
-        with open(path, "r") as f:
+    def _load_json(path: str) -> dict:
+        with open(path) as f:
             return json.load(f)
 
     @staticmethod
-    def _save_json(path: str, data: Dict) -> None:
+    def _save_json(path: str, data: dict) -> None:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
     # ── Logging helpers ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _log_study_summary(study_id: str, summary: Dict) -> None:
+    def _log_study_summary(study_id: str, summary: dict) -> None:
         lines = [f"\n  Study {study_id}:"]
         for label, stats in summary.items():
             acc = f"{stats['accuracy']:.1%}" if stats["accuracy"] is not None else "n/a"
-            lines.append(
-                f"    {label:<12} "
-                f"correct={stats[VERDICT_CORRECT]:3d}  "
-                f"incorrect={stats[VERDICT_INCORRECT]:3d}  "
-                f"uncertain={stats[VERDICT_UNCERTAIN]:3d}  "
-                f"accuracy={acc}"
-            )
+            lines.append(f"    {label:<12} correct={stats[VERDICT_CORRECT]:3d}  incorrect={stats[VERDICT_INCORRECT]:3d}  uncertain={stats[VERDICT_UNCERTAIN]:3d}  accuracy={acc}")
         logger.info("\n".join(lines))
 
     @staticmethod
-    def _print_global_summary(summary: Dict) -> None:
+    def _print_global_summary(summary: dict) -> None:
         print("\n" + "=" * 60)
         print("GLOBAL EVALUATION SUMMARY")
         print("=" * 60)
         for label, stats in summary.items():
             acc = f"{stats['accuracy']:.1%}" if stats["accuracy"] is not None else "n/a"
-            print(
-                f"  {label:<12} "
-                f"correct={stats[VERDICT_CORRECT]:4d}  "
-                f"incorrect={stats[VERDICT_INCORRECT]:4d}  "
-                f"uncertain={stats[VERDICT_UNCERTAIN]:4d}  "
-                f"accuracy={acc}"
-            )
+            print(f"  {label:<12} correct={stats[VERDICT_CORRECT]:4d}  incorrect={stats[VERDICT_INCORRECT]:4d}  uncertain={stats[VERDICT_UNCERTAIN]:4d}  accuracy={acc}")
         print("=" * 60 + "\n")
 
 
 # ── CLI entry point ────────────────────────────────────────────────────────────
 
+
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Evaluate pipeline-assigned GEO sample labels using TULIP LLM."
-    )
-    parser.add_argument(
-        "--labels-path", default="new_storage/labels/extractor_semantic_search/4.5",
-        help="Directory containing per-study label JSON files (pipeline output)."
-    )
-    parser.add_argument(
-        "--raw-data-path", default='new_storage/processed_microarray_data/',
-        help="Root directory of processed_microarray_data/ (raw sample JSONs)."
-    )
-    parser.add_argument(
-        "--output-path", default='outputs/eval_results',
-        help="Directory where evaluation results will be written."
-    )
-    parser.add_argument(
-        "--studies", nargs="+", default=None,
-        help="Optional list of GSE IDs to evaluate (default: all)."
-    )
-    parser.add_argument(
-        "--max-samples", type=int, default=10,
-        help="Max samples per study to evaluate (default: all)."
-    )
-    parser.add_argument(
-        "--model", default=TULIP_CHAT_MODEL,
-        help=f"TULIP model to use (default: {TULIP_CHAT_MODEL})."
-    )
+    parser = argparse.ArgumentParser(description="Evaluate pipeline-assigned GEO sample labels using TULIP LLM.")
+    parser.add_argument("--labels-path", default="new_storage/labels/extractor_semantic_search/4.5", help="Directory containing per-study label JSON files (pipeline output).")
+    parser.add_argument("--raw-data-path", default="new_storage/processed_microarray_data/", help="Root directory of processed_microarray_data/ (raw sample JSONs).")
+    parser.add_argument("--output-path", default="outputs/eval_results", help="Directory where evaluation results will be written.")
+    parser.add_argument("--studies", nargs="+", default=None, help="Optional list of GSE IDs to evaluate (default: all).")
+    parser.add_argument("--max-samples", type=int, default=10, help="Max samples per study to evaluate (default: all).")
+    parser.add_argument("--model", default=TULIP_CHAT_MODEL, help=f"TULIP model to use (default: {TULIP_CHAT_MODEL}).")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = _parse_args()
     evaluator = TulipEvaluator(
-        labels_path   = args.labels_path,
-        raw_data_path = args.raw_data_path,
-        output_path   = args.output_path,
-        model         = args.model,
+        labels_path=args.labels_path,
+        raw_data_path=args.raw_data_path,
+        output_path=args.output_path,
+        model=args.model,
     )
     evaluator.run(studies=args.studies, max_samples=args.max_samples)

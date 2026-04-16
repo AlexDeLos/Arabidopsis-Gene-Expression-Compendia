@@ -1,7 +1,7 @@
-import torch
 import torch.nn as nn
-from torch_geometric.nn.conv import GCNConv
 from performer_pytorch import Performer
+from torch_geometric.nn.conv import GCNConv
+
 
 class BulkFormer_block(nn.Module):
     def __init__(self, dim, gene_length, bin_head=4, full_head=4, bins=10, p_repeat=1):
@@ -17,26 +17,16 @@ class BulkFormer_block(nn.Module):
         self.g = GCNConv(dim, dim, cached=True, add_self_loops=False)
 
         # 全局 performer
-        self.f = nn.Sequential(*[
-            Performer(dim=self.dim, heads=self.full_head, depth=1,
-                      dim_head=self.dim // self.full_head,
-                      attn_dropout=0.05, ff_dropout=0.1)
-            for _ in range(self.p_repeat)
-        ])
+        self.f = nn.Sequential(*[Performer(dim=self.dim, heads=self.full_head, depth=1, dim_head=self.dim // self.full_head, attn_dropout=0.05, ff_dropout=0.1) for _ in range(self.p_repeat)])
 
         self.layernorm = nn.LayerNorm(self.dim)
 
-    def forward(self, x, graph,use_graph):
- 
+    def forward(self, x, graph, use_graph):
+
         # === 图卷积 ===
         x = self.layernorm(x)
         if use_graph:
-            x = x + self.g(x, graph)# This can change it from .94 PCC to .75 so it does help quite a bit
+            x = x + self.g(x, graph)  # This can change it from .94 PCC to .75 so it does help quite a bit
         # print("SKIPING GRAPH")
         # === performer ===
-        x = self.f(x)
-
-        return x
-
-
-
+        return self.f(x)

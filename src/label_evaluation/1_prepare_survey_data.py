@@ -19,9 +19,9 @@ Output
 Adjust the paths in the CONFIGURATION block below before running.
 """
 
-import os
 import glob
 import json
+import os
 import random
 
 # ══════════════════════════════════════════════════════════════════
@@ -46,6 +46,7 @@ SAMPLES_PER_STUDY = 5
 RANDOM_SEED = 42
 
 # ══════════════════════════════════════════════════════════════════
+
 
 def _extract_metadata(meta_content: dict) -> tuple[str, str]:
     """
@@ -143,11 +144,13 @@ def _format_label_for_display(labels: dict) -> list[dict]:
         else:
             display_value = str(value)
 
-        entries.append({
-            "label_category": category,
-            "display_value":  display_value,
-            "raw_value":      raw,
-        })
+        entries.append(
+            {
+                "label_category": category,
+                "display_value": display_value,
+                "raw_value": raw,
+            }
+        )
 
     return entries
 
@@ -162,8 +165,7 @@ def main():
     label_files = sorted(glob.glob(os.path.join(LABELS_DIR, "*.json")))
 
     # Filter out the aggregated file
-    label_files = [f for f in label_files
-                   if os.path.basename(f).replace(".json", "") != "tulip_condensed_labels"]
+    label_files = [f for f in label_files if os.path.basename(f).replace(".json", "") != "tulip_condensed_labels"]
 
     print(f"Found {len(label_files)} study label files.")
     print(f"Selecting up to {SAMPLES_PER_STUDY} random samples per study...\n")
@@ -172,7 +174,7 @@ def main():
         study_id = os.path.basename(label_path).replace(".json", "")
 
         try:
-            with open(label_path, "r") as f:
+            with open(label_path) as f:
                 study_labels = json.load(f)
         except Exception as e:
             print(f"  [SKIP] {study_id}: could not read label file ({e})")
@@ -194,12 +196,12 @@ def main():
 
             # ── Find metadata ──────────────────────────────────────────────────
             characteristics = "N/A"
-            study_context   = "N/A"
-            sample_meta     = {}
+            study_context = "N/A"
+            sample_meta = {}
             meta_search = glob.glob(os.path.join(study_meta_dir, f"*{sample_id}*.json"))
             if meta_search:
                 try:
-                    with open(meta_search[0], "r") as mf:
+                    with open(meta_search[0]) as mf:
                         meta_content = json.load(mf)
                     characteristics, study_context = _extract_metadata(meta_content)
                     sample_meta = meta_content.get("sample_metadata", meta_content)
@@ -211,14 +213,16 @@ def main():
             # ── Format labels for per-label scoring ────────────────────────────
             label_entries = _format_label_for_display(raw_labels)
 
-            survey_payload.append({
-                "study_id":         study_id,
-                "sample_id":        sample_id,
-                "characteristics":  characteristics,
-                "study_context":    study_context,
-                "full_sample_metadata": sample_meta, # <--- ADD THIS LINE
-                "label_entries":    label_entries,
-            })
+            survey_payload.append(
+                {
+                    "study_id": study_id,
+                    "sample_id": sample_id,
+                    "characteristics": characteristics,
+                    "study_context": study_context,
+                    "full_sample_metadata": sample_meta,  # <--- ADD THIS LINE
+                    "label_entries": label_entries,
+                }
+            )
             samples_added += 1
 
         print(f"  {study_id}: {samples_added} samples added")
