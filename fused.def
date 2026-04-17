@@ -111,6 +111,7 @@ From: pytorch/pytorch:2.4.0-cuda11.8-cudnn9-devel
         GEOparse \
         mygene \
         goatools \
+        gseapy \
         "rpy2==3.5.16"
 
     # Download SpaCy language model
