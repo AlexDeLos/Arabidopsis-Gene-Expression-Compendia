@@ -744,10 +744,10 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
     confounding_df = pd.DataFrame(confounding_data)
 
     sns.set_theme(style="whitegrid", context="talk")
-    total_plots = len(plot_df) + 1
-    num_cols = 3
-    num_rows = math.ceil(total_plots / num_cols)
-    fig, axes = plt.subplots(num_rows, 3, figsize=(24, 12))
+    # total_plots = len(plot_df) + 1
+    # num_cols = 3
+    # num_rows = math.ceil(total_plots / num_cols)
+    fig, axes = plt.subplots(2, 3, figsize=(24, 12))
 
     # Moved the title up slightly to make room for the new legend
     fig.suptitle("Batch Correction Evaluation & Confounding Check\n(Calculated exclusively on valid known labels)", fontsize=20, fontweight="bold", y=0.98)
