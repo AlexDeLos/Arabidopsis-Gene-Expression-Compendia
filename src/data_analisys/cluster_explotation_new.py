@@ -920,6 +920,7 @@ if __name__ == "__main__":
     all_bulk = {}
 
     print("Loading Labels Map...")
+    LABELS_PATH = '/tudelft.net/staff-umbrella/GeneExpressionStorage/labels/TULIP_1.2/5.0_old'
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
     stages = ["Salmon_RNAseq_Combined_TPM", "filter", "combat_seq", "rankin"] if RNA_USED else ["filter", "study_corrected", "rankin"]

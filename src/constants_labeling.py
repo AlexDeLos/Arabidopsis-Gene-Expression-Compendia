@@ -17,7 +17,7 @@ class TissueEnum(str, Enum):
     WHOLE_PLANT = "whole plant"
     SILIQUE = "silique"
     CALLUS = "callus"
-    SEEDLING = "seedling"
+    # SEEDLING = "seedling"
     SEED = "seed"
     STEM = "stem"
     POLLEN = "pollen"
@@ -121,7 +121,7 @@ TREATMENT_SYNONYMS = {
 TISSUE_SYNONYMS = {
     TissueEnum.ROOT: ["Roots", "Root system", "Radicle", "Root tip", "Lateral root", "Primary root", "Root hair", "Root meristem"],
     TissueEnum.LEAF: ["Leaves", "Foliage", "Cotyledon", "Leaf blade", "Leaflet", "Rosette leaf", "Cauline leaf", "True leaves", "Leaf primordia"],
-    TissueEnum.SEEDLING: ["Seedlings", "Plantlet", "Sprout", "Young plant", "Etiolated seedling"],
+    # TissueEnum.SEEDLING: ["Seedlings", "Plantlet", "Sprout", "Young plant", "Etiolated seedling"],
     TissueEnum.POLLEN: ["Pollen grains", "Pollen tube", "Microspore", "Pollen grain"],
     TissueEnum.FLOWER: ["Flowers", "Inflorescence", "Floral", "Petal", "Sepal", "Stamen", "Carpel", "Pistil", "Anther", "Stigma", "Ovary", "Ovule"],
     TissueEnum.CALLUS: ["Calli", "Callus culture", "Epidermis", "Epidermal cells"],
@@ -194,7 +194,7 @@ TISSUE_DESCRIPTIONS = {
     TissueEnum.WHOLE_PLANT: "The entire organism, including both aerial and subterranean parts.",
     TissueEnum.SILIQUE: "The seed-bearing fruit capsule typical of Arabidopsis and other Brassicaceae.",
     TissueEnum.CALLUS: "An unorganized mass of undifferentiated, actively dividing cells grown in vitro.",
-    TissueEnum.SEEDLING: "A very young plant newly emerged from a seed, typically encompassing the cotyledon stage.",
+    # TissueEnum.SEEDLING: "A very young plant newly emerged from a seed, typically encompassing the cotyledon stage.",
     TissueEnum.SEED: "The mature fertilized ovule containing the embryo, endosperm, and seed coat.",
     TissueEnum.STEM: "The main structural axis of the plant, including the hypocotyl and the inflorescence stalk.",
     TissueEnum.POLLEN: "The male microgametophytes produced in the anther.",
