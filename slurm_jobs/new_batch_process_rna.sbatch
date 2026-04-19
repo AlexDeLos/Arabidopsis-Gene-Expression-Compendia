@@ -26,7 +26,7 @@ echo "=================================================="
 # ══════════════════════════════════════════════════
 export JAVA_HOME="$BIG_STORAGE/java"
 export NXF_HOME="$BIG_STORAGE/.nextflow"
-export NXF_WORK="$BIG_STORAGE/work/${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+export NXF_WORK="$BIG_STORAGE/work/${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
