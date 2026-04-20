@@ -155,7 +155,7 @@ for epoch in range(1, EPOCHS + 1):
     val_loss   = run_epoch(val_dl,   train=False)
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}', flush=True)
 
-    torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
+    # torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
     if val_loss < best_val:
         best_val = val_loss
         torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_best.pt')
