@@ -35,11 +35,12 @@ from src.constants import STORAGE_DIR
 # }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-EXPR_PATH   = f'{STORAGE_DIR}final_data/filter.csv'
+MATRIX = 'filter'
+EXPR_PATH   = f'{STORAGE_DIR}final_data/{MATRIX}.csv'
 # EXPR_PATH = '/home/alex/Documents/GitHub/Dataset_fusion_Microarray/new_storage/final_data/imputed.csv'
 GENE_INFO   = './src/bulk/metadata/arabidopsis_gene_info.csv'
-GRAPH_PATH  = f'{STORAGE_DIR}graph_data/G_ath.pt'
-WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight.pt'
+GRAPH_PATH  = f'{STORAGE_DIR}graph_data/G_ath_MA.pt'
+WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt'
 # GRAPH_PATH  = './data/graph_data/G_ath.pt'
 # WEIGHT_PATH = './data/graph_data/G_ath_weight.pt'
 SAVE_DIR    = f'{STORAGE_DIR}model/checkpoints_ath'
@@ -158,5 +159,5 @@ for epoch in range(1, EPOCHS + 1):
     # torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
     if val_loss < best_val:
         best_val = val_loss
-        torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_best.pt')
+        torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt')
         print(f'           → new best val: {best_val:.4f}')
