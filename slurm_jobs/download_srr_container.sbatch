@@ -3,7 +3,7 @@
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=4:00:00
-#SBATCH --mem=6G
+#SBATCH --mem=5G
 #SBATCH --cpus-per-task=4
 #SBATCH --exclude=gpu36
 
