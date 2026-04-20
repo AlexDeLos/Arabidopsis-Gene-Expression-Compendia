@@ -237,3 +237,5 @@ my_env_packed.tar.gz
 debug_run.sh
 apptainer_python.sh
 *.png
+Araport11.gtf.gz
+src/bulk/metadata/arabidopsis_gene_info_old.csv

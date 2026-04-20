@@ -1,16 +1,23 @@
 import os
-
+import sys
 import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
 
-EXPR_PATH = "/tudelft.net/staff-umbrella/GeneExpressionStorage/final_data/imputed.csv"
-GENE_INFO = "metadata/arabidopsis_gene_info.csv"
+sys.path.append(os.path.abspath("./"))
+from src.constants import STORAGE_DIR
+
+# EXPR_PATH = "/tudelft.net/staff-umbrella/GeneExpressionStorage/final_data/imputed.csv"
+EXPR_PATH   = f'{STORAGE_DIR}final_data/filter.csv'
+# EXPR_PATH = '/home/alex/Documents/GitHub/Dataset_fusion_Microarray/new_storage/final_data/imputed.csv'
+GENE_INFO   = './src/bulk/metadata/arabidopsis_gene_info.csv'
+OUT_DIR = f'{STORAGE_DIR}graph_data/'
+GRAPH_PATH  = f'{OUT_DIR}G_ath_MA.pt'
+WEIGHT_PATH = f'{OUT_DIR}G_ath_weight_MA.pt'
 CHUNK_SIZE = 500
 TOP_K = 20
 PCC_THRESH = 0.2
-OUT_DIR = "/tudelft.net/staff-umbrella/GeneExpressionStorage/graph_data"
 
 gene_info = pd.read_csv(GENE_INFO)
 gene_list = gene_info["tair_id"].tolist()
@@ -49,7 +56,7 @@ edge_index = torch.tensor([rows, cols], dtype=torch.long)
 edge_weight = torch.tensor(vals, dtype=torch.float32)
 
 os.makedirs(OUT_DIR, exist_ok=True)
-torch.save(edge_index, f"{OUT_DIR}/G_ath.pt")
-torch.save(edge_weight, f"{OUT_DIR}/G_ath_weight.pt")
+torch.save(edge_index, GRAPH_PATH)
+torch.save(edge_weight, WEIGHT_PATH)
 print(f"Done — {len(vals)} edges across {G} genes")
 print(f"Avg edges per gene: {len(vals) / G:.1f}")
