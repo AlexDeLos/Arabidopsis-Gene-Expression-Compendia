@@ -33,7 +33,11 @@ from src.constants import STORAGE_DIR
 #     'full_head':   8,
 #     'gene_length': 21040   # from your graph build output
 # }
-
+# ── DEBUG SETTINGS ───────────────────────────────────────────────────────────
+DEBUG = False  # Set to False for the full cluster run
+DEBUG_GENES = 1000   # Number of genes to keep from 22600
+DEBUG_SAMPLES = 2000  # Number of samples to keep from 13749
+# ─────────────────────────────────────────────────────────────────────────────
 # ── Config ────────────────────────────────────────────────────────────────────
 MATRIX = 'filter'
 EXPR_PATH   = f'{STORAGE_DIR}final_data/{MATRIX}.csv'
@@ -52,7 +56,7 @@ P_REPEAT    = 1
 FULL_HEAD   = 8
 MASK_RATIO  = 0.15
 BATCH_SIZE  = 32
-LR          = 1e-4
+LR          = 1e-5
 EPOCHS      = 50
 DEVICE      = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Device: {DEVICE}')
@@ -62,15 +66,27 @@ gene_info = pd.read_csv(GENE_INFO)
 all_genes = gene_info['tair_id'].drop_duplicates().tolist()
 
 # ── Expression data ───────────────────────────────────────────────────────────
-print('Loading expression data...')
-expr_df = pd.read_csv(EXPR_PATH, index_col=0).T   # → samples × genes
+if DEBUG:
+    # usecols handles the columns (samples). 
+    # range(DEBUG_SAMPLES + 1) takes the first N columns + the gene ID index column.
+    expr_df = pd.read_csv(
+        EXPR_PATH, 
+        index_col=0, 
+        nrows=DEBUG_GENES, 
+        usecols=range(DEBUG_SAMPLES + 1)
+    ).T 
+else:
+    expr_df = pd.read_csv(EXPR_PATH, index_col=0).T
+# Sync vocabulary
+gene_list = [g for g in all_genes if g in expr_df.columns]
 
-print(f'Expression matrix: {expr_df.shape}  (samples × genes)')
-
-# Sync vocabulary to genes present in BOTH gene_info AND expression data
-# This must match the graph node count (graph was built from expression data)
-gene_list   = [g for g in all_genes if g in expr_df.columns]
-print(f'length of gene list {len(all_genes)} been cut down to {len(gene_list)}')
+if DEBUG:
+    # Subset genes and columns
+    gene_list = gene_list[:DEBUG_GENES]
+    expr_df = expr_df[gene_list]
+    print(f"DEBUG: Using subset of {len(expr_df)} samples and {len(gene_list)} genes")
+else:
+    expr_df = expr_df[gene_list]
 GENE_LENGTH = len(gene_list)
 expr_df     = expr_df[gene_list]
 # print(f'Vocabulary synced: {GENE_LENGTH} genes (matches graph node count)')
@@ -79,9 +95,25 @@ expr_np = expr_df.values.astype(np.float32)
 print(f'Final matrix: {expr_np.shape}')
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
-ei    = torch.load(GRAPH_PATH,  weights_only=False)
-ew    = torch.load(WEIGHT_PATH, weights_only=False)
-graph = SparseTensor(row=ei[1], col=ei[0], value=ew).to(DEVICE)
+print('Loading and filtering graph...')
+ei = torch.load(GRAPH_PATH,  weights_only=False)
+ew = torch.load(WEIGHT_PATH, weights_only=False)
+
+if DEBUG:
+    # IMPORTANT: Use GENE_LENGTH (the actual count), not DEBUG_GENES
+    mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
+    ei = ei[:, mask]
+    ew = ew[mask]
+    print(f"DEBUG: Graph filtered to indices < {GENE_LENGTH}")
+    print(f"DEBUG: Graph reduced to {ei.shape[1]} edges")
+
+# Now sparse_sizes will match the max indices in ei
+graph = SparseTensor(
+    row=ei[1], 
+    col=ei[0], 
+    value=ew, 
+    sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
+).to(DEVICE)
 print(f'Graph: {ei.shape[1]} edges')
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
@@ -147,6 +179,7 @@ def run_epoch(loader, train=True):
                 optimizer.step()
                 scheduler.step()
             total_loss += loss.item()
+            # print(f'train={loss.item():.4f}', flush=True)
             n_batches  += 1
     return total_loss / n_batches
 
@@ -154,7 +187,7 @@ best_val = float('inf')
 for epoch in range(1, EPOCHS + 1):
     train_loss = run_epoch(train_dl, train=True)
     val_loss   = run_epoch(val_dl,   train=False)
-    print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}', flush=True)
+    print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
 
     # torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
     if val_loss < best_val:
