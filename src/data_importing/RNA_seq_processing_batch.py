@@ -57,7 +57,7 @@ def is_study_compatible(gse) -> tuple[bool, str]:
     Returns (is_compatible: bool, reason: str).
     The reason is empty when compatible.
     """
-    for gsm_id, gsm in list(gse.gsms.items())[:5]:  # check first 5 samples
+    for gsm_id, gsm in list(gse.gsms.items()):
         m = gsm.metadata
 
         instrument = m.get("instrument_model", [""])[0].lower()
