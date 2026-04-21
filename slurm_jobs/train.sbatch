@@ -2,7 +2,7 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=4:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=320G
 #SBATCH --gres=gpu
 #SBATCH --cpus-per-task=4
