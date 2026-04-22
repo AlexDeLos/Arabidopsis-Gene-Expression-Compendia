@@ -47,7 +47,9 @@ GRAPH_PATH  = f'{STORAGE_DIR}graph_data/G_ath_MA.pt'
 WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt'
 # GRAPH_PATH  = './data/graph_data/G_ath.pt'
 # WEIGHT_PATH = './data/graph_data/G_ath_weight.pt'
+LOAD_BEST   = True  # Set to True to load existing best weights
 SAVE_DIR    = f'{STORAGE_DIR}model/checkpoints_ath'
+WEIGHTS_PATH = f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt'
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 DIM         = 640
@@ -155,7 +157,17 @@ model = BulkFormer(
     bin_head=12, full_head=FULL_HEAD,
     bins=0, gb_repeat=GB_REPEAT, p_repeat=P_REPEAT
 ).to(DEVICE)
-print(f'Model: {sum(p.numel() for p in model.parameters())/1e6:.1f}M params — training from scratch')
+if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
+    print(f"Loading weights from {WEIGHTS_PATH}...")
+    try:
+        # map_location ensures it loads correctly even if trained on a different GPU
+        model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=DEVICE))
+        print("Successfully loaded pre-trained weights.")
+    except Exception as e:
+        print(f"Failed to load weights: {e}")
+        print("Training from scratch instead.")
+else:
+    print(f'Model: {sum(p.numel() for p in model.parameters())/1e6:.1f}M params — training from scratch')
 
 # ── Training loop ─────────────────────────────────────────────────────────────
 optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
