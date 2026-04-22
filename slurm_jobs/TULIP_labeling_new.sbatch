@@ -40,7 +40,8 @@ apptainer exec \
     --pwd /repo \
     "$SIF" \
     python -u src/meta_data_processing/tulip_label_generation.py \
-    --in-folder "$BIG_STORAGE/rnaseq_data/metadata/"
+    --in-folder "$BIG_STORAGE/rnaseq_data/metadata/" \
+    --rna
 
 
 

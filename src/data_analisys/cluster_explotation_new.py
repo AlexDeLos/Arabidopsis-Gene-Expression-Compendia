@@ -918,7 +918,6 @@ if __name__ == "__main__":
     all_tsnes = {}
     all_metas = {}
     all_bulk = {}
-    RNA_USED = False
     print(f"Loading Labels Map from {LABELS_PATH}...")
     # LABELS_PATH = '/tudelft.net/staff-umbrella/GeneExpressionStorage/labels/TULIP_1.2/5.0'
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()

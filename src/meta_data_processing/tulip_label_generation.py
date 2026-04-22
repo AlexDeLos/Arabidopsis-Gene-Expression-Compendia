@@ -216,7 +216,6 @@ class TulipLabelGenerator:
     def __init__(
         self,
         in_folder: str = "/tudelft.net/staff-umbrella/GeneExpressionStorage/processed_microarray_data/",  # TODO: un-hardcode this
-        saving_path: str | None = None,  # noqa: ARG002
         model: str = TULIP_MODEL,
         timeout: int = 60,
     ) -> None:
@@ -679,7 +678,6 @@ if __name__ == "__main__":
     args = _parse_args()
     generator = TulipLabelGenerator(
         in_folder=args.in_folder,
-        saving_path=args.saving_path,
         model=args.model,
     )
     generator.run(studies=args.studies, max_samples=args.max_samples)

@@ -39,7 +39,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/data_analisys/cluster_explotation_new.py
+    python src/data_analisys/cluster_explotation_new.py --rna
 
 EXIT_CODE=$?
 echo "========================================"
