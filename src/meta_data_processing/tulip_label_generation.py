@@ -671,7 +671,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--studies", nargs="+", default=None, help="Optional list of GSE IDs to process (default: all).")
     parser.add_argument("--max-samples", type=int, default=None, help="Max samples per study (default: all). Useful for quick testing.")
     parser.add_argument("--model", default=TULIP_MODEL, help=f"TULIP model to use (default: {TULIP_MODEL}).")
-    return parser.parse_args()
+    args, _ = parser.parse_known_args()
+    return args
 
 
 if __name__ == "__main__":
