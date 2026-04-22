@@ -1,7 +1,6 @@
 import csv
 import glob
 import json
-import math
 import os
 import re
 import sys
@@ -28,6 +27,10 @@ from src.bulk.utils.BulkFormer import BulkFormer
 from src.constants import (
     RNA_USED,  # Pull in your new constant
     STORAGE_DIR,
+    GRAPH_PATH,
+    GRAPH_WEIGHT_PATH,
+    GENE_INFO,
+    WEIGHTS_PATH
 )
 from torch_sparse import SparseTensor  # pyright: ignore[reportMissingImports]
 from tqdm import tqdm
@@ -843,17 +846,15 @@ sys.path.append(module_dir)
 
 # --- NEW BULKFORMER IMPORTS ---
 
-GRAPH_PATH  = f'{STORAGE_DIR}graph_data/G_ath_MA.pt'
-WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt'
 # ------------------------------
 # ==========================================
 # --- BULKFORMER INTEGRATION ---
 # ==========================================
 BULKFORMER_FILES = {
-    "model_weights": f"{STORAGE_DIR}model/checkpoints_ath/BulkFormer_ath_best_on_filter.pt",
-    "graph_ei": f'{STORAGE_DIR}graph_data/G_ath_MA.pt',
-    "graph_w": f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt',
-    "gene_info": "./src/bulk/metadata/arabidopsis_gene_info.csv",
+    "model_weights": WEIGHTS_PATH,
+    "graph_ei": GRAPH_PATH,
+    "graph_w": GRAPH_WEIGHT_PATH,
+    "gene_info": GENE_INFO,
 }
 
 

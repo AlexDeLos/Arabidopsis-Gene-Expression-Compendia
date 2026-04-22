@@ -39,8 +39,15 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/bulk/utils/build_graph_ara.py
+    python src/bulk/utils/build_graph_ara.py --rna
 
+
+# apptainer exec --nv \
+#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+#     --bind "$REPO_DIR":/repo \
+#     --pwd /repo \
+#     "$SIF" \
+#     python src/bulk/utils/build_graph_ara.py
 EXIT_CODE=$?
 echo "========================================"
 echo "Finished    : $(date)"

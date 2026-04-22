@@ -10,7 +10,7 @@ from torch_geometric.typing import SparseTensor
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
 
-from src.constants import STORAGE_DIR
+from src.constants import GRAPH_PATH,WEIGHT_PATH,GENE_INFO,EXPR_PATH,WEIGHTS_PATH
 # big
 # # BulkFormer-127M
 # model_params = {
@@ -39,18 +39,8 @@ DEBUG_GENES = 1000   # Number of genes to keep from 22600
 DEBUG_SAMPLES = 2000  # Number of samples to keep from 13749
 # ─────────────────────────────────────────────────────────────────────────────
 # ── Config ────────────────────────────────────────────────────────────────────
-MATRIX = 'filter'
-EXPR_PATH   = f'{STORAGE_DIR}final_data/{MATRIX}.csv'
-# EXPR_PATH = '/home/alex/Documents/GitHub/Dataset_fusion_Microarray/new_storage/final_data/imputed.csv'
-GENE_INFO   = './src/bulk/metadata/arabidopsis_gene_info.csv'
-GRAPH_PATH  = f'{STORAGE_DIR}graph_data/G_ath_MA.pt'
-WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt'
-# GRAPH_PATH  = './data/graph_data/G_ath.pt'
-# WEIGHT_PATH = './data/graph_data/G_ath_weight.pt'
+
 LOAD_BEST   = True  # Set to True to load existing best weights
-SAVE_DIR    = f'{STORAGE_DIR}model/checkpoints_ath'
-WEIGHTS_PATH = f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt'
-os.makedirs(SAVE_DIR, exist_ok=True)
 
 DIM         = 640
 GB_REPEAT   = 1
@@ -204,5 +194,5 @@ for epoch in range(1, EPOCHS + 1):
     # torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
     if val_loss < best_val:
         best_val = val_loss
-        torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt')
+        torch.save(model.state_dict(), WEIGHTS_PATH)
         print(f'           → new best val: {best_val:.4f}')

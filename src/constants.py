@@ -15,9 +15,6 @@ EXPERIMENT_NAME = "5.0"
 
 STORAGE_DIR = "/tudelft.net/staff-umbrella/GeneExpressionStorage/" if CLUSTER_RUN else "./new_storage/"
 
-
-
-
 RNA_USED = get_rna_used()
 
 DATA_IMPORT_DIR = "./data/downloads_new/"
@@ -56,3 +53,18 @@ try:
         SAMPLE_STUDY_MAP = pd.read_csv(STORAGE_DIR + "/final_data/RMA_Microarray_Combined_sample_map.csv", index_col=0)
 except FileNotFoundError:
     SAMPLE_STUDY_MAP = None
+
+#bulk
+MATRIX = 'filter'
+EXPR_PATH   = f'{STORAGE_DIR}final_data/{'rnaseq_processed/' if RNA_USED else ''}{MATRIX}.csv'
+SAVE_DIR    = f'{STORAGE_DIR}model/checkpoints_ath{'_RNA' if RNA_USED else ''}'
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+WEIGHTS_PATH = f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt'
+
+
+GRAPH_DATA = f'{STORAGE_DIR}graph_data/{'rna' if RNA_USED else 'microarray'}/'
+os.makedirs(GRAPH_DATA, exist_ok=True)
+GRAPH_PATH  = f'{GRAPH_DATA}G_ath_MA.pt'
+GRAPH_WEIGHT_PATH = f'{GRAPH_DATA}G_ath_weight_MA.pt'
+GENE_INFO   = './src/bulk/metadata/arabidopsis_gene_info.csv'
