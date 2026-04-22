@@ -10,7 +10,7 @@ from torch_geometric.typing import SparseTensor
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
 
-from src.constants import GRAPH_PATH,WEIGHT_PATH,GENE_INFO,EXPR_PATH,WEIGHTS_PATH
+from src.constants import GRAPH_PATH,GRAPH_WEIGHT_PATH,GENE_INFO,EXPR_PATH,WEIGHTS_PATH
 # big
 # # BulkFormer-127M
 # model_params = {
@@ -52,8 +52,18 @@ LR          = 1e-5
 EPOCHS      = 50
 DEVICE      = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Device: {DEVICE}')
+configs = {
+    "Graph": GRAPH_PATH,
+    "Weights": GRAPH_WEIGHT_PATH,
+    "Gene Info": GENE_INFO,
+    "Expression": EXPR_PATH,
+    "Pre-trained": WEIGHTS_PATH
+}
 
-# ── Gene vocab ────────────────────────────────────────────────────────────────
+print("\n--- Model Configuration ---")
+for label, path in configs.items():
+    print(f"{label:15}: {path}")
+print("---------------------------\n")# ── Gene vocab ────────────────────────────────────────────────────────────────
 gene_info = pd.read_csv(GENE_INFO)
 all_genes = gene_info['tair_id'].drop_duplicates().tolist()
 
@@ -89,7 +99,7 @@ print(f'Final matrix: {expr_np.shape}')
 # ── Graph ─────────────────────────────────────────────────────────────────────
 print('Loading and filtering graph...')
 ei = torch.load(GRAPH_PATH,  weights_only=False)
-ew = torch.load(WEIGHT_PATH, weights_only=False)
+ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
 
 if DEBUG:
     # IMPORTANT: Use GENE_LENGTH (the actual count), not DEBUG_GENES
