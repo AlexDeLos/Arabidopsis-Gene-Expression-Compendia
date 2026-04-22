@@ -63,7 +63,7 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 WEIGHTS_PATH = f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt'
 
 
-GRAPH_DATA = f'{STORAGE_DIR}graph_data/{'rna' if RNA_USED else 'microarray'}/'
+GRAPH_DATA = f"{STORAGE_DIR}graph_data/{'rna' if RNA_USED else 'microarray'}/"
 os.makedirs(GRAPH_DATA, exist_ok=True)
 GRAPH_PATH  = f'{GRAPH_DATA}G_ath_MA.pt'
 GRAPH_WEIGHT_PATH = f'{GRAPH_DATA}G_ath_weight_MA.pt'
