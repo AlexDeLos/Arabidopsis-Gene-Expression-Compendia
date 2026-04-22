@@ -850,7 +850,7 @@ WEIGHT_PATH = f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt'
 # --- BULKFORMER INTEGRATION ---
 # ==========================================
 BULKFORMER_FILES = {
-    "model_weights": f"{STORAGE_DIR}{STORAGE_DIR}model/checkpoints_ath/BulkFormer_ath_best_on_filter.pt",
+    "model_weights": f"{STORAGE_DIR}model/checkpoints_ath/BulkFormer_ath_best_on_filter.pt",
     "graph_ei": f'{STORAGE_DIR}graph_data/G_ath_MA.pt',
     "graph_w": f'{STORAGE_DIR}graph_data/G_ath_weight_MA.pt',
     "gene_info": "./src/bulk/metadata/arabidopsis_gene_info.csv",

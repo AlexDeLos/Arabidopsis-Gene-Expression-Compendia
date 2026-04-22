@@ -638,8 +638,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Compare label JSONs in two directories."
     )
-    parser.add_argument("-dir2",default="new_storage/labels/TULIP_1.2_RNA_old/5.0", help="Path to the first label directory")
-    parser.add_argument("-dir1",default="new_storage/labels/TULIP_1.2_RNA/5.0", help="Path to the second label directory")
+    parser.add_argument("-dir2",default="new_storage/labels/TULIP_1.2/5.0", help="Path to the first label directory")
+    parser.add_argument("-dir1",default="new_storage/labels/TULIP_1.2/5.0_old", help="Path to the second label directory")
     parser.add_argument(
         "--output-dir", "-o",
         default="outputs/label_comparison",

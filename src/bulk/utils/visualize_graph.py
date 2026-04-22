@@ -17,7 +17,7 @@ GENE_INFO = './src/bulk/metadata/arabidopsis_gene_info.csv'
 
 # Choose a target gene to visualize its neighborhood
 TARGET_GENE = 'AT1G01010' 
-HOPS = 2 # 1 = direct neighbors, 2 = neighbors of neighbors
+HOPS = 5# 1 = direct neighbors, 2 = neighbors of neighbors
 
 def load_gene_mapping():
     """Recreates the exact gene list used in the build script to map indices to TAIR IDs."""
