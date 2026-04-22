@@ -17,7 +17,7 @@ gene_list = gene_info["tair_id"].tolist()
 
 expr = pd.read_csv(EXPR_PATH, index_col=0).T
 expr = expr[[c for c in gene_list if c in expr.columns]]
-print(f"Expression matrix: {expr.shape}  (samples * genes)")
+print(f"Expression matrix from {EXPR_PATH}: {expr.shape}  (samples * genes)")
 
 # Pre-standardise once
 X = expr.values.astype(np.float32)

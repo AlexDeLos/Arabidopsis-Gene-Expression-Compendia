@@ -39,7 +39,7 @@ srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
     --bind "${REPO}:/repo" \
     --pwd "/repo" \
     "${SIF}" \
-    python src/data_importing/scripts/combine_rna.py
+    python src/data_importing/scripts/combine_rna.py --rna
 
 echo "Done with data combination. generating new data matrices"
 
@@ -48,7 +48,7 @@ srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
     --bind "${REPO}:/repo" \
     --pwd "/repo" \
     "${SIF}" \
-    python src/data_importing/rnaseq_norm_and_analysis.py
+    python src/data_importing/rnaseq_norm_and_analysis.py --rna
 
 EXIT_CODE=$?
 echo "========================================"
