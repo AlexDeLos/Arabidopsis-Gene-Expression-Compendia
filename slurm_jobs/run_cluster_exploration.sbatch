@@ -1,5 +1,4 @@
 #!/bin/bash
-#!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=4:00:00

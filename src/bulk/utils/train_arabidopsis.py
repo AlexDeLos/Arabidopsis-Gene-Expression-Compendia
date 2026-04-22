@@ -92,7 +92,8 @@ else:
     expr_df = expr_df[gene_list]
 GENE_LENGTH = len(gene_list)
 expr_df     = expr_df[gene_list]
-# print(f'Vocabulary synced: {GENE_LENGTH} genes (matches graph node count)')
+
+print(f"Synced! Running with {GENE_LENGTH} genes (Graph compatible).")
 
 expr_np = expr_df.values.astype(np.float32)
 print(f'Final matrix: {expr_np.shape}')
