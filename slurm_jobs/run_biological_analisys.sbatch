@@ -22,7 +22,7 @@ echo "Starting TULIP label generation..."
 # Define your directories
 REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="$BIG_STORAGE/dataset_fusion.sif"
+SIF="$BIG_STORAGE/fused.sif"
 
 echo "running biological pipeline"
 apptainer exec \
