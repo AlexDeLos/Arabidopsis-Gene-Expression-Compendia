@@ -150,6 +150,14 @@ def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_
     # Keep only the samples (columns) that fall below or equal to the threshold
     raw_df = raw_df.loc[:, invalid_pct_per_sample <= sample_nan_pct]
 
+    # if log_norm:
+    print("  [Norm] Applying log2(x + 1) normalization...")
+    # We add 1 to avoid log(0)
+    raw_df = pd.DataFrame(
+        np.log2(raw_df + 1), 
+        index=raw_df.index, 
+        columns=raw_df.columns
+    )
     print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
     return raw_df

@@ -79,6 +79,7 @@ if DEBUG:
     ).T 
 else:
     expr_df = pd.read_csv(EXPR_PATH, index_col=0).T
+
 # Sync vocabulary
 gene_list = [g for g in all_genes if g in expr_df.columns]
 
@@ -95,6 +96,14 @@ expr_df     = expr_df[gene_list]
 
 expr_np = expr_df.values.astype(np.float32)
 print(f'Final matrix: {expr_np.shape}')
+
+# Check for NaNs or Infs in the input matrix
+print(f"Any NaNs in data? {np.isnan(expr_np).any()}")
+print(f"Any Infs in data? {np.isinf(expr_np).any()}")
+print(f"Data Max: {expr_np.max()}, Data Min: {expr_np.min()}, Data Mean: {expr_np.mean()}")
+
+if expr_np.max() > 500:
+    print("WARNING: Data values are very large. Consider log2(x + 1) transformation.")
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
 print('Loading and filtering graph...')
