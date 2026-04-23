@@ -958,10 +958,10 @@ if __name__ == "__main__":
             metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
 
             all_metrics[file] = metrics_df
-            all_bulk_metrics[file] = bulk_metrics_df
+            # all_bulk_metrics[file] = bulk_metrics_df
             all_umaps[file] = embeddings["UMAP"]
             all_tsnes[file] = embeddings["TSNE"]
-            all_bulk[file] = embeddings["bulk"]
+            # all_bulk[file] = embeddings["bulk"]
             all_metas[file] = meta_df
 
         else:
@@ -977,7 +977,7 @@ if __name__ == "__main__":
         plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
 
         print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
-        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
+        # plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
         print("Generating linked multi-stage UMAP comparison...")
         plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
@@ -985,4 +985,4 @@ if __name__ == "__main__":
         print("Generating linked multi-stage t-SNE comparison...")
         plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
         print("Generating Bulk comparison...")
-        plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
+        # plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
