@@ -19,7 +19,7 @@ DEBUG_SAMPLES  = 2000
 
 # ── Config ────────────────────────────────────────────────────────────────────
 LOAD_BEST  = False   # load checkpoint if it exists AND shapes match
-DIM        = 32 #640
+DIM        = 640
 GB_REPEAT  = 1
 P_REPEAT   = 1
 FULL_HEAD  = 8
