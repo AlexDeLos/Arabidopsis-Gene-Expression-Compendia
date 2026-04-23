@@ -40,7 +40,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/bulk/utils/train_arabidopsis.py --rna
+    python src/bulk/utils/train_arabidopsis.py
 
 EXIT_CODE=$?
 echo "========================================"
