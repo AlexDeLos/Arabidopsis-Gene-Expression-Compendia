@@ -12,16 +12,16 @@ sys.path.append(module_dir)
 from src.constants import FIGURES_DIR, STORAGE_DIR  # noqa: E402
 
 # 1. Configuration
-INPUT_FILE = f"{STORAGE_DIR}/final_data/rnaseq_processed/Salmon_RNAseq_Combined_TPM.csv"
+INPUT_FILE = f"{STORAGE_DIR}/final_data/rnaseq_processed/filter.csv"
 
-
+ext = 'TMP_log_norm'
 def read_id(path):
     with open(path) as f:
         return f.read().strip()
 
 
 def evaluate_distributions():
-    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_study_evaluation_TMP.svg"
+    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_study_evaluation_{ext}.svg"
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
@@ -152,7 +152,8 @@ def evaluate_distributions():
 
 
 def evaluate_distributions_samples():
-    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_sample_evaluation_TMP.svg"
+    OUTPUT_PLOT = f"{FIGURES_DIR}distribution_figures/mathematical_sample_evaluation_{ext}.svg"
+    os.makedirs(f"{FIGURES_DIR}distribution_figures/",exist_ok=True)
     if not os.path.exists(INPUT_FILE):
         print(f"Error: Could not find {INPUT_FILE}")
         return
