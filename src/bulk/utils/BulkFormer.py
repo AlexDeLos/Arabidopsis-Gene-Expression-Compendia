@@ -34,8 +34,10 @@ class BulkFormer(nn.Module):
         self.layernorm = nn.LayerNorm(dim)
 
         # === 样本整体表达 embedding ===
-        self.global_expr_proj = nn.Sequential(nn.Linear(gene_length, 4 * dim), nn.ReLU(), nn.Linear(4 * dim, dim))
-
+        self.global_expr_proj = nn.Sequential(
+            nn.LayerNorm(gene_length),
+            nn.Linear(gene_length, 4 * dim), nn.ReLU(), nn.Linear(4 * dim, dim)
+        )
         # === 输出头-逐基因预测 ===
         self.head = nn.Sequential(nn.LayerNorm(dim + 3), nn.Linear(dim + 3, dim), nn.ReLU(), nn.Linear(dim, 1), nn.ReLU())
 
