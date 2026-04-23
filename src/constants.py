@@ -55,7 +55,7 @@ except FileNotFoundError:
     SAMPLE_STUDY_MAP = None
 
 #bulk
-MATRIX = 'filter'
+MATRIX = 'rankin'
 EXPR_PATH   = f"{STORAGE_DIR}final_data/{'rnaseq_processed/' if RNA_USED else ''}{MATRIX}.csv"
 SAVE_DIR    = f"{STORAGE_DIR}model/checkpoints_ath{'_RNA' if RNA_USED else ''}"
 os.makedirs(SAVE_DIR, exist_ok=True)

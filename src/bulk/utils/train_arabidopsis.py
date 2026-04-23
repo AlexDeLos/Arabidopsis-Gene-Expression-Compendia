@@ -18,8 +18,8 @@ DEBUG_SAMPLES  = 2000
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Config ────────────────────────────────────────────────────────────────────
-LOAD_BEST  = True   # load checkpoint if it exists AND shapes match
-DIM        = 640
+LOAD_BEST  = False   # load checkpoint if it exists AND shapes match
+DIM        = 32 #640
 GB_REPEAT  = 1
 P_REPEAT   = 1
 FULL_HEAD  = 8
@@ -177,20 +177,27 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
-    total_loss, n_batches, nan_batches = 0.0, 0, 0
+    total_loss, n_batches = 0.0, 0
     with torch.set_grad_enabled(train):
-        for x, true, mask in loader:
+        for batch_idx, (x, true, mask) in enumerate(loader):
             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
             pred = model(x, mask_prob=MASK_RATIO, output_expr=True)
+
+            assert torch.isfinite(pred).all(), (
+                f"NaN/Inf in pred at batch {batch_idx}\n"
+                f"  x stats: min={x.min():.3f} max={x.max():.3f} "
+                f"has_nan={torch.isnan(x).any().item()}\n"
+                f"  pred nan%: {torch.isnan(pred).float().mean():.3f}"
+            )
+
             loss = ((pred - true) ** 2 * mask).sum() / (mask.sum() + 1e-8)
 
-            # NaN guard: skip bad batches rather than poisoning the model
-            if not torch.isfinite(loss):
-                nan_batches += 1
-                if train:
-                    optimizer.zero_grad()
-                    scheduler.step()
-                continue
+            assert torch.isfinite(loss), (
+                f"NaN/Inf in loss at batch {batch_idx}\n"
+                f"  pred: min={pred.min():.3f} max={pred.max():.3f}\n"
+                f"  true: min={true.min():.3f} max={true.max():.3f}\n"
+                f"  mask sum: {mask.sum().item()}"
+            )
 
             if train:
                 optimizer.zero_grad()
@@ -202,10 +209,6 @@ def run_epoch(loader, train=True):
             total_loss += loss.item()
             n_batches  += 1
 
-    if nan_batches > 0:
-        print(f"  WARNING: {nan_batches} NaN/Inf batches skipped this epoch", flush=True)
-    if n_batches == 0:
-        return float('nan')
     return total_loss / n_batches
 
 best_val = float('inf')

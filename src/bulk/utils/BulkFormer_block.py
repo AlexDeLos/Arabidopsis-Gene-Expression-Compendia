@@ -14,19 +14,18 @@ class BulkFormer_block(nn.Module):
         self.full_head = full_head
 
         # 图卷积层
-        self.g = GCNConv(dim, dim, cached=True, add_self_loops=False)
+        self.g = GCNConv(dim, dim, cached=True, add_self_loops=True)
 
         # 全局 performer
         self.f = nn.Sequential(*[Performer(dim=self.dim, heads=self.full_head, depth=1, dim_head=self.dim // self.full_head, attn_dropout=0.05, ff_dropout=0.1) for _ in range(self.p_repeat)])
 
         self.layernorm = nn.LayerNorm(self.dim)
 
-    def forward(self, x, graph, use_graph):
-
-        # === 图卷积 ===
+    def forward(self, x, graph):
         x = self.layernorm(x)
-        if use_graph:
-            x = x + self.g(x, graph)  # This can change it from .94 PCC to .75 so it does help quite a bit
-        # print("SKIPING GRAPH")
-        # === performer ===
-        return self.f(x)
+
+        gcn_out = self.g(x, graph)
+        # gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
+        x = x + gcn_out
+        x = self.f(x)
+        return x
