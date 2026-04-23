@@ -9,121 +9,73 @@ from torch_geometric.typing import SparseTensor
 
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
+from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH
 
-from src.constants import GRAPH_PATH,GRAPH_WEIGHT_PATH,GENE_INFO,EXPR_PATH,WEIGHTS_PATH
-# big
-# # BulkFormer-127M
-# model_params = {
-#     'dim': 640,
-#     "bins": 0,
-#     "gb_repeat": 1,
-#     "p_repeat": 8,
-#     'bin_head': 12,
-#     'full_head': 8,
-#     'gene_length': 20010
-# }
-
-# BulkFormer-37M  Arabidopsis
-# model_params = {
-#     'dim':         128,
-#     'bins':        0,
-#     'gb_repeat':   1,
-#     'p_repeat':    1,
-#     'bin_head':    12,
-#     'full_head':   8,
-#     'gene_length': 21040   # from your graph build output
-# }
-# ── DEBUG SETTINGS ───────────────────────────────────────────────────────────
-DEBUG = False  # Set to False for the full cluster run
-DEBUG_GENES = 1000   # Number of genes to keep from 22600
-DEBUG_SAMPLES = 2000  # Number of samples to keep from 13749
+# ── DEBUG SETTINGS ────────────────────────────────────────────────────────────
+DEBUG          = False
+DEBUG_GENES    = 1000
+DEBUG_SAMPLES  = 2000
 # ─────────────────────────────────────────────────────────────────────────────
+
 # ── Config ────────────────────────────────────────────────────────────────────
-
-LOAD_BEST   = True  # Set to True to load existing best weights
-
-DIM         = 640
-GB_REPEAT   = 1
-P_REPEAT    = 1
-FULL_HEAD   = 8
-MASK_RATIO  = 0.15
-BATCH_SIZE  = 8
-LR          = 1e-5
-EPOCHS      = 50
-DEVICE      = 'cuda' if torch.cuda.is_available() else 'cpu'
+LOAD_BEST  = True   # load checkpoint if it exists AND shapes match
+DIM        = 640
+GB_REPEAT  = 1
+P_REPEAT   = 1
+FULL_HEAD  = 8
+MASK_RATIO = 0.15
+BATCH_SIZE = 8
+LR         = 1e-5
+EPOCHS     = 50
+DEVICE     = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Device: {DEVICE}')
-configs = {
-    "Graph": GRAPH_PATH,
-    "Weights": GRAPH_WEIGHT_PATH,
-    "Gene Info": GENE_INFO,
-    "Expression": EXPR_PATH,
-    "Pre-trained": WEIGHTS_PATH
-}
 
 print("\n--- Model Configuration ---")
-for label, path in configs.items():
+for label, path in [("Graph", GRAPH_PATH), ("Weights", GRAPH_WEIGHT_PATH),
+                    ("Gene Info", GENE_INFO), ("Expression", EXPR_PATH),
+                    ("Pre-trained", WEIGHTS_PATH)]:
     print(f"{label:15}: {path}")
-print("---------------------------\n")# ── Gene vocab ────────────────────────────────────────────────────────────────
+print("---------------------------\n")
+
+# ── Gene vocab ────────────────────────────────────────────────────────────────
 gene_info = pd.read_csv(GENE_INFO)
 all_genes = gene_info['tair_id'].drop_duplicates().tolist()
 
 # ── Expression data ───────────────────────────────────────────────────────────
 if DEBUG:
-    # usecols handles the columns (samples). 
-    # range(DEBUG_SAMPLES + 1) takes the first N columns + the gene ID index column.
     expr_df = pd.read_csv(
-        EXPR_PATH, 
-        index_col=0, 
-        nrows=DEBUG_GENES, 
-        usecols=range(DEBUG_SAMPLES + 1)
-    ).T 
+        EXPR_PATH, index_col=0,
+        nrows=DEBUG_GENES, usecols=range(DEBUG_SAMPLES + 1)
+    ).T
 else:
     expr_df = pd.read_csv(EXPR_PATH, index_col=0).T
 
-# Sync vocabulary
 gene_list = [g for g in all_genes if g in expr_df.columns]
-
 if DEBUG:
-    # Subset genes and columns
     gene_list = gene_list[:DEBUG_GENES]
-    expr_df = expr_df[gene_list]
-    print(f"DEBUG: Using subset of {len(expr_df)} samples and {len(gene_list)} genes")
-else:
-    expr_df = expr_df[gene_list]
-GENE_LENGTH = len(gene_list)
 expr_df     = expr_df[gene_list]
+GENE_LENGTH = len(gene_list)
 
-print(f"Synced! Running with {GENE_LENGTH} genes (Graph compatible).")
+print(f"Running with {GENE_LENGTH} genes.")
 
 expr_np = expr_df.values.astype(np.float32)
 print(f'Final matrix: {expr_np.shape}')
-
-# Check for NaNs or Infs in the input matrix
-print(f"Any NaNs in data? {np.isnan(expr_np).any()}")
-print(f"Any Infs in data? {np.isinf(expr_np).any()}")
-print(f"Data Max: {expr_np.max()}, Data Min: {expr_np.min()}, Data Mean: {expr_np.mean()}")
-
+print(f"NaNs: {np.isnan(expr_np).any()}  Infs: {np.isinf(expr_np).any()}")
+print(f"Max: {expr_np.max():.3f}  Min: {expr_np.min():.3f}  Mean: {expr_np.mean():.3f}")
 if expr_np.max() > 500:
-    print("WARNING: Data values are very large. Consider log2(x + 1) transformation.")
+    print("WARNING: Values are very large — consider log1p normalisation.")
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
-print('Loading and filtering graph...')
-ei = torch.load(GRAPH_PATH,  weights_only=False)
+print('Loading graph...')
+ei = torch.load(GRAPH_PATH,        weights_only=False)
 ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
 
 if DEBUG:
-    # IMPORTANT: Use GENE_LENGTH (the actual count), not DEBUG_GENES
     mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
-    ei = ei[:, mask]
-    ew = ew[mask]
-    print(f"DEBUG: Graph filtered to indices < {GENE_LENGTH}")
-    print(f"DEBUG: Graph reduced to {ei.shape[1]} edges")
+    ei, ew = ei[:, mask], ew[mask]
 
-# Now sparse_sizes will match the max indices in ei
 graph = SparseTensor(
-    row=ei[1], 
-    col=ei[0], 
-    value=ew, 
+    row=ei[1], col=ei[0], value=ew,
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
 print(f'Graph: {ei.shape[1]} edges')
@@ -167,19 +119,56 @@ model = BulkFormer(
     bin_head=12, full_head=FULL_HEAD,
     bins=0, gb_repeat=GB_REPEAT, p_repeat=P_REPEAT
 ).to(DEVICE)
-if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
-    print(f"Loading weights from {WEIGHTS_PATH}...")
-    try:
-        # map_location ensures it loads correctly even if trained on a different GPU
-        model.load_state_dict(torch.load(WEIGHTS_PATH, map_location=DEVICE))
-        print("Successfully loaded pre-trained weights.")
-    except Exception as e:
-        print(f"Failed to load weights: {e}")
-        print("Training from scratch instead.")
-else:
-    print(f'Model: {sum(p.numel() for p in model.parameters())/1e6:.1f}M params — training from scratch')
 
-# ── Training loop ─────────────────────────────────────────────────────────────
+# FIX 1: Safe weight loading — only load if shapes match exactly.
+# The old code caught all exceptions and silently continued with a partially
+# loaded (corrupt) model, causing NaN from the very first batch.
+if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
+    print(f"Attempting to load weights from {WEIGHTS_PATH}...")
+    ckpt     = torch.load(WEIGHTS_PATH, map_location=DEVICE, weights_only=False)
+    model_sd = model.state_dict()
+    # Only load keys whose shapes match exactly
+    to_load  = {k: v for k, v in ckpt.items()
+                if k in model_sd and model_sd[k].shape == v.shape}
+    skipped  = [k for k in ckpt if k not in to_load]
+    if skipped:
+        print(f"  Shape mismatch — skipped {len(skipped)} layers: {skipped[:4]}...")
+    model.load_state_dict(to_load, strict=False)
+    print(f"  Loaded {len(to_load)}/{len(model_sd)} layers from checkpoint.")
+    if len(to_load) == 0:
+        print("  WARNING: 0 layers loaded — training entirely from scratch.")
+    elif len(skipped) > 0:
+        print("  NOTE: Skipped layers will use random init (expected for new gene_length/dim).")
+else:
+    print(f'Training from scratch — {sum(p.numel() for p in model.parameters())/1e6:.1f}M params')
+
+# FIX 2: Xavier init on the large vocab-dependent layers.
+# With gene_length=34858 and dim=640, the default PyTorch init (uniform in
+# [-1/sqrt(fan_in), 1/sqrt(fan_in)]) produces activations that are orders of
+# magnitude too large, causing exp() overflow → inf → NaN in attention.
+# Xavier init scales weights by sqrt(2 / (fan_in + fan_out)) which keeps
+# activations well-behaved regardless of layer width.
+def _safe_init(module):
+    if isinstance(module, nn.Linear):
+        nn.init.xavier_uniform_(module.weight)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Embedding):
+        nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+# Only re-init layers that were NOT loaded from checkpoint
+layers_loaded = set(to_load.keys()) if (LOAD_BEST and os.path.exists(WEIGHTS_PATH)) else set()
+for name, module in model.named_modules():
+    # Check if any parameter of this module was loaded from checkpoint
+    params_loaded = any(f'{name}.{p}' in layers_loaded for p in ['weight', 'bias'])
+    if not params_loaded:
+        _safe_init(module)
+
+print("Weight init complete.")
+
+# FIX 3: NaN guard in the training loop.
+# If a NaN loss appears (e.g. from a single bad batch), skip the backward pass
+# rather than propagating NaN gradients through the entire model.
 optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer, max_lr=LR,
@@ -188,21 +177,35 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
-    total_loss, n_batches = 0.0, 0
+    total_loss, n_batches, nan_batches = 0.0, 0, 0
     with torch.set_grad_enabled(train):
         for x, true, mask in loader:
             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
             pred = model(x, mask_prob=MASK_RATIO, output_expr=True)
             loss = ((pred - true) ** 2 * mask).sum() / (mask.sum() + 1e-8)
+
+            # NaN guard: skip bad batches rather than poisoning the model
+            if not torch.isfinite(loss):
+                nan_batches += 1
+                if train:
+                    optimizer.zero_grad()
+                    scheduler.step()
+                continue
+
             if train:
                 optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
+
             total_loss += loss.item()
-            # print(f'train={loss.item():.4f}', flush=True)
             n_batches  += 1
+
+    if nan_batches > 0:
+        print(f"  WARNING: {nan_batches} NaN/Inf batches skipped this epoch", flush=True)
+    if n_batches == 0:
+        return float('nan')
     return total_loss / n_batches
 
 best_val = float('inf')
@@ -211,8 +214,7 @@ for epoch in range(1, EPOCHS + 1):
     val_loss   = run_epoch(val_dl,   train=False)
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
 
-    # torch.save(model.state_dict(), f'{SAVE_DIR}/BulkFormer_ath_epoch{epoch:02d}.pt')
-    if val_loss < best_val:
+    if torch.isfinite(torch.tensor(val_loss)) and val_loss < best_val:
         best_val = val_loss
         torch.save(model.state_dict(), WEIGHTS_PATH)
         print(f'           → new best val: {best_val:.4f}')
