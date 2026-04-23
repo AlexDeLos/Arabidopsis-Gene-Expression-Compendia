@@ -9,7 +9,7 @@ Entry point: diff_exp_combine_tissues(...)
 
 import os
 import sys
-
+import re
 import numpy as np
 import pandas as pd
 import rpy2.robjects as ro
@@ -139,11 +139,22 @@ def diff_exp_combine_tissues(
             # ------------------------------------------------------------------
             metadata = design_filtered[["Sample_ID", "treatment", "tissue"]].copy()
             del design_filtered
-
+            def r_make_names(s):
+                # 1. Replace any non-alphanumeric character (like spaces) with a dot
+                s = re.sub(r'[^a-zA-Z0-9_]', '.', str(s))
+                # 2. If it starts with a digit or a dot, prepend 'X' (R requirement)
+                if s[0].isdigit() or s[0] == '.':
+                    s = 'X' + s
+                return s
             is_control_mask = metadata["treatment"].str.contains("Control", na=False)
             metadata["Target"] = "treatment"
             metadata.loc[is_control_mask, "Target"] = "Control"
             del metadata["treatment"]
+
+            metadata["Target"] = metadata["Target"].apply(r_make_names)
+            
+            if "tissue" in metadata.columns:
+                metadata["tissue"] = metadata["tissue"].apply(r_make_names)
 
             single_tissue = len(set(metadata["tissue"])) == 1
             if single_tissue:
