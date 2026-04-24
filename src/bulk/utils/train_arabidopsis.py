@@ -191,7 +191,7 @@ def run_epoch(loader, train=True, grad_debug=False):
                             abs_max = param.grad.abs().max().item()
                             print(f"  OK       {name}  absmax={abs_max:.6f}")
                     print("--- End gradient report ---\n")
-                    return  # exit after one batch when debugging
+                    # return  # exit after one batch when debugging
 
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
