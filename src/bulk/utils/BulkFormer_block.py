@@ -45,11 +45,11 @@ class BulkFormer_block(nn.Module):
 
         x = self.layernorm(x)
         check("after_layernorm", x)
-
-        gcn_out = self.g(x, graph)
-        gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
-        check("after_gcnconv", gcn_out)
-        x = x + gcn_out
+        
+        # gcn_out = self.g(x, graph)
+        # gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
+        # check("after_gcnconv", gcn_out)
+        # x = x + gcn_out
         check("after_gcn_residual", x)
         x = self.layernorm2(x)
         check("layernorm2", x)
