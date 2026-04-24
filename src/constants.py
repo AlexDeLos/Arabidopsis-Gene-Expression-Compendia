@@ -8,6 +8,12 @@ def get_rna_used() -> bool:
     parser.add_argument("--rna", action="store_true", default=False)
     args, _ = parser.parse_known_args()
     return args.rna
+def get_matrix_used_for_training_bulk() -> str:
+    parser = _argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--train_matrix", default="rankin")
+
+    args, _ = parser.parse_known_args()
+    return args.train_matrix
 
 GLOBAL_DIR_PATH = f"{os.getcwd()}/"
 CLUSTER_RUN = GLOBAL_DIR_PATH != "/home/alex/Documents/GitHub/Dataset_fusion_Microarray/"
@@ -55,7 +61,7 @@ except FileNotFoundError:
     SAMPLE_STUDY_MAP = None
 
 #bulk
-MATRIX = 'rankin'
+MATRIX = get_matrix_used_for_training_bulk()
 EXPR_PATH   = f"{STORAGE_DIR}final_data/{'rnaseq_processed/' if RNA_USED else ''}{MATRIX}.csv"
 SAVE_DIR    = f"{STORAGE_DIR}model/checkpoints_ath{'_RNA' if RNA_USED else ''}"
 os.makedirs(SAVE_DIR, exist_ok=True)
