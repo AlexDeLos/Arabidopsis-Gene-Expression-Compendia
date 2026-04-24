@@ -120,6 +120,12 @@ model = BulkFormer(
     bins=0, gb_repeat=GB_REPEAT, p_repeat=P_REPEAT
 ).to(DEVICE)
 
+with torch.no_grad():
+    w = model.gene_emb_onehot_layer.weight
+    print(f"gene_emb_onehot_layer after init: shape={w.shape} "
+          f"nan%={torch.isnan(w).float().mean():.3f} "
+          f"min={w.min():.4f} max={w.max():.4f}")
+
 # FIX 1: Safe weight loading — only load if shapes match exactly.
 # The old code caught all exceptions and silently continued with a partially
 # loaded (corrupt) model, causing NaN from the very first batch.
@@ -158,11 +164,22 @@ def _safe_init(module):
 
 # Only re-init layers that were NOT loaded from checkpoint
 layers_loaded = set(to_load.keys()) if (LOAD_BEST and os.path.exists(WEIGHTS_PATH)) else set()
+w = model.gene_emb_onehot_layer.weight
+print(f"BEFORE _safe_init: nan%={torch.isnan(w).float().mean():.3f}")
+
+for name, module in model.named_modules():
+    params_loaded = any(f'{name}.{p}' in layers_loaded for p in ['weight', 'bias'])
+    if not params_loaded:
+        _safe_init(module)
+
 for name, module in model.named_modules():
     # Check if any parameter of this module was loaded from checkpoint
     params_loaded = any(f'{name}.{p}' in layers_loaded for p in ['weight', 'bias'])
     if not params_loaded:
         _safe_init(module)
+
+w = model.gene_emb_onehot_layer.weight
+print(f"AFTER _safe_init: nan%={torch.isnan(w).float().mean():.3f}")
 
 print("Weight init complete.")
 
