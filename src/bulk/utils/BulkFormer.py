@@ -16,9 +16,6 @@ class BulkFormer(nn.Module):
         self.gene_length = gene_length
         self.graph = graph
 
-        # # === 基因 embedding ===
-        self.gene_emb = nn.Parameter(gene_emb)
-
         # one-hot embedding 初始化
         self.gene_emb_onehot_layer = nn.Embedding(gene_length, dim)
         nn.init.xavier_uniform_(self.gene_emb_onehot_layer.weight)
@@ -40,7 +37,7 @@ class BulkFormer(nn.Module):
         )
         # === 输出头-逐基因预测 ===
         self.head = nn.Sequential(nn.LayerNorm(dim + 3), nn.Linear(dim + 3, dim), nn.ReLU(), nn.Linear(dim, 1), nn.ReLU())
-
+        
     # def forward(self, x, mask_prob=None, output_expr=False):
     #     b, g = x.shape
     #     x_input = x.clone()
