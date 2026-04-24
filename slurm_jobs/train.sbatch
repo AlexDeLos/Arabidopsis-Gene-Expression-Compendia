@@ -35,7 +35,7 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-apptainer exec --nv fused.sif python -c "
+apptainer exec --nv "$SIF" python -c "
 import torch
 print('PyTorch:', torch.__version__)
 print('CUDA available:', torch.cuda.is_available())
