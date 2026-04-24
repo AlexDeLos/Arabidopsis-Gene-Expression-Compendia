@@ -192,44 +192,68 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
     steps_per_epoch=len(train_dl), epochs=EPOCHS, pct_start=0.05
 )
 
+# def run_epoch(loader, train=True):
+#     model.train() if train else model.eval()
+#     with torch.no_grad():
+#         w = model.gene_emb_onehot_layer.weight
+#         print(f"START OF run_epoch: device={w.device} nan%={torch.isnan(w).float().mean():.3f}")
+#     total_loss, n_batches = 0.0, 0
+#     with torch.set_grad_enabled(train):
+#         for batch_idx, (x, true, mask) in enumerate(loader):
+#             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
+#             pred = model(x, mask_prob=MASK_RATIO, output_expr=True)
+
+#             assert torch.isfinite(pred).all(), (
+#                 f"NaN/Inf in pred at batch {batch_idx}\n"
+#                 f"  x stats: min={x.min():.3f} max={x.max():.3f} "
+#                 f"has_nan={torch.isnan(x).any().item()}\n"
+#                 f"  pred nan%: {torch.isnan(pred).float().mean():.3f}"
+#             )
+
+#             loss = ((pred - true) ** 2 * mask).sum() / (mask.sum() + 1e-8)
+
+#             assert torch.isfinite(loss), (
+#                 f"NaN/Inf in loss at batch {batch_idx}\n"
+#                 f"  pred: min={pred.min():.3f} max={pred.max():.3f}\n"
+#                 f"  true: min={true.min():.3f} max={true.max():.3f}\n"
+#                 f"  mask sum: {mask.sum().item()}"
+#             )
+
+#             if train:
+#                 optimizer.zero_grad()
+#                 loss.backward()
+#                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+#                 optimizer.step()
+#                 scheduler.step()
+
+#             total_loss += loss.item()
+#             n_batches  += 1
+
+#     return total_loss / n_batches
+
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
-    with torch.no_grad():
-        w = model.gene_emb_onehot_layer.weight
-        print(f"START OF run_epoch: device={w.device} nan%={torch.isnan(w).float().mean():.3f}")
-    total_loss, n_batches = 0.0, 0
     with torch.set_grad_enabled(train):
         for batch_idx, (x, true, mask) in enumerate(loader):
             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
             pred = model(x, mask_prob=MASK_RATIO, output_expr=True)
-
-            assert torch.isfinite(pred).all(), (
-                f"NaN/Inf in pred at batch {batch_idx}\n"
-                f"  x stats: min={x.min():.3f} max={x.max():.3f} "
-                f"has_nan={torch.isnan(x).any().item()}\n"
-                f"  pred nan%: {torch.isnan(pred).float().mean():.3f}"
-            )
-
             loss = ((pred - true) ** 2 * mask).sum() / (mask.sum() + 1e-8)
-
-            assert torch.isfinite(loss), (
-                f"NaN/Inf in loss at batch {batch_idx}\n"
-                f"  pred: min={pred.min():.3f} max={pred.max():.3f}\n"
-                f"  true: min={true.min():.3f} max={true.max():.3f}\n"
-                f"  mask sum: {mask.sum().item()}"
-            )
 
             if train:
                 optimizer.zero_grad()
                 loss.backward()
+
+                # Check gradients before optimizer step
+                for name, param in model.named_parameters():
+                    if param.grad is not None and not torch.isfinite(param.grad).all():
+                        nan_pct = (~torch.isfinite(param.grad)).float().mean().item()
+                        print(f"NaN grad in {name}: nan%={nan_pct:.3f}")
+
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
 
-            total_loss += loss.item()
-            n_batches  += 1
-
-    return total_loss / n_batches
+            break  # only run one batch for debugging
 
 best_val = float('inf')
 for epoch in range(1, EPOCHS + 1):
