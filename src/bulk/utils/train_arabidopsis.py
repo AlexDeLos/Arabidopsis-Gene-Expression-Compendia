@@ -18,7 +18,7 @@ DEBUG_SAMPLES  = 2000
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Config ────────────────────────────────────────────────────────────────────
-LOAD_BEST  = False   # load checkpoint if it exists AND shapes match
+LOAD_BEST  = False
 DIM        = 640
 GB_REPEAT  = 1
 P_REPEAT   = 1
@@ -126,14 +126,10 @@ with torch.no_grad():
           f"nan%={torch.isnan(w).float().mean():.3f} "
           f"min={w.min():.4f} max={w.max():.4f}")
 
-# FIX 1: Safe weight loading — only load if shapes match exactly.
-# The old code caught all exceptions and silently continued with a partially
-# loaded (corrupt) model, causing NaN from the very first batch.
 if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
     print(f"Attempting to load weights from {WEIGHTS_PATH}...")
     ckpt     = torch.load(WEIGHTS_PATH, map_location=DEVICE, weights_only=False)
     model_sd = model.state_dict()
-    # Only load keys whose shapes match exactly
     to_load  = {k: v for k, v in ckpt.items()
                 if k in model_sd and model_sd[k].shape == v.shape}
     skipped  = [k for k in ckpt if k not in to_load]
@@ -141,19 +137,9 @@ if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
         print(f"  Shape mismatch — skipped {len(skipped)} layers: {skipped[:4]}...")
     model.load_state_dict(to_load, strict=False)
     print(f"  Loaded {len(to_load)}/{len(model_sd)} layers from checkpoint.")
-    if len(to_load) == 0:
-        print("  WARNING: 0 layers loaded — training entirely from scratch.")
-    elif len(skipped) > 0:
-        print("  NOTE: Skipped layers will use random init (expected for new gene_length/dim).")
 else:
     print(f'Training from scratch — {sum(p.numel() for p in model.parameters())/1e6:.1f}M params')
 
-# FIX 2: Xavier init on the large vocab-dependent layers.
-# With gene_length=34858 and dim=640, the default PyTorch init (uniform in
-# [-1/sqrt(fan_in), 1/sqrt(fan_in)]) produces activations that are orders of
-# magnitude too large, causing exp() overflow → inf → NaN in attention.
-# Xavier init scales weights by sqrt(2 / (fan_in + fan_out)) which keeps
-# activations well-behaved regardless of layer width.
 def _safe_init(module):
     if isinstance(module, nn.Linear):
         nn.init.xavier_uniform_(module.weight)
@@ -162,77 +148,24 @@ def _safe_init(module):
     elif isinstance(module, nn.Embedding):
         nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-# Only re-init layers that were NOT loaded from checkpoint
 layers_loaded = set(to_load.keys()) if (LOAD_BEST and os.path.exists(WEIGHTS_PATH)) else set()
-w = model.gene_emb_onehot_layer.weight
-print(f"BEFORE _safe_init: nan%={torch.isnan(w).float().mean():.3f}")
 
 for name, module in model.named_modules():
     params_loaded = any(f'{name}.{p}' in layers_loaded for p in ['weight', 'bias'])
     if not params_loaded:
         _safe_init(module)
-
-for name, module in model.named_modules():
-    # Check if any parameter of this module was loaded from checkpoint
-    params_loaded = any(f'{name}.{p}' in layers_loaded for p in ['weight', 'bias'])
-    if not params_loaded:
-        _safe_init(module)
-
-w = model.gene_emb_onehot_layer.weight
-print(f"AFTER _safe_init: nan%={torch.isnan(w).float().mean():.3f}")
 
 print("Weight init complete.")
 
-# FIX 3: NaN guard in the training loop.
-# If a NaN loss appears (e.g. from a single bad batch), skip the backward pass
-# rather than propagating NaN gradients through the entire model.
 optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer, max_lr=LR,
     steps_per_epoch=len(train_dl), epochs=EPOCHS, pct_start=0.05
 )
 
-# def run_epoch(loader, train=True):
-#     model.train() if train else model.eval()
-#     with torch.no_grad():
-#         w = model.gene_emb_onehot_layer.weight
-#         print(f"START OF run_epoch: device={w.device} nan%={torch.isnan(w).float().mean():.3f}")
-#     total_loss, n_batches = 0.0, 0
-#     with torch.set_grad_enabled(train):
-#         for batch_idx, (x, true, mask) in enumerate(loader):
-#             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
-#             pred = model(x, mask_prob=MASK_RATIO, output_expr=True)
-
-#             assert torch.isfinite(pred).all(), (
-#                 f"NaN/Inf in pred at batch {batch_idx}\n"
-#                 f"  x stats: min={x.min():.3f} max={x.max():.3f} "
-#                 f"has_nan={torch.isnan(x).any().item()}\n"
-#                 f"  pred nan%: {torch.isnan(pred).float().mean():.3f}"
-#             )
-
-#             loss = ((pred - true) ** 2 * mask).sum() / (mask.sum() + 1e-8)
-
-#             assert torch.isfinite(loss), (
-#                 f"NaN/Inf in loss at batch {batch_idx}\n"
-#                 f"  pred: min={pred.min():.3f} max={pred.max():.3f}\n"
-#                 f"  true: min={true.min():.3f} max={true.max():.3f}\n"
-#                 f"  mask sum: {mask.sum().item()}"
-#             )
-
-#             if train:
-#                 optimizer.zero_grad()
-#                 loss.backward()
-#                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-#                 optimizer.step()
-#                 scheduler.step()
-
-#             total_loss += loss.item()
-#             n_batches  += 1
-
-#     return total_loss / n_batches
-
-def run_epoch(loader, train=True):
+def run_epoch(loader, train=True, grad_debug=False):
     model.train() if train else model.eval()
+    total_loss, n_batches = 0.0, 0
     with torch.set_grad_enabled(train):
         for batch_idx, (x, true, mask) in enumerate(loader):
             x, true, mask = x.to(DEVICE), true.to(DEVICE), mask.to(DEVICE)
@@ -243,26 +176,43 @@ def run_epoch(loader, train=True):
                 optimizer.zero_grad()
                 loss.backward()
 
-                # Check gradients before optimizer step
-                for name, param in model.named_parameters():
-                    if param.grad is not None and not torch.isfinite(param.grad).all():
-                        nan_pct = (~torch.isfinite(param.grad)).float().mean().item()
-                        print(f"NaN grad in {name}: nan%={nan_pct:.3f}")
+                if grad_debug:
+                    # Print ALL parameters in forward order — OK and NaN alike
+                    # First NaN in this list is the true source
+                    print("\n--- Gradient report (forward order) ---")
+                    for name, param in model.named_parameters():
+                        if param.grad is None:
+                            print(f"  NO_GRAD  {name}")
+                        elif not torch.isfinite(param.grad).all():
+                            nan_pct = (~torch.isfinite(param.grad)).float().mean().item()
+                            abs_max = param.grad[torch.isfinite(param.grad)].abs().max().item() if torch.isfinite(param.grad).any() else float('nan')
+                            print(f"  NaN      {name}  nan%={nan_pct:.3f}  finite_absmax={abs_max:.4f}")
+                        else:
+                            abs_max = param.grad.abs().max().item()
+                            print(f"  OK       {name}  absmax={abs_max:.6f}")
+                    print("--- End gradient report ---\n")
+                    return  # exit after one batch when debugging
 
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
 
-            break  # only run one batch for debugging
+            total_loss += loss.item()
+            n_batches  += 1
+
+    if n_batches == 0:
+        return float('nan')
+    return total_loss / n_batches
 
 best_val = float('inf')
 for epoch in range(1, EPOCHS + 1):
-    with torch.no_grad():
-        w = model.gene_emb_onehot_layer.weight
-        print(f"BEFORE EPOCH 1: device={w.device} nan%={torch.isnan(w).float().mean():.3f} "
-            f"min={w.min():.4f} max={w.max():.4f}")
-    train_loss = run_epoch(train_dl, train=True)
-    val_loss   = run_epoch(val_dl,   train=False)
+    # Only do grad debug on first epoch
+    grad_debug = (epoch == 1)
+    train_loss = run_epoch(train_dl, train=True, grad_debug=grad_debug)
+    if grad_debug:
+        print("Grad debug complete — exiting.")
+        break
+    val_loss = run_epoch(val_dl, train=False)
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
 
     if torch.isfinite(torch.tensor(val_loss)) and val_loss < best_val:
