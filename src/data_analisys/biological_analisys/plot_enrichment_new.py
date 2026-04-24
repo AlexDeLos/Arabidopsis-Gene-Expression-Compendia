@@ -260,7 +260,7 @@ def plot_enrichment_scatter_interactive(
     version = "0.0"
     dataset_type = "full"
     tissue = "All-Tissues"
-    normalization = normalizations[0] if normalizations else "study_corrected"
+    normalization = normalizations[0] if normalizations else "combat_seq"
     threshold = "0"
     purity = "mixed"
     stress_name = treatments[0] if treatments else "Heat Stress"

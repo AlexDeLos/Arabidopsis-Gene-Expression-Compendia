@@ -842,8 +842,8 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
     pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0] - 1, df_aligned.shape[1] - 1))
 
     embeddings_out = {}
-    for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne)]: # ("bulk", run_bulkformer)
-        emb = run_func(df_aligned) if method == "bulk" else run_func(pca_embedding)
+    for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne), ("bulk", run_bulkformer)]:
+        emb = run_func(df_aligned,experiment_name) if method == "bulk" else run_func(pca_embedding)
         embeddings_out[method] = emb
 
     # ---- Bulk latent space metrics (separate summary list)
@@ -922,7 +922,7 @@ if __name__ == "__main__":
     # LABELS_PATH = '/tudelft.net/staff-umbrella/GeneExpressionStorage/labels/TULIP_1.2/5.0'
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # labels_map = make_df_from_labels(load_labels_study(LABELS_PATH), LABEL_AXES).to_dict()
-    stages = ["Salmon_RNAseq_Combined_TPM", "filter", "combat_seq", "rankin"] if RNA_USED else ["filter", "study_corrected", "rankin"]
+    stages = ["Salmon_RNAseq_Combined_TPM", "filter", "combat_seq", "rankin"] if RNA_USED else ["filter", "combat_seq", "rankin"]
     for file in stages:
         data_path = f"{STORAGE_DIR}final_data/rnaseq_processed/{file}.csv" if RNA_USED else f"{STORAGE_DIR}final_data/{file}.csv"
 

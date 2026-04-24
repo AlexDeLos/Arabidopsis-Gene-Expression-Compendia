@@ -148,7 +148,7 @@ def get_spider_plots(
         Minimum-group-size filter value used for this run.
     full : bool
         If True, include all `data_types`; otherwise restrict to a curated
-        subset (study_corrected, tissue_normalized*, imputed).
+        subset (combat_seq, tissue_normalized*, imputed).
     """
     os.makedirs(path, exist_ok=True)
 
@@ -157,7 +157,7 @@ def get_spider_plots(
     else:
         allowed_types = [
             dt for dt in data_types
-            if dt in {"study_corrected", "tissue_normalized",
+            if dt in {"combat_seq", "tissue_normalized",
                       "tissue_normalized_2", "imputed"}
         ]
 
@@ -258,7 +258,7 @@ def run_diff_exp_and_enrichment(
         If True, skip computation and regenerate plots from existing CSVs only.
     """
     if data_types is None:
-        data_types = ["study_corrected", "imputed", "filter"]
+        data_types = ["combat_seq", "imputed", "filter"]
     if pures is None:
         pures = [False]
     if Fulls is None:

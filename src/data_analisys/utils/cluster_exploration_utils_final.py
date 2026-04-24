@@ -30,7 +30,7 @@ from src.constants import (
     GRAPH_PATH,
     GRAPH_WEIGHT_PATH,
     GENE_INFO,
-    WEIGHTS_PATH
+    WEIGHTS_PATHS
 )
 from torch_sparse import SparseTensor  # pyright: ignore[reportMissingImports]
 from tqdm import tqdm
@@ -851,14 +851,15 @@ sys.path.append(module_dir)
 # --- BULKFORMER INTEGRATION ---
 # ==========================================
 BULKFORMER_FILES = {
-    "model_weights": WEIGHTS_PATH,
+    "model_weights":WEIGHTS_PATHS
+        ,
     "graph_ei": GRAPH_PATH,
     "graph_w": GRAPH_WEIGHT_PATH,
     "gene_info": GENE_INFO,
 }
 
 
-def run_bulkformer(df_aligned: pd.DataFrame, batch_size=4):
+def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     """
     Takes an aligned expression dataframe (Samples x Genes), runs it through
     the BulkFormer model to extract 128-dim representations, and reduces
@@ -899,7 +900,12 @@ def run_bulkformer(df_aligned: pd.DataFrame, batch_size=4):
     model_params["dim"] = 128
 
     model = BulkFormer(**model_params).to(device)  # pyright: ignore[reportArgumentType]
-    ckpt = torch.load(BULKFORMER_FILES["model_weights"], map_location="cpu", weights_only=False)
+    try:
+        ckpt = torch.load(BULKFORMER_FILES["model_weights"][matrix], map_location="cpu", weights_only=False)
+    except FileNotFoundError as e:
+        Warning(f"could not find {BULKFORMER_FILES["model_weights"][matrix]}: {e}")
+        print('falling back to filter')
+        ckpt = torch.load(BULKFORMER_FILES["model_weights"]['filter'], map_location="cpu", weights_only=False)
     sd = OrderedDict((k[7:] if k.startswith("module.") else k, v) for k, v in ckpt.items())
 
     model_sd = model.state_dict()
