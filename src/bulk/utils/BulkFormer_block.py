@@ -30,7 +30,7 @@ class BulkFormer_block(nn.Module):
     #     x = x + gcn_out
     #     x = self.f(x)
     #     return x
-    def forward(self, x, graph, use_graph):
+    def forward(self, x, graph):
         def check(name, t):
             if not torch.isfinite(t).all():
                 finite = t[torch.isfinite(t)]
@@ -45,11 +45,10 @@ class BulkFormer_block(nn.Module):
         x = self.layernorm(x)
         check("after_layernorm", x)
 
-        if use_graph:
-            gcn_out = self.g(x, graph)
-            check("after_gcnconv", gcn_out)
-            x = x + gcn_out
-            check("after_gcn_residual", x)
+        gcn_out = self.g(x, graph)
+        check("after_gcnconv", gcn_out)
+        x = x + gcn_out
+        check("after_gcn_residual", x)
 
         x = self.f(x)
         check("after_performer", x)
