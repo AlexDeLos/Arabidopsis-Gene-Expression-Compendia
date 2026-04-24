@@ -194,6 +194,9 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
+    with torch.no_grad():
+        w = model.gene_emb_onehot_layer.weight
+        print(f"START OF run_epoch: device={w.device} nan%={torch.isnan(w).float().mean():.3f}")
     total_loss, n_batches = 0.0, 0
     with torch.set_grad_enabled(train):
         for batch_idx, (x, true, mask) in enumerate(loader):
@@ -230,6 +233,10 @@ def run_epoch(loader, train=True):
 
 best_val = float('inf')
 for epoch in range(1, EPOCHS + 1):
+    with torch.no_grad():
+        w = model.gene_emb_onehot_layer.weight
+        print(f"BEFORE EPOCH 1: device={w.device} nan%={torch.isnan(w).float().mean():.3f} "
+            f"min={w.min():.4f} max={w.max():.4f}")
     train_loss = run_epoch(train_dl, train=True)
     val_loss   = run_epoch(val_dl,   train=False)
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
