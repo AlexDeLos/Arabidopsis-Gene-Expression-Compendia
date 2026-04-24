@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=0:05:00
-#SBATCH --mem=4G
+#SBATCH --time=1:00:00
+#SBATCH --mem=120G
 #SBATCH --gres=gpu
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 
@@ -35,27 +35,27 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-apptainer exec --nv "$SIF" python -c "
-import torch
-print('PyTorch:', torch.__version__)
-print('CUDA available:', torch.cuda.is_available())
-if torch.cuda.is_available():
-    print('Device:', torch.cuda.get_device_name(0))
-    print('Capability:', torch.cuda.get_device_capability())
-    print('Arch list:', torch.cuda.get_arch_list())
-    x = torch.ones(3, 3).cuda()
-    print('Tensor on GPU:', x.device)
-    print('GPU OK')
-else:
-    print('No GPU — container or driver issue')
-"
+# apptainer exec --nv "$SIF" python -c "
+# import torch
+# print('PyTorch:', torch.__version__)
+# print('CUDA available:', torch.cuda.is_available())
+# if torch.cuda.is_available():
+#     print('Device:', torch.cuda.get_device_name(0))
+#     print('Capability:', torch.cuda.get_device_capability())
+#     print('Arch list:', torch.cuda.get_arch_list())
+#     x = torch.ones(3, 3).cuda()
+#     print('Tensor on GPU:', x.device)
+#     print('GPU OK')
+# else:
+#     print('No GPU — container or driver issue')
+# "
 
-# apptainer exec --nv \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python src/bulk/utils/train_arabidopsis.py --rna
+apptainer exec --nv \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
+    python src/bulk/utils/train_arabidopsis.py --rna
 
 EXIT_CODE=$?
 echo "========================================"
