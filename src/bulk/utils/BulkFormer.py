@@ -8,7 +8,16 @@ sys.path.append(module_dir)
 from src.bulk.utils.BulkFormer_block import BulkFormer_block  # noqa: E402
 from src.bulk.utils.Rope import PositionalExprEmbedding  # noqa: E402
 
-
+def check(name, t):
+    if not torch.isfinite(t).all():
+        finite = t[torch.isfinite(t)]
+        nan_pct = (~torch.isfinite(t)).float().mean().item()
+        min_val = finite.min().item() if finite.numel() > 0 else float('nan')
+        max_val = finite.max().item() if finite.numel() > 0 else float('nan')
+        raise RuntimeError(
+            f"NaN/Inf in [{name}]  shape={tuple(t.shape)}  "
+            f"nan%={nan_pct:.3f}  min={min_val:.3f}  max={max_val:.3f}"
+        )
 class BulkFormer(nn.Module):
     def __init__(self, dim, graph, gene_emb, gene_length, bin_head=4, full_head=4, bins=10, gb_repeat=3, p_repeat=1):
         super().__init__()
@@ -93,19 +102,13 @@ class BulkFormer(nn.Module):
     #     return gene_emb_output
     def forward(self, x, mask_prob=None, output_expr=False):
         b, g = x.shape
+        w = self.gene_emb_onehot_layer.weight
+        print(f"TOP OF FORWARD: w nan%={torch.isnan(w).float().mean():.3f} "
+            f"x shape={x.shape} x device={x.device} w device={w.device}")
+        check("gene_emb_onehot_TOP", w)
+
         x_input = x.clone()
-
-        def check(name, t):
-            if not torch.isfinite(t).all():
-                finite = t[torch.isfinite(t)]
-                nan_pct = (~torch.isfinite(t)).float().mean().item()
-                min_val = finite.min().item() if finite.numel() > 0 else float('nan')
-                max_val = finite.max().item() if finite.numel() > 0 else float('nan')
-                raise RuntimeError(
-                    f"NaN/Inf in [{name}]  shape={tuple(t.shape)}  "
-                    f"nan%={nan_pct:.3f}  min={min_val:.3f}  max={max_val:.3f}"
-                )
-
+        check("gene_emb_onehot_AFTER_CLONE", self.gene_emb_onehot_layer.weight)
         x_for_global = x_input.clone()
         x_for_global[x_for_global == -10.0] = 0.0
 

@@ -21,6 +21,7 @@ class BulkFormer_block(nn.Module):
         self.f = nn.Sequential(*[Performer(dim=self.dim, heads=self.full_head, depth=1, dim_head=self.dim // self.full_head, attn_dropout=0.05, ff_dropout=0.1) for _ in range(self.p_repeat)])
 
         self.layernorm = nn.LayerNorm(self.dim)
+        self.layernorm2 = nn.LayerNorm(self.dim)
 
     # def forward(self, x, graph):
     #     x = self.layernorm(x)
@@ -50,6 +51,8 @@ class BulkFormer_block(nn.Module):
         check("after_gcnconv", gcn_out)
         x = x + gcn_out
         check("after_gcn_residual", x)
+        x = self.layernorm2(x)
+        check("layernorm2", x)
 
         x = self.f(x)
         check("after_performer", x)
