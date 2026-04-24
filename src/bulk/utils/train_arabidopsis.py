@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from torch_geometric.utils import add_self_loops
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch_geometric.typing import SparseTensor
 
@@ -73,11 +74,12 @@ ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
 if DEBUG:
     mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
     ei, ew = ei[:, mask], ew[mask]
-
+ei_with_loops, ew_with_loops = add_self_loops(ei, ew, fill_value=1.0, num_nodes=GENE_LENGTH)
 graph = SparseTensor(
-    row=ei[1], col=ei[0], value=ew,
+    row=ei_with_loops[1], col=ei_with_loops[0], value=ew_with_loops,
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
+
 print(f'Graph: {ei.shape[1]} edges')
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
