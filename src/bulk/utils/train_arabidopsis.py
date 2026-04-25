@@ -94,8 +94,29 @@ graph = SparseTensor.from_edge_index(
     edge_attr=ew, 
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
+# After building the SparseTensor
+vals = graph.storage.value()
+row = graph.storage.row()
+
+# Degree-normalize edge weights (D^{-1/2} A D^{-1/2} style)
+deg = graph.storage.rowcount().float()
+deg_inv_sqrt = deg.pow(-0.5)
+deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0.0
+
+# Renormalize stored edge weights
+norm_vals = deg_inv_sqrt[row] * vals
+graph = SparseTensor(
+    row=row,
+    col=graph.storage.col(),
+    value=norm_vals,
+    sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
+).to(DEVICE)
 # Get the number of connections for each of the 34,858 genes
-node_degrees = graph.storage.rowcount()
+
+node_degrees = graph.storage.rowcount().float()
+print(f"Degree stats — max: {node_degrees.max():.0f}, "
+      f"mean: {node_degrees.mean():.1f}, "
+      f"p99: {node_degrees.quantile(0.99):.0f}")
 
 # Find genes with zero connections
 isolated_mask = (node_degrees == 0)

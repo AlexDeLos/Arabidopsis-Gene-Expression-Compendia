@@ -13,8 +13,7 @@ class BulkFormer_block(nn.Module):
         self.p_repeat = p_repeat
         self.bin_head = bin_head
         self.full_head = full_head
-
-        self.g = GCNConv(dim, dim, add_self_loops=True)
+        self.g = GCNConv(dim, dim, add_self_loops=True, normalize=True)
         self.f = nn.Sequential(*[Performer(dim=self.dim, heads=self.full_head, depth=1, dim_head=self.dim // self.full_head, attn_dropout=0.05, ff_dropout=0.1) for _ in range(self.p_repeat)])
         self.layernorm = nn.LayerNorm(self.dim)
         self.layernorm2 = nn.LayerNorm(self.dim)
@@ -33,11 +32,12 @@ class BulkFormer_block(nn.Module):
 
         x = self.layernorm(x)
         check("after_layernorm", x)
-
+        x_gcn = torch.clamp(x, min=-30.0, max=30.0)   # ← add this
         # with torch.no_grad():
-        gcn_out = self.g(x, graph)
+        gcn_out = self.g(x_gcn, graph)
         check("after_gcnconv", gcn_out)
-        gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
+        gcn_out = torch.clamp(gcn_out, min=-50.0, max=50.0)   # ← add this
+        # gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
         check("after_nan_to_num", gcn_out)
         x = x + gcn_out
         check("after_gcn_residual", x)
