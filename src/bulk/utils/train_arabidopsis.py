@@ -35,6 +35,7 @@ for label, path in [("Graph", GRAPH_PATH), ("Weights", GRAPH_WEIGHT_PATH),
                     ("Gene Info", GENE_INFO), ("Expression", EXPR_PATH),
                     ("Pre-trained", WEIGHTS_PATH)]:
     print(f"{label:15}: {path}")
+print("trying with edge weights.")
 print("---------------------------\n")
 
 # ── Gene vocab ────────────────────────────────────────────────────────────────
