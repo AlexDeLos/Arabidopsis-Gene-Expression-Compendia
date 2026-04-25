@@ -24,7 +24,7 @@ class BulkFormer_block(nn.Module):
         self.full_head = full_head
 
         # 图卷积层
-        self.g = GCNConv(dim, dim, cached=True, add_self_loops=False)
+        self.g = GCNConv(dim, dim, cached=False, add_self_loops=False)
 
         # 全局 performer
         self.f = nn.Sequential(*[
