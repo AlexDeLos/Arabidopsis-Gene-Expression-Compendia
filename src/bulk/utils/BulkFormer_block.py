@@ -46,12 +46,28 @@ class BulkFormer_block(nn.Module):
 
         x = self.layernorm(x)
         check("after_layernorm", x)
-
-        # FIX: GCNConv expects (num_nodes, dim) — it is a node-level op and
-        # does not understand a batch dimension. Passing (b, g, dim) directly
-        # causes PyG to silently treat b*g as nodes or mis-broadcast, producing
-        # NaNs at full gene-count scale. Loop over the batch and stack instead.
         gcn_out_list = []
+        # TEMPORARY DIAGNOSTIC — remove after fixing
+        print(f"[GCN input] min={x.min():.3f} max={x.max():.3f} "
+            f"nan%={(~torch.isfinite(x)).float().mean():.4f}")
+
+        # Run just node 0 from batch 0 to isolate
+        with torch.no_grad():
+            test_out = self.g(x[0], graph_ei, graph_ew)
+            nan_nodes = (~torch.isfinite(test_out).all(dim=-1)).nonzero(as_tuple=True)[0]
+            print(f"[GCN] NaN nodes in sample 0: {len(nan_nodes)}")
+            if len(nan_nodes) > 0:
+                print(f"  First 5: {nan_nodes[:5].tolist()}")
+                # Check the actual weight matrix
+                print(f"  GCN weight: min={self.g.lin.weight.min():.3f} "
+                    f"max={self.g.lin.weight.max():.3f} "
+                    f"nan%={(~torch.isfinite(self.g.lin.weight)).float().mean():.4f}")
+                # Check what edge weights look like for a NaN node
+                node = nan_nodes[0].item()
+                edge_mask = (graph_ei[0] == node)
+                print(f"  Node {node} edges: {edge_mask.sum().item()}, "
+                    f"weights: {graph_ew[edge_mask][:5].tolist()}")
+        raise RuntimeError("Diagnostic complete — stopping")
         for i in range(b):
             node_feat = x[i]                   # (g, dim)
             out_i = self.g(node_feat, graph_ei, graph_ew)   # (g, dim)

@@ -82,7 +82,20 @@ ei, ew = add_self_loops(
 )
 
 graph = (ei.to(DEVICE), ew.to(DEVICE))
+print(f"Unique edges: {ei.shape[1]}  "
+      f"After dedup: {torch.unique(ei, dim=1).shape[1]}")
 
+# Check edge weight distribution
+print(f"Edge weight distribution: "
+      f"min={ew.min():.4f} max={ew.max():.4f} "
+      f"mean={ew.mean():.4f} std={ew.std():.4f} "
+      f"negative: {(ew < 0).sum().item()} / {len(ew)}")
+
+# Check if add_self_loops created duplicate self-loops
+self_loop_mask = (ei[0] == ei[1])
+print(f"Self-loops: {self_loop_mask.sum().item()}, "
+      f"self-loop weights: min={ew[self_loop_mask].min():.4f} "
+      f"max={ew[self_loop_mask].max():.4f}")
 # Keep the diagnostic prints using ei directly:
 deg = torch.zeros(GENE_LENGTH, device=DEVICE)
 deg.scatter_add_(0, ei[0].to(DEVICE), torch.ones(ei.shape[1], device=DEVICE))
