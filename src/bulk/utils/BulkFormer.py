@@ -73,7 +73,7 @@ class BulkFormer(nn.Module):
         x = self.x_proj(x)
 
         for layer in self.gb_formers:
-            x = layer(x, self.graph_ei)
+            x = layer(x, self.graph_ei,self.graph_ew)
 
         gene_emb = self.layernorm(x)
 

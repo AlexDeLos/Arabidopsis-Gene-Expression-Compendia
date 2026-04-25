@@ -19,7 +19,7 @@ class BulkFormer_block(nn.Module):
         # computes degree from weight sums when weights are provided, which
         # causes NaNs for nodes whose PCC weights nearly cancel. Binary
         # adjacency with normalize=True gives the correct D^{-1/2} A D^{-1/2}.
-        self.g = GCNConv(dim, dim, cached=False, add_self_loops=False, normalize=True)
+        self.g = GCNConv(dim, dim, cached=False, add_self_loops=False, normalize=False )
 
         self.f = nn.Sequential(*[
             Performer(dim=self.dim, heads=self.full_head, depth=1,
@@ -30,7 +30,7 @@ class BulkFormer_block(nn.Module):
 
         self.layernorm = nn.LayerNorm(self.dim)
 
-    def forward(self, x, graph_ei):
+    def forward(self, x, graph_ei, graph_ew):
         # FIX: GCNConv expects (num_nodes, dim) but x is (b, g, dim).
         # Loop over the batch dimension explicitly — passing the 3D tensor
         # directly causes PyG to misinterpret the batch dim as nodes,
@@ -40,7 +40,7 @@ class BulkFormer_block(nn.Module):
         x = self.layernorm(x)
 
         gcn_out = torch.stack(
-            [self.g(x[i], graph_ei, None) for i in range(b)],
+            [self.g(x[i], graph_ei, graph_ew) for i in range(b)],
             dim=0
         )  # (b, g, dim)
 
