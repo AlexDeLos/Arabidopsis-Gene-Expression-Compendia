@@ -236,7 +236,7 @@ def run_epoch(loader, train=True, grad_debug=False):
 best_val = float('inf')
 for epoch in range(1, EPOCHS + 1):
     # Only do grad debug on first epoch
-    grad_debug = (epoch == 1)
+    grad_debug = False
     train_loss = run_epoch(train_dl, train=True, grad_debug=grad_debug)
     if grad_debug:
         print("Grad debug complete — exiting.")
