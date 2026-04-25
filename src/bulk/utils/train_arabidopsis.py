@@ -83,12 +83,30 @@ ei, ew = add_self_loops(
 )
 
 # 2. Build the SparseTensor from the updated indices
-graph = SparseTensor(
-    row=ei[0], 
-    col=ei[1], 
-    value=ew,
+# graph = SparseTensor(
+#     row=ei[0], 
+#     col=ei[1], 
+#     value=ew,
+#     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
+# ).to(DEVICE)
+graph = SparseTensor.from_edge_index(
+    edge_index=ei, 
+    edge_attr=ew, 
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
+# Get the number of connections for each of the 34,858 genes
+node_degrees = graph.storage.rowcount()
+
+# Find genes with zero connections
+isolated_mask = (node_degrees == 0)
+num_isolated = isolated_mask.sum().item()
+
+if num_isolated > 0:
+    print(f"⚠️ CRITICAL: Found {num_isolated} isolated genes!")
+    print("These will cause NaNs in GCN unless you add self-loops.")
+else:
+    print("✅ All genes have at least one connection.")
+
 print(f'Graph: {ei.shape[1]} edges')
 vals = graph.storage.value()
 
