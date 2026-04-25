@@ -14,7 +14,7 @@ class BulkFormer_block(nn.Module):
         self.bin_head = bin_head
         self.full_head = full_head
 
-        self.g = GCNConv(dim, dim, cached=True, add_self_loops=True)
+        self.g = GCNConv(dim, dim, add_self_loops=True)
         self.f = nn.Sequential(*[Performer(dim=self.dim, heads=self.full_head, depth=1, dim_head=self.dim // self.full_head, attn_dropout=0.05, ff_dropout=0.1) for _ in range(self.p_repeat)])
         self.layernorm = nn.LayerNorm(self.dim)
         self.layernorm2 = nn.LayerNorm(self.dim)

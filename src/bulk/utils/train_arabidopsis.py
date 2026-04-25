@@ -90,7 +90,11 @@ graph = SparseTensor(
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
 print(f'Graph: {ei.shape[1]} edges')
+vals = graph.storage.value()
 
+if vals is not None:
+    print(f"Graph Value NaNs: {torch.isnan(vals).any()}")
+    print(f"Graph Value Infs: {torch.isinf(vals).any()}")
 # ── Dataset ───────────────────────────────────────────────────────────────────
 class ExprDataset(Dataset):
     def __init__(self, expr, mask_ratio=0.15):
