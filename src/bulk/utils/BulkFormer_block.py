@@ -35,7 +35,7 @@ class BulkFormer_block(nn.Module):
         check("after_layernorm", x)
 
         # with torch.no_grad():
-        gcn_out = self.g(x.detach(), graph)
+        gcn_out = self.g(x, graph)
         check("after_gcnconv", gcn_out)
         gcn_out = torch.nan_to_num(gcn_out, nan=0.0, posinf=0.0, neginf=0.0)
         check("after_nan_to_num", gcn_out)

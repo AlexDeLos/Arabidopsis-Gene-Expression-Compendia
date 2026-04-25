@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch_geometric.typing import SparseTensor
+from torch_geometric.utils import add_self_loops
 
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
@@ -74,13 +75,20 @@ if DEBUG:
     mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
     ei, ew = ei[:, mask], ew[mask]
     
+
+ei, ew = add_self_loops(
+    ei, ew, 
+    fill_value=1.0,
+    num_nodes=GENE_LENGTH
+)
+
+# 2. Build the SparseTensor from the updated indices
 graph = SparseTensor(
-    row=ei[0], # Source genes
-    col=ei[1], # Target genes
-    value=ew,  # The actual weights tensor
+    row=ei[0], 
+    col=ei[1], 
+    value=ew,
     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
 ).to(DEVICE)
-
 print(f'Graph: {ei.shape[1]} edges')
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
