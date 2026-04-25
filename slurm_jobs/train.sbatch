@@ -35,21 +35,6 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-# apptainer exec --nv "$SIF" python -c "
-# import torch
-# print('PyTorch:', torch.__version__)
-# print('CUDA available:', torch.cuda.is_available())
-# if torch.cuda.is_available():
-#     print('Device:', torch.cuda.get_device_name(0))
-#     print('Capability:', torch.cuda.get_device_capability())
-#     print('Arch list:', torch.cuda.get_arch_list())
-#     x = torch.ones(3, 3).cuda()
-#     print('Tensor on GPU:', x.device)
-#     print('GPU OK')
-# else:
-#     print('No GPU — container or driver issue')
-# "
-
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \

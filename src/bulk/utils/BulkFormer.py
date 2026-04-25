@@ -11,7 +11,7 @@ from src.bulk.utils.Rope import PositionalExprEmbedding  # noqa: E402
 
 class BulkFormer(nn.Module):
     def __init__(self, 
-                 dim, graph, gene_emb, gene_length,
+                 dim, graph, gene_length,
                  bin_head=4, full_head=4, bins=10,
                  gb_repeat=3, p_repeat=1):
         super().__init__()

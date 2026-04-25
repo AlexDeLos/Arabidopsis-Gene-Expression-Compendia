@@ -143,17 +143,12 @@ print(f'Train: {n_train}  Val: {n_val}')
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 model = BulkFormer(
-    dim=DIM, graph=graph, gene_emb=None,
+    dim=DIM, graph=graph,
     gene_length=GENE_LENGTH,
     bin_head=12, full_head=FULL_HEAD,
     bins=0, gb_repeat=GB_REPEAT, p_repeat=P_REPEAT
 ).to(DEVICE)
 
-with torch.no_grad():
-    w = model.gene_emb_onehot_layer.weight
-    print(f"gene_emb_onehot_layer after init: shape={w.shape} "
-          f"nan%={torch.isnan(w).float().mean():.3f} "
-          f"min={w.min():.4f} max={w.max():.4f}")
 
 if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
     print(f"Attempting to load weights from {WEIGHTS_PATH}...")
