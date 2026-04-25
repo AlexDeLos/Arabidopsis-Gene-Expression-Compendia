@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=0:20:00
+#SBATCH --time=8:00:00
 #SBATCH --mem=120G
 #SBATCH --gres=gpu
 #SBATCH --cpus-per-task=4

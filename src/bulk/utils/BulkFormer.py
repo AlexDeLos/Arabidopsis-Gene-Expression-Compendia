@@ -8,17 +8,6 @@ sys.path.append(module_dir)
 from src.bulk.utils.BulkFormer_block import BulkFormer_block  # noqa: E402
 from src.bulk.utils.Rope import PositionalExprEmbedding  # noqa: E402
 
-def check(name, t):
-    if not torch.isfinite(t).all():
-        finite = t[torch.isfinite(t)]
-        nan_pct = (~torch.isfinite(t)).float().mean().item()
-        min_val = finite.min().item() if finite.numel() > 0 else float('nan')
-        max_val = finite.max().item() if finite.numel() > 0 else float('nan')
-        raise RuntimeError(
-            f"NaN/Inf in [{name}]  shape={tuple(t.shape)}  "
-            f"nan%={nan_pct:.3f}  min={min_val:.3f}  max={max_val:.3f}"
-        )
-
 
 class BulkFormer(nn.Module):
     def __init__(self, 
@@ -28,6 +17,8 @@ class BulkFormer(nn.Module):
         super().__init__()
         self.dim = dim
         self.gene_length = gene_length
+
+        # FIX: graph is now a (ei, ew) tuple — unpack here
         self.graph_ei, self.graph_ew = graph
 
         self.gene_emb_onehot_layer = nn.Embedding(gene_length, dim)
@@ -53,12 +44,10 @@ class BulkFormer(nn.Module):
 
         self.layernorm = nn.LayerNorm(dim)
 
-        # FIX: Linear(1, ...) instead of Linear(gene_length, ...).
-        # The old Linear(34858, 4*dim) received gradients ~35x larger than in
-        # debug mode (scales with gene_length), blowing up weights on the first
-        # backward pass and corrupting every downstream layer including the GCN.
+        # ORIGINAL: Linear(gene_length, 4*dim) — testing whether this is
+        # still needed as a fix or whether the GCN batch-loop fix alone suffices
         self.global_expr_proj = nn.Sequential(
-            nn.Linear(1, 4 * dim),
+            nn.Linear(gene_length, 4 * dim),
             nn.ReLU(),
             nn.Linear(4 * dim, dim)
         )
@@ -76,31 +65,17 @@ class BulkFormer(nn.Module):
         x_input = x.clone()
 
         gene_emb_onehot = self.gene_emb_onehot_layer.weight
-        check("gene_emb_onehot", gene_emb_onehot)
-
         gene_emb_proj = self.gene_emb_proj(gene_emb_onehot)
-        check("gene_emb_proj", gene_emb_proj)
 
-        # FIX: zero out sentinel values (-10.0) before computing the global
-        # mean, so masked positions don't corrupt the sample-level summary.
-        x_clean = x.clone()
-        x_clean[x_clean == -10.0] = 0.0
-        global_mean = x_clean.mean(dim=1)                               # (b,)
-        global_proj_out = self.global_expr_proj(global_mean.unsqueeze(-1))  # (b, dim)
-        check("global_expr_proj", global_proj_out)
-
-        x = self.expr_emb(x) + gene_emb_proj + global_proj_out.unsqueeze(1).expand(-1, g, -1)
-        check("after_sum", x)
+        # ORIGINAL: pass x directly into global_expr_proj (includes sentinels)
+        x = self.expr_emb(x) + gene_emb_proj + self.global_expr_proj(x).unsqueeze(1).expand(-1, g, -1)
 
         x = self.x_proj(x)
-        check("x_proj", x)
 
-        for i, layer in enumerate(self.gb_formers):
-            x = layer(x, self.graph_ei, self.graph_ew)
-            check(f"gb_former_{i}", x)
+        for layer in self.gb_formers:
+            x = layer(x, self.graph_ei)
 
         gene_emb = self.layernorm(x)
-        check("layernorm", gene_emb)
 
         mask_scalar = torch.full((b, g, 1), mask_prob or 0.0, device=x.device)
 

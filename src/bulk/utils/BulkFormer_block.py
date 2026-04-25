@@ -1,19 +1,7 @@
-import torch.nn as nn
 import torch
-from performer_pytorch import Performer
+import torch.nn as nn
 from torch_geometric.nn.conv import GCNConv
-
-
-def check(name, t):
-    if not torch.isfinite(t).all():
-        finite = t[torch.isfinite(t)]
-        nan_pct = (~torch.isfinite(t)).float().mean().item()
-        min_val = finite.min().item() if finite.numel() > 0 else float('nan')
-        max_val = finite.max().item() if finite.numel() > 0 else float('nan')
-        raise RuntimeError(
-            f"NaN/Inf in [{name}]  shape={tuple(t.shape)}  "
-            f"nan%={nan_pct:.3f}  min={min_val:.3f}  max={max_val:.3f}"
-        )
+from performer_pytorch import Performer
 
 
 class BulkFormer_block(nn.Module):
@@ -26,9 +14,11 @@ class BulkFormer_block(nn.Module):
         self.bin_head = bin_head
         self.full_head = full_head
 
-        # FIX: cached=False — caching is unsafe when called with batched input
-        # across different samples. normalize=True applies D^{-1/2} A D^{-1/2}
-        # internally so we don't need manual edge weight renormalization.
+        # FIX: cached=False (was True) — caching is unsafe across batches.
+        # Edge weights are not passed (None) because GCNConv's normalize=True
+        # computes degree from weight sums when weights are provided, which
+        # causes NaNs for nodes whose PCC weights nearly cancel. Binary
+        # adjacency with normalize=True gives the correct D^{-1/2} A D^{-1/2}.
         self.g = GCNConv(dim, dim, cached=False, add_self_loops=False, normalize=True)
 
         self.f = nn.Sequential(*[
@@ -40,30 +30,22 @@ class BulkFormer_block(nn.Module):
 
         self.layernorm = nn.LayerNorm(self.dim)
 
-    def forward(self, x, graph_ei, graph_ew):
-        # x shape: (b, g, dim)
+    def forward(self, x, graph_ei):
+        # FIX: GCNConv expects (num_nodes, dim) but x is (b, g, dim).
+        # Loop over the batch dimension explicitly — passing the 3D tensor
+        # directly causes PyG to misinterpret the batch dim as nodes,
+        # producing NaNs at full gene-count scale.
         b, g, d = x.shape
 
         x = self.layernorm(x)
-        check("after_layernorm", x)
-        gcn_out_list = []
-        
-        for i in range(b):
-            node_feat = x[i]                   # (g, dim)
-            out_i = self.g(node_feat, graph_ei, None)   # (g, dim)
-            gcn_out_list.append(out_i)
-        gcn_out = torch.stack(gcn_out_list, dim=0)   # (b, g, dim)
 
-        check("after_gcnconv", gcn_out)
-
-        # Clamp before residual add to prevent any stray large values
-        # from the GCN propagating forward
-        gcn_out = torch.clamp(gcn_out, min=-50.0, max=50.0)
+        gcn_out = torch.stack(
+            [self.g(x[i], graph_ei, None) for i in range(b)],
+            dim=0
+        )  # (b, g, dim)
 
         x = x + gcn_out
-        check("graph_and_sum", x)
 
         x = self.f(x)
-        check("after_performer", x)
 
         return x
