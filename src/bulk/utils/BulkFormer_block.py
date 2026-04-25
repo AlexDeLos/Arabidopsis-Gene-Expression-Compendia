@@ -40,7 +40,7 @@ class BulkFormer_block(nn.Module):
 
         self.layernorm = nn.LayerNorm(self.dim)
 
-    def forward(self, x, graph):
+    def forward(self, x, graph_ei, graph_ew):
         # x shape: (b, g, dim)
         b, g, d = x.shape
 
@@ -54,7 +54,7 @@ class BulkFormer_block(nn.Module):
         gcn_out_list = []
         for i in range(b):
             node_feat = x[i]                   # (g, dim)
-            out_i = self.g(node_feat, graph)   # (g, dim)
+            out_i = self.g(node_feat, graph_ei, graph_ew)   # (g, dim)
             gcn_out_list.append(out_i)
         gcn_out = torch.stack(gcn_out_list, dim=0)   # (b, g, dim)
 

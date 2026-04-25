@@ -28,7 +28,7 @@ class BulkFormer(nn.Module):
         super().__init__()
         self.dim = dim
         self.gene_length = gene_length
-        self.graph = graph
+        self.graph_ei, self.graph_ew = graph
 
         self.gene_emb_onehot_layer = nn.Embedding(gene_length, dim)
         nn.init.xavier_uniform_(self.gene_emb_onehot_layer.weight)
@@ -96,7 +96,7 @@ class BulkFormer(nn.Module):
         check("x_proj", x)
 
         for i, layer in enumerate(self.gb_formers):
-            x = layer(x, self.graph)
+            x = layer(x, self.graph_ei, self.graph_ew)
             check(f"gb_former_{i}", x)
 
         gene_emb = self.layernorm(x)

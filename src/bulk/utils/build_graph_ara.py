@@ -32,8 +32,7 @@ rows, cols, vals = [], [], []
 for i_start in tqdm(range(0, G, CHUNK_SIZE)):
     i_end = min(i_start + CHUNK_SIZE, G)
     chunk = X[:, i_start:i_end]
-    pcc_block = (chunk.T @ X) / n_samples  # [chunk, G]
-
+    pcc_block = (chunk.T @ X) / n_samples
     for local_i, global_i in enumerate(range(i_start, i_end)):
         row_pcc = pcc_block[local_i].copy()
         row_abs = np.abs(row_pcc)

@@ -4,9 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch_geometric.nn.conv import GCNConv
 from torch.utils.data import Dataset, DataLoader, random_split
-from torch_geometric.typing import SparseTensor
 from torch_geometric.utils import add_self_loops
 
 sys.path.append(os.path.abspath("./"))
@@ -83,111 +81,21 @@ ei, ew = add_self_loops(
     num_nodes=GENE_LENGTH
 )
 
-# 2. Build the SparseTensor from the updated indices
-# graph = SparseTensor(
-#     row=ei[0], 
-#     col=ei[1], 
-#     value=ew,
-#     sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
-# ).to(DEVICE)
-graph = SparseTensor.from_edge_index(
-    edge_index=ei, 
-    edge_attr=ew, 
-    sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
-).to(DEVICE)
-# After building the SparseTensor
-vals = graph.storage.value()
-row = graph.storage.row()
+graph = (ei.to(DEVICE), ew.to(DEVICE))
 
-# Degree-normalize edge weights (D^{-1/2} A D^{-1/2} style)
-deg = graph.storage.rowcount().float()
-deg_inv_sqrt = deg.pow(-0.5)
-deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0.0
-
-# Renormalize stored edge weights
-norm_vals = deg_inv_sqrt[row] * vals
-graph = SparseTensor(
-    row=row,
-    col=graph.storage.col(),
-    value=norm_vals,
-    sparse_sizes=(GENE_LENGTH, GENE_LENGTH)
-).to(DEVICE)
-# Get the number of connections for each of the 34,858 genes
-
-node_degrees = graph.storage.rowcount().float()
-print(f"Degree stats — max: {node_degrees.max():.0f}, "
-      f"mean: {node_degrees.mean():.1f}, "
-      f"p99: {node_degrees.quantile(0.99):.0f}")
-
-# Find genes with zero connections
-isolated_mask = (node_degrees == 0)
-num_isolated = isolated_mask.sum().item()
-
-if num_isolated > 0:
-    print(f"⚠️ CRITICAL: Found {num_isolated} isolated genes!")
-    print("These will cause NaNs in GCN unless you add self-loops.")
+# Keep the diagnostic prints using ei directly:
+deg = torch.zeros(GENE_LENGTH, device=DEVICE)
+deg.scatter_add_(0, ei[0].to(DEVICE), torch.ones(ei.shape[1], device=DEVICE))
+print(f"Degree stats — max: {deg.max():.0f}, mean: {deg.mean():.1f}, "
+      f"p99: {deg.quantile(0.99):.0f}")
+isolated = (deg == 0).sum().item()
+if isolated > 0:
+    print(f"⚠️ CRITICAL: Found {isolated} isolated genes!")
 else:
     print("✅ All genes have at least one connection.")
-
 print(f'Graph: {ei.shape[1]} edges')
-vals = graph.storage.value()
+print(f"Edge weight NaNs: {torch.isnan(ew).any()}  Infs: {torch.isinf(ew).any()}")
 
-if vals is not None:
-    print(f"Graph Value NaNs: {torch.isnan(vals).any()}")
-    print(f"Graph Value Infs: {torch.isinf(vals).any()}")
-
-# ── DIAGNOSTIC: find NaN-producing nodes ─────────────────────────────────────
-
-
-print("\n=== GCN NaN DIAGNOSTIC ===")
-
-# 1. Check what normalize=True actually computes for your graph
-vals = graph.storage.value()
-row  = graph.storage.row()
-col  = graph.storage.col()
-
-deg = graph.storage.rowcount().float()
-print(f"Degree — min: {deg.min():.0f}  max: {deg.max():.0f}  "
-      f"zeros: {(deg == 0).sum().item()}")
-
-# 2. Simulate D^{-1/2} A D^{-1/2} normalization manually
-deg_inv_sqrt = deg.pow(-0.5)
-deg_inv_sqrt[~torch.isfinite(deg_inv_sqrt)] = 0.0
-norm_vals = deg_inv_sqrt[row] * vals * deg_inv_sqrt[col]
-print(f"Normalized edge weights — min: {norm_vals.min():.6f}  "
-      f"max: {norm_vals.max():.6f}  "
-      f"NaN: {torch.isnan(norm_vals).sum().item()}  "
-      f"Inf: {torch.isinf(norm_vals).sum().item()}")
-
-# 3. Run one GCN pass with a controlled input and find which nodes go NaN
-test_conv = GCNConv(640, 640, cached=False, add_self_loops=False, 
-                    normalize=True).to(DEVICE)
-torch.nn.init.xavier_uniform_(test_conv.lin.weight)
-
-test_x = torch.randn(GENE_LENGTH, 640, device=DEVICE) * 0.1
-with torch.no_grad():
-    test_out = test_conv(test_x, graph)
-
-nan_nodes = torch.where(~torch.isfinite(test_out).all(dim=-1))[0]
-print(f"NaN nodes: {len(nan_nodes)} / {GENE_LENGTH}")
-if len(nan_nodes) > 0:
-    print(f"First 10 NaN node indices: {nan_nodes[:10].tolist()}")
-    print(f"Their degrees: {deg[nan_nodes[:10]].tolist()}")
-    # Check their neighbors
-    for node in nan_nodes[:3].tolist():
-        neighbors = col[row == node]
-        neighbor_degs = deg[neighbors]
-        print(f"  Node {node}: degree={deg[node].item():.0f}, "
-              f"neighbor degrees={neighbor_degs.tolist()}")
-
-# 4. Check if the issue is with SparseTensor vs edge_index format
-print("\nTrying with raw edge_index instead of SparseTensor...")
-test_out_ei = test_conv(test_x, ei.to(DEVICE))
-nan_nodes_ei = torch.where(~torch.isfinite(test_out_ei).all(dim=-1))[0]
-print(f"NaN nodes with edge_index: {len(nan_nodes_ei)} / {GENE_LENGTH}")
-
-print("=== END DIAGNOSTIC ===\n")
-sys.exit(0)  # stop after diagnostic
 # ── Dataset ───────────────────────────────────────────────────────────────────
 class ExprDataset(Dataset):
     def __init__(self, expr, mask_ratio=0.15):
