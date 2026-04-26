@@ -19,7 +19,7 @@ class BulkFormer_block(nn.Module):
         # computes degree from weight sums when weights are provided, which
         # causes NaNs for nodes whose PCC weights nearly cancel. Binary
         # adjacency with normalize=True gives the correct D^{-1/2} A D^{-1/2}.
-        self.g = GCNConv(dim, dim, cached=False, add_self_loops=False, normalize=False )
+        self.g = GCNConv(dim, dim, cached=False, add_self_loops=False, normalize=True)
 
         self.f = nn.Sequential(*[
             Performer(dim=self.dim, heads=self.full_head, depth=1,
