@@ -12,7 +12,7 @@ from src.bulk.utils.BulkFormer import BulkFormer
 from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH
 
 # ── DEBUG SETTINGS ────────────────────────────────────────────────────────────
-DEBUG          = True
+DEBUG          = False
 DEBUG_GENES    = 1000
 DEBUG_SAMPLES  = 2000
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,8 +71,8 @@ print('Loading graph...')
 
 
 if DEBUG:
-    ei = torch.load(GRAPH_PATH,        weights_only=False)
-    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
+    ei = torch.load(GRAPH_PATH,        weights_only=False).to(DEVICE)
+    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False).to(DEVICE)
     mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
     ei, ew = ei[:, mask], ew[mask]
 else:
