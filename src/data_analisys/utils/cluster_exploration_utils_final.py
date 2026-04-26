@@ -851,8 +851,7 @@ sys.path.append(module_dir)
 # --- BULKFORMER INTEGRATION ---
 # ==========================================
 BULKFORMER_FILES = {
-    "model_weights":WEIGHTS_PATHS
-        ,
+    "model_weights":WEIGHTS_PATHS,
     "graph_ei": GRAPH_PATH,
     "graph_w": GRAPH_WEIGHT_PATH,
     "gene_info": GENE_INFO,

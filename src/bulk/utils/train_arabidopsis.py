@@ -81,13 +81,14 @@ ei, ew = add_self_loops(
     fill_value=1.0,
     num_nodes=GENE_LENGTH
 )
-# deg = torch.zeros(GENE_LENGTH)
-# deg.scatter_add_(0, ei[0], torch.ones(ei.shape[1]))
-# row_norm = 1.0 / deg.clamp(min=1.0)   # D^{-1}, simple row normalization
-# ew_norm = row_norm[ei[0]] * ew         # scale each edge by source node degree
-# ew_norm = ew_norm.clamp(-1.0, 1.0)    # safety clamp for the 1.0002 issue
 
-graph = (ei.to(DEVICE), ew.to(DEVICE))
+deg = torch.zeros(GENE_LENGTH)
+deg.scatter_add_(0, ei[0], torch.ones(ei.shape[1]))
+deg_inv_sqrt = deg.pow(-0.5).clamp(max=1.0)      # D^{-1/2}
+ew_norm = deg_inv_sqrt[ei[0]] * ew * deg_inv_sqrt[ei[1]]  # both sides
+ew_norm = ew_norm.clamp(-1.0, 1.0)
+
+graph = (ei.to(DEVICE), ew_norm.to(DEVICE))
 # graph = (ei.to(DEVICE), ew.to(DEVICE))
 print(f"Unique edges: {ei.shape[1]}  "
       f"After dedup: {torch.unique(ei, dim=1).shape[1]}")
