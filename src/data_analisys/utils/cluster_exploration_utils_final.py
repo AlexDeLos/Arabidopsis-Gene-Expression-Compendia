@@ -889,11 +889,11 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     expr_arr = input_df.values.astype(np.float32)
 
     # 2. Load Graph
-    ei = torch.load(GRAPH_PATH,        weights_only=False).to(DEVICE)
-    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False).to(DEVICE)
+    ei = torch.load(GRAPH_PATH,        weights_only=False)
+    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
     graph_cpu = (ei, ew)
     # 3. Initialize Model
-    model_params["graph"] = graph_cpu
+    model_params["graph"] = graph_cpu # type: ignore
     model_params["gene_emb"] = None  # pyright: ignore[reportArgumentType]
     model_params["gene_length"] = GENE_LENGTH
     model_params["dim"] = 128
