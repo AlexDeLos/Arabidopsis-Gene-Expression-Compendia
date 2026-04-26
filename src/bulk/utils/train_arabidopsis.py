@@ -12,7 +12,7 @@ from src.bulk.utils.BulkFormer import BulkFormer
 from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH
 
 # ── DEBUG SETTINGS ────────────────────────────────────────────────────────────
-DEBUG          = False
+DEBUG          = True
 DEBUG_GENES    = 1000
 DEBUG_SAMPLES  = 2000
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,28 +68,18 @@ if expr_np.max() > 500:
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
 print('Loading graph...')
-ei = torch.load(GRAPH_PATH,        weights_only=False)
-ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
+
 
 if DEBUG:
+    ei = torch.load(GRAPH_PATH,        weights_only=False)
+    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False)
     mask = (ei[0] < GENE_LENGTH) & (ei[1] < GENE_LENGTH)
     ei, ew = ei[:, mask], ew[mask]
-    
+else:
+    ei = torch.load(GRAPH_PATH,        weights_only=False).to(DEVICE)
+    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False).to(DEVICE)
+graph = (ei, ew)
 
-ei, ew = add_self_loops(
-    ei, ew, 
-    fill_value=1.0,
-    num_nodes=GENE_LENGTH
-)
-
-deg = torch.zeros(GENE_LENGTH)
-deg.scatter_add_(0, ei[0], torch.ones(ei.shape[1]))
-deg_inv_sqrt = deg.pow(-0.5).clamp(max=1.0)      # D^{-1/2}
-ew_norm = deg_inv_sqrt[ei[0]] * ew * deg_inv_sqrt[ei[1]]  # both sides
-ew_norm = ew_norm.clamp(-1.0, 1.0)
-
-graph = (ei.to(DEVICE), ew_norm.to(DEVICE))
-# graph = (ei.to(DEVICE), ew.to(DEVICE))
 print(f"Unique edges: {ei.shape[1]}  "
       f"After dedup: {torch.unique(ei, dim=1).shape[1]}")
 

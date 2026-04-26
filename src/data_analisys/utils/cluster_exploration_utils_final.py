@@ -9,6 +9,7 @@ import urllib.error
 from collections import OrderedDict
 
 import matplotlib.patches as mpatches
+from torch_geometric.utils import add_self_loops
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -888,10 +889,9 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     expr_arr = input_df.values.astype(np.float32)
 
     # 2. Load Graph
-    graph_ei = torch.load(BULKFORMER_FILES["graph_ei"], map_location="cpu", weights_only=False)
-    graph_w = torch.load(BULKFORMER_FILES["graph_w"], map_location="cpu", weights_only=False)
-    graph_cpu = SparseTensor(row=graph_ei[1], col=graph_ei[0], value=graph_w, sparse_sizes=(GENE_LENGTH, GENE_LENGTH))
-
+    ei = torch.load(GRAPH_PATH,        weights_only=False).to(DEVICE)
+    ew = torch.load(GRAPH_WEIGHT_PATH, weights_only=False).to(DEVICE)
+    graph_cpu = (ei, ew)
     # 3. Initialize Model
     model_params["graph"] = graph_cpu
     model_params["gene_emb"] = None  # pyright: ignore[reportArgumentType]
