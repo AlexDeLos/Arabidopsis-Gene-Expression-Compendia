@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=8:00:00
+#SBATCH --time=16:00:00
 #SBATCH --mem=120G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
@@ -36,6 +36,7 @@ if [ ! -f "${SIF}" ]; then
 fi
 
 apptainer exec --nv \
+    --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
