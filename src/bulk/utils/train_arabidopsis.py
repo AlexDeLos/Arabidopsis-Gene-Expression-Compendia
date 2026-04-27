@@ -29,7 +29,8 @@ LR         = 1e-5
 EPOCHS     = 50
 DEVICE     = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Device: {DEVICE}')
-
+if DEVICE == 'cpu':
+    raise RuntimeError('Could not find cuda, can not run on CPU')
 print("\n--- Model Configuration ---")
 for label, path in [("Graph", GRAPH_PATH), ("Weights", GRAPH_WEIGHT_PATH),
                     ("Gene Info", GENE_INFO), ("Expression", EXPR_PATH),
