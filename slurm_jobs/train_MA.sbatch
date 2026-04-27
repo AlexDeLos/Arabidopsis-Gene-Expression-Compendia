@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=8:00:00
-#SBATCH --mem=120G
+#SBATCH --time=0:05:00
+#SBATCH --mem=1G
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=1
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 
@@ -35,12 +35,21 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
+echo "SLURM GPU allocation: $CUDA_VISIBLE_DEVICES"
+nvidia-smi
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/bulk/utils/train_arabidopsis.py # --train_matrix "combat_seq"
+    python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count())"
+
+# apptainer exec --nv \
+#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+#     --bind "$REPO_DIR":/repo \
+#     --pwd /repo \
+#     "$SIF" \
+#     python src/bulk/utils/train_arabidopsis.py # --train_matrix "combat_seq"
 
 EXIT_CODE=$?
 echo "========================================"
