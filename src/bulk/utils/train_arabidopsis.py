@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
-from torch_geometric.utils import add_self_loops
+
 
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
