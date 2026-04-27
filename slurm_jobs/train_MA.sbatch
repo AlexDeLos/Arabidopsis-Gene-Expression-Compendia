@@ -36,20 +36,21 @@ if [ ! -f "${SIF}" ]; then
 fi
 
 echo "SLURM GPU allocation: $CUDA_VISIBLE_DEVICES"
-nvidia-smi
-apptainer exec --nv \
-    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-    --bind "$REPO_DIR":/repo \
-    --pwd /repo \
-    "$SIF" \
-    python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count())"
-
+# nvidia-smi
 # apptainer exec --nv \
 #     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
 #     --bind "$REPO_DIR":/repo \
 #     --pwd /repo \
 #     "$SIF" \
-#     python src/bulk/utils/train_arabidopsis.py # --train_matrix "combat_seq"
+#     python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count())"
+
+apptainer exec --nv \
+    --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
+    python src/bulk/utils/train_arabidopsis.py # --train_matrix "combat_seq"
 
 EXIT_CODE=$?
 echo "========================================"
