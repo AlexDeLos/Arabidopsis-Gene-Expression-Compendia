@@ -150,15 +150,19 @@ model = BulkFormer(
 
 if LOAD_BEST and os.path.exists(WEIGHTS_PATH):
     print(f"Attempting to load weights from {WEIGHTS_PATH}...")
-    ckpt     = torch.load(WEIGHTS_PATH, map_location=DEVICE, weights_only=False)
-    model_sd = model.state_dict()
-    to_load  = {k: v for k, v in ckpt.items()
-                if k in model_sd and model_sd[k].shape == v.shape}
-    skipped  = [k for k in ckpt if k not in to_load]
-    if skipped:
-        print(f"  Shape mismatch — skipped {len(skipped)} layers: {skipped[:4]}...")
-    model.load_state_dict(to_load, strict=False)
-    print(f"  Loaded {len(to_load)}/{len(model_sd)} layers from checkpoint.")
+    try:
+        ckpt     = torch.load(WEIGHTS_PATH, map_location=DEVICE, weights_only=False)
+        model_sd = model.state_dict()
+        to_load  = {k: v for k, v in ckpt.items()
+                    if k in model_sd and model_sd[k].shape == v.shape}
+        skipped  = [k for k in ckpt if k not in to_load]
+        if skipped:
+            print(f"  Shape mismatch — skipped {len(skipped)} layers: {skipped[:4]}...")
+        model.load_state_dict(to_load, strict=False)
+        print(f"  Loaded {len(to_load)}/{len(model_sd)} layers from checkpoint.")
+    except FileNotFoundError as e:
+        print(e)
+        print(f'Training from scratch — {sum(p.numel() for p in model.parameters())/1e6:.1f}M params')
 else:
     print(f'Training from scratch — {sum(p.numel() for p in model.parameters())/1e6:.1f}M params')
 
