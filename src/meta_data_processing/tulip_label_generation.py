@@ -379,7 +379,7 @@ class TulipLabelGenerator:
 
             message.append({"role": "user", "content": user_content})
 
-            max_retries = 3
+            max_retries = 10
             raw_text = ""
             # labels = None
             for attempt in range(max_retries):
