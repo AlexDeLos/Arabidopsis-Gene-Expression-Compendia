@@ -19,11 +19,17 @@ SIF="$BIG_STORAGE/fused.sif"
 # Make sure the log directory exists before the job starts writing to it
 mkdir -p "$(dirname "$SLURM_STDOUT")" 2>/dev/null || true
 
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+echo "SLURM GPU allocation: $CUDA_VISIBLE_DEVICES"
+nvidia-smi || echo "WARNING: nvidia-smi failed on host"
+
+
 echo "========================================"
 echo "Job ID      : ${SLURM_JOB_ID}"
 echo "Node        : $(hostname)"
 echo "Started     : $(date)"
 echo "SIF         : ${SIF}"
+echo "CUDA        : ${CUDA_VISIBLE_DEVICES}"
 echo "========================================"
 
 # Verify the .sif file is reachable from this compute node before attempting exec.
