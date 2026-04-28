@@ -5,11 +5,17 @@ import os
 import pandas as pd
 import streamlit as st
 
+import sys
+module_dir = "./"
+sys.path.append(module_dir)
+
+from src.constants import RNA_USED  # noqa: E402
 # ==========================================
 # CONFIGURATION & AUTHENTICATION
 # ==========================================
-PAYLOAD_FILE = "src/label_evaluation/data/survey_data.json"
-RESULTS_FILE = "src/label_evaluation/data/evaluation_results.csv"
+
+PAYLOAD_FILE = f"src/label_evaluation/data/survey_data_{'RNA' if RNA_USED else 'MA'}.json"
+RESULTS_FILE = f"src/label_evaluation/data/evaluation_results_{'RNA' if RNA_USED else 'MA'}.csv"
 
 # Barebones Authentication Dictionary
 VALID_USERS = {"researcher1": "pass123", "researcher2": "tulip2026", "alex": "admin"}

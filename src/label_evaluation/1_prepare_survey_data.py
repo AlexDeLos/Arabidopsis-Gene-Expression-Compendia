@@ -23,24 +23,31 @@ import glob
 import json
 import os
 import random
+import sys
+module_dir = "./"
+sys.path.append(module_dir)
 
+from src.constants import RNA_USED  # noqa: E402
 # ══════════════════════════════════════════════════════════════════
 #  CONFIGURATION  — edit these paths before running
 # ══════════════════════════════════════════════════════════════════
 
 # Folder containing your per-study label JSON files (e.g. GSE30720.json)
-LABELS_DIR = "./new_storage/labels/TULIP_1.2_RNA/5.0"
+if RNA_USED:
+    LABELS_DIR = "./new_storage/labels/TULIP_1.2_RNA/5.0"
+else:
+    LABELS_DIR = "./new_storage/labels/TULIP_1.2/5.0"
 
-# Base folder for metadata. The script looks for:
-#   {METADATA_BASE_DIR}/{study_id}/{study_id}_{sample_id}.json   (microarray)
-#   {METADATA_BASE_DIR}/{study_id}/{study_id}_sample_metadata.csv  (RNA-seq, fallback)
-METADATA_BASE_DIR = "./new_storage/rnaseq_data/metadata"
+if RNA_USED:
+    METADATA_BASE_DIR = "./new_storage/rnaseq_data/metadata"
+else:
+    METADATA_BASE_DIR = "./new_storage/processed_microarray_data/"
 
 # Where to write the packaged survey file
-OUTPUT_PAYLOAD = "src/label_evaluation/data/survey_data.json"
+OUTPUT_PAYLOAD = f"src/label_evaluation/data/survey_data_{'RNA' if RNA_USED else 'MA'}.json"
 
 # How many samples to randomly select per study (set to None for all)
-SAMPLES_PER_STUDY = 5
+SAMPLES_PER_STUDY = 6
 
 # Random seed for reproducibility (None = different each run)
 RANDOM_SEED = 42
@@ -102,58 +109,47 @@ def _extract_metadata(meta_content: dict) -> tuple[str, str]:
 
 def _format_label_for_display(labels: dict) -> list[dict]:
     """
-    Convert the raw labels dict into a flat list of per-label entries
-    ready for the reviewer to score.
-
-    Each entry:
-        {
-            "label_category":  "treatment",
-            "display_value":   "Heat (intensity: 2)",
-            "raw_value":       [{"val": "Heat", "intensity": 2}]
-        }
-
-    Handles both:
-      - Simple labels:     {"tissue": ["root"]}
-      - Sub-attribute:     {"treatment": [{"val": "Heat", "intensity": 2}]}
+    Convert the raw labels dict into a flat list of per-label entries.
+    To allow separate evaluation, complex labels (like treatment + intensity) 
+    are split into multiple entries so they can be scored independently.
     """
     entries = []
-    for category, value in labels.items():
-        raw = value
+    for category, values in labels.items():
+        # Ensure values is a list for consistent iteration
+        items = values if isinstance(values, list) else [values]
 
-        # ── Format for human-readable display ─────────────────────────────────
-        if isinstance(value, list):
-            display_parts = []
-            for item in value:
-                if isinstance(item, dict):
-                    # Sub-attribute format (e.g. treatment with intensity)
-                    val_str = item.get("val", "?")
-                    extras = {k: v for k, v in item.items() if k != "val"}
-                    if extras:
-                        extra_str = ", ".join(f"{k}: {v}" for k, v in extras.items())
-                        display_parts.append(f"{val_str}  ({extra_str})")
-                    else:
-                        display_parts.append(str(val_str))
-                else:
-                    display_parts.append(str(item))
-            display_value = " | ".join(display_parts)
-        elif isinstance(value, dict):
-            val_str = value.get("val", "?")
-            extras = {k: v for k, v in value.items() if k != "val"}
-            extra_str = ", ".join(f"{k}: {v}" for k, v in extras.items())
-            display_value = f"{val_str}  ({extra_str})" if extras else val_str
-        else:
-            display_value = str(value)
-
-        entries.append(
-            {
-                "label_category": category,
-                "display_value": display_value,
-                "raw_value": raw,
-            }
-        )
+        for i, item in enumerate(items):
+            # If multiple items exist for one axis (e.g. multiple treatments),
+            # add a suffix to distinguish them (e.g. "treatment #1").
+            suffix = f" #{i+1}" if len(items) > 1 else ""
+            
+            if isinstance(item, dict):
+                # 1. Add the primary value entry (e.g., the treatment name)
+                main_val = item.get("val", "unspecified")
+                entries.append({
+                    "label_category": f"{category}{suffix}",
+                    "display_value": str(main_val),
+                    "raw_value": main_val,
+                })
+                
+                # 2. Add each sub-attribute as a separate scoring row (e.g., intensity)
+                for sub_key, sub_val in item.items():
+                    if sub_key == "val":
+                        continue
+                    entries.append({
+                        "label_category": f"{category}{suffix} {sub_key}",
+                        "display_value": str(sub_val),
+                        "raw_value": sub_val,
+                    })
+            else:
+                # Standard flat label (tissue, genotype, etc.)
+                entries.append({
+                    "label_category": f"{category}{suffix}",
+                    "display_value": str(item),
+                    "raw_value": item,
+                })
 
     return entries
-
 
 def main():
     if RANDOM_SEED is not None:
