@@ -186,7 +186,45 @@ def main():
 
         sample_ids = list(study_labels.keys())
         if SAMPLES_PER_STUDY and len(sample_ids) > SAMPLES_PER_STUDY:
-            sample_ids = random.sample(sample_ids, SAMPLES_PER_STUDY)
+            # Stratified sampling: at least half (rounded down) of the selected
+            # samples must be controls so the reviewer sees a balanced set.
+            # A sample is "control" if its treatment list contains only Control
+            # entries (or is unspecified/unknown with no other treatment).
+            def _is_control(labels: dict) -> bool:
+                treatment = labels.get("treatment", [])
+                if not treatment:
+                    return False
+                if isinstance(treatment, list):
+                    vals = []
+                    for item in treatment:
+                        if isinstance(item, dict):
+                            vals.append(str(item.get("val", "")).lower())
+                        else:
+                            vals.append(str(item).lower())
+                    return all(v in ("control", "unspecified", "unknown") for v in vals)
+                return str(treatment).lower() in ("control", "unspecified", "unknown")
+
+            control_ids     = [s for s in sample_ids if _is_control(study_labels[s])]
+            non_control_ids = [s for s in sample_ids if not _is_control(study_labels[s])]
+
+            n_control     = SAMPLES_PER_STUDY // 2          # floor → at least half
+            n_non_control = SAMPLES_PER_STUDY - n_control
+
+            # Gracefully handle studies with fewer controls than requested
+            n_control     = min(n_control,     len(control_ids))
+            n_non_control = min(n_non_control, len(non_control_ids))
+            # If either pool is short, fill remaining slots from the other pool
+            shortfall = SAMPLES_PER_STUDY - n_control - n_non_control
+            if shortfall > 0:
+                if len(control_ids) - n_control >= shortfall:
+                    n_control += shortfall
+                else:
+                    n_non_control += shortfall
+
+            selected_control     = random.sample(control_ids,     n_control)
+            selected_non_control = random.sample(non_control_ids, n_non_control)
+            sample_ids = selected_control + selected_non_control
+            random.shuffle(sample_ids)   # mix so controls aren't always first
 
         study_meta_dir = os.path.join(METADATA_BASE_DIR, study_id)
         samples_added = 0
