@@ -2,7 +2,7 @@
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=8:00:00
-#SBATCH --mem=60G
+#SBATCH --mem=100G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
