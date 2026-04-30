@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=8:00:00
-#SBATCH --mem=100G
+#SBATCH --time=16:00:00
+#SBATCH --mem=120G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
@@ -23,7 +23,6 @@ export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 echo "SLURM GPU allocation: $CUDA_VISIBLE_DEVICES"
 nvidia-smi || echo "WARNING: nvidia-smi failed on host"
 
-
 echo "========================================"
 echo "Job ID      : ${SLURM_JOB_ID}"
 echo "Node        : $(hostname)"
@@ -41,14 +40,7 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-echo "SLURM GPU allocation: $CUDA_VISIBLE_DEVICES"
-# nvidia-smi
-# apptainer exec --nv \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count())"
+
 
 apptainer exec --nv \
     --env CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
@@ -56,7 +48,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/bulk/utils/train_arabidopsis.py --train_matrix "rankin"
+    python src/bulk/utils/train_arabidopsis.py --rna --train_matrix "filter"
 
 EXIT_CODE=$?
 echo "========================================"
