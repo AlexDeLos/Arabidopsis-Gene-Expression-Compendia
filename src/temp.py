@@ -59,7 +59,7 @@ def plot_comparisons(data_dicts, group_name):
         sns.kdeplot(sampled_vals, label=f"{d['name']}", fill=True, alpha=0.3)
     plt.title(f"Distributions - {group_name}")
     plt.legend()
-    plt.savefig(f"{output_dir}/01_distributions.png")
+    plt.savefig(f"{output_dir}/01_distributions.svg")
     plt.close()
 
     # 2. Mean vs Std Dev (Squeeze fix for single-file folders)
@@ -71,7 +71,7 @@ def plot_comparisons(data_dicts, group_name):
         axes[0, i].set_title(f"Mean-Var: {d['name']}")
         if i == 0: axes[0, i].set_ylabel("Std Dev")
     plt.tight_layout()
-    plt.savefig(f"{output_dir}/02_mean_variance.png")
+    plt.savefig(f"{output_dir}/02_mean_variance.svg")
     plt.close()
 
     # 3. PCA (Only if there are at least 2 files to compare)
@@ -89,7 +89,7 @@ def plot_comparisons(data_dicts, group_name):
                 plt.scatter(coords[:, 0], coords[:, 1], label=d['name'], alpha=0.6, s=20)
             plt.title(f"PCA - {group_name}")
             plt.legend()
-            plt.savefig(f"{output_dir}/03_pca.png")
+            plt.savefig(f"{output_dir}/03_pca.svg")
             plt.close()
 
     # 4. Sparsity
@@ -98,7 +98,7 @@ def plot_comparisons(data_dicts, group_name):
     sparsities = [d['sparsity'] * 100 for d in data_dicts]
     sns.barplot(x=names, y=sparsities, hue=names, palette="viridis", legend=False)
     plt.title(f"Sparsity % - {group_name}")
-    plt.savefig(f"{output_dir}/04_sparsity.png")
+    plt.savefig(f"{output_dir}/04_sparsity.svg")
     plt.close()
     
     print(f"Done. Plots saved in {output_dir}/")
