@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
-from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH
+from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH,RNA_USED,MATRIX
 
 # 1. Load the .env file
 load_dotenv() 
@@ -77,8 +77,11 @@ GENE_LENGTH = len(gene_list)
 # ── W&B Setup ────────────────────────────────────────────────────────────────
 wandb.init(
     project="BulkFormer-Arabidopsis",
+    entity="alexdelos-tu-delft",
     config={
         "dim": DIM,
+        "RNAseq": RNA_USED,
+        "matrix": MATRIX,
         "gb_repeat": GB_REPEAT,
         "p_repeat": P_REPEAT,
         "full_head": FULL_HEAD,

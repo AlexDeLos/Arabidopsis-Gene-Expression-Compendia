@@ -240,4 +240,3 @@ apptainer_python.sh
 Araport11.gtf.gz
 src/bulk/metadata/arabidopsis_gene_info_old.csv
 subgraph_interactive.html
-src/temp.py
