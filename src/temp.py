@@ -13,7 +13,7 @@ from src.constants import STORAGE_DIR
 def load_and_summarize(path, name):
     print(f"Loading {name} from {path}...")
     df = pd.read_csv(path, index_col=0)
-    
+    print(f"path {path}:, {df.head}")
     # --- FIX 1: Standardize Column Names ---
     # Convert all gene names to uppercase and strip spaces to ensure matching
     df.columns = [str(c).upper().strip() for c in df.columns]
