@@ -2,7 +2,7 @@
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=1:00:00
-#SBATCH --mem=20G
+#SBATCH --mem=80G
 #SBATCH --cpus-per-task=1
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 # ── User configuration ─────────────────────────────────────────────────────────
