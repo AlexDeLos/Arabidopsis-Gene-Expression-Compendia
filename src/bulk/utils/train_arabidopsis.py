@@ -262,7 +262,7 @@ for epoch in range(1, EPOCHS + 1):
         "epoch": epoch,
         "train_loss": train_loss,
         "val_loss": val_loss,
-        "learning_rate": scheduler.get_last_lr()
+        "learning_rate": scheduler.get_last_lr()[0]
     })
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
 
