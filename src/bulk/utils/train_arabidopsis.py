@@ -2,6 +2,8 @@ import os
 import sys
 import numpy as np
 import pandas as pd
+import wandb
+from dotenv import load_dotenv
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -10,6 +12,19 @@ from torch.utils.data import Dataset, DataLoader, random_split
 sys.path.append(os.path.abspath("./"))
 from src.bulk.utils.BulkFormer import BulkFormer
 from src.constants import GRAPH_PATH, GRAPH_WEIGHT_PATH, GENE_INFO, EXPR_PATH, WEIGHTS_PATH
+
+# 1. Load the .env file
+load_dotenv() 
+
+# 2. Get the key from the environment
+api_key = os.getenv("WANDB_API_KEY")
+
+# 3. Log in
+if api_key:
+    wandb.login(key=api_key)
+else:
+    print("Warning: No WANDB_API_KEY found in .env file.")
+
 
 # ── DEBUG SETTINGS ────────────────────────────────────────────────────────────
 DEBUG          = False
@@ -57,6 +72,24 @@ if DEBUG:
     gene_list = gene_list[:DEBUG_GENES]
 expr_df     = expr_df[gene_list]
 GENE_LENGTH = len(gene_list)
+
+
+# ── W&B Setup ────────────────────────────────────────────────────────────────
+wandb.init(
+    project="BulkFormer-Arabidopsis",
+    config={
+        "dim": DIM,
+        "gb_repeat": GB_REPEAT,
+        "p_repeat": P_REPEAT,
+        "full_head": FULL_HEAD,
+        "mask_ratio": MASK_RATIO,
+        "batch_size": BATCH_SIZE,
+        "lr": LR,
+        "epochs": EPOCHS,
+        "gene_count": GENE_LENGTH,
+        "load_best": LOAD_BEST
+    }
+)
 
 print(f"Running with {GENE_LENGTH} genes.")
 
@@ -202,24 +235,6 @@ def run_epoch(loader, train=True, grad_debug=False):
             if train:
                 optimizer.zero_grad()
                 loss.backward()
-
-                if grad_debug:
-                    # Print ALL parameters in forward order — OK and NaN alike
-                    # First NaN in this list is the true source
-                    print("\n--- Gradient report (forward order) ---")
-                    for name, param in model.named_parameters():
-                        if param.grad is None:
-                            print(f"  NO_GRAD  {name}")
-                        elif not torch.isfinite(param.grad).all():
-                            nan_pct = (~torch.isfinite(param.grad)).float().mean().item()
-                            abs_max = param.grad[torch.isfinite(param.grad)].abs().max().item() if torch.isfinite(param.grad).any() else float('nan')
-                            print(f"  NaN      {name}  nan%={nan_pct:.3f}  finite_absmax={abs_max:.4f}")
-                        else:
-                            abs_max = param.grad.abs().max().item()
-                            print(f"  OK       {name}  absmax={abs_max:.6f}")
-                    print("--- End gradient report ---\n")
-                    # return  # exit after one batch when debugging
-
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
@@ -240,6 +255,12 @@ for epoch in range(1, EPOCHS + 1):
         print("Grad debug complete — exiting.")
         break
     val_loss = run_epoch(val_dl, train=False)
+    wandb.log({
+        "epoch": epoch,
+        "train_loss": train_loss,
+        "val_loss": val_loss,
+        "learning_rate": scheduler.get_last_lr()
+    })
     print(f'Epoch {epoch:3d}  train={train_loss:.4f}  val={val_loss:.4f}  LR= {scheduler.get_last_lr()}', flush=True)
 
     if torch.isfinite(torch.tensor(val_loss)) and val_loss < best_val:
