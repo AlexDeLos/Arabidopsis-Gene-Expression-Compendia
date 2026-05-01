@@ -900,11 +900,11 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
 
     model = BulkFormer(**model_params).to(device)  # pyright: ignore[reportArgumentType]
     try:
-        ckpt = torch.load(BULKFORMER_FILES["model_weights"][matrix], map_location="cpu", weights_only=False)
+        ckpt = torch.load(BULKFORMER_FILES['model_weights'][matrix], map_location="cpu", weights_only=False)
     except FileNotFoundError as e:
-        Warning(f"could not find {BULKFORMER_FILES["model_weights"][matrix]}: {e}")
+        Warning(f"could not find {BULKFORMER_FILES['model_weights'][matrix]}: {e}")
         print('falling back to filter')
-        ckpt = torch.load(BULKFORMER_FILES["model_weights"]['filter'], map_location="cpu", weights_only=False)
+        ckpt = torch.load(BULKFORMER_FILES['model_weights']['filter'], map_location="cpu", weights_only=False)
     sd = OrderedDict((k[7:] if k.startswith("module.") else k, v) for k, v in ckpt.items())
 
     model_sd = model.state_dict()
