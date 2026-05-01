@@ -38,6 +38,13 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
+    python src/data_analisys/cluster_explotation_new.py
+
+apptainer exec --nv \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
     python src/data_analisys/cluster_explotation_new.py --rna
 
 EXIT_CODE=$?
