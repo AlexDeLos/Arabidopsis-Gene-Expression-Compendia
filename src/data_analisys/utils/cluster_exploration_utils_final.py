@@ -912,7 +912,8 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     model.eval()
 
     # Move graph to device ONCE before inference
-    model.graph = model.graph.to(device)  # pyright: ignore[reportAttributeAccessIssue]
+    model.graph_ei = model.graph_ei.to(device)
+    model.graph_ew = model.graph_ew.to(device)
 
     # 4. Inference
     results = []
