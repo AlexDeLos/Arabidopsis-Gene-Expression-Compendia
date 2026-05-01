@@ -894,7 +894,6 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     graph_cpu = (ei, ew)
     # 3. Initialize Model
     model_params["graph"] = graph_cpu # type: ignore
-    model_params["gene_emb"] = None  # pyright: ignore[reportArgumentType]
     model_params["gene_length"] = GENE_LENGTH
     model_params["dim"] = 128
 
