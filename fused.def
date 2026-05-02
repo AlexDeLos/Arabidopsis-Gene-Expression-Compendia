@@ -23,16 +23,25 @@ From: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
     export LC_ALL=C.UTF-8
 
     # =========================================================================
-    # 1. System dependencies + R
+    # 1. System dependencies + R 4.4 (from CRAN, not Ubuntu's outdated r-base)
     # =========================================================================
     apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
         wget \
         curl \
-        git \
-        locales \
         gnupg \
         ca-certificates \
+        software-properties-common
+
+    # Add CRAN repository for R 4.4 (Ubuntu 22.04 / jammy)
+    wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
+        | gpg --dearmor -o /usr/share/keyrings/r-project.gpg
+    echo "deb [signed-by=/usr/share/keyrings/r-project.gpg] https://cloud.r-project.org/bin/linux/ubuntu jammy-cran44/" \
+        > /etc/apt/sources.list.d/r-project.list
+
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        locales \
         gcc \
         g++ \
         gfortran \
@@ -58,18 +67,25 @@ From: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
         liblapack-dev \
         libblas-dev \
         gzip \
-        r-bioc-biobase \
-        r-bioc-oligo \
-        r-bioc-limma \
-        r-bioc-sva \
         sra-toolkit \
         && rm -rf /var/lib/apt/lists/*
 
     # =========================================================================
-    # 2. R packages
+    # 2. R packages — all installed via R itself for version consistency
     # =========================================================================
     mkdir -p /opt/R_libs
-    Rscript -e "options(repos=c(CRAN='https://cloud.r-project.org')); install.packages(c('writexl'), lib='/opt/R_libs', quiet=TRUE)"
+    Rscript -e "
+      options(repos=c(CRAN='https://cloud.r-project.org'))
+      install.packages('BiocManager', lib='/opt/R_libs', quiet=TRUE)
+      library(BiocManager, lib.loc='/opt/R_libs')
+      BiocManager::install(
+        c('Biobase', 'oligo', 'limma', 'sva'),
+        lib='/opt/R_libs',
+        ask=FALSE,
+        update=FALSE
+      )
+      install.packages('writexl', lib='/opt/R_libs', quiet=TRUE)
+    "
 
     # =========================================================================
     # 3. Upgrade Pip & Install PyG (Graph) Dependencies
@@ -162,5 +178,14 @@ print('SparseTensor: OK')
 print('All Python imports OK')
 "
 
-    # Verify R libraries
-    Rscript -e "suppressMessages({library(Biobase); library(oligo); library(limma); library(writexl, lib.loc='/opt/R_libs')}); cat('All R imports OK\n')"
+    Rscript -e "
+      .libPaths(c('/opt/R_libs', .libPaths()))
+      suppressMessages({
+        library(Biobase)
+        library(oligo)
+        library(limma)
+        library(sva)
+        library(writexl)
+      })
+      cat('All R imports OK\n')
+    "
