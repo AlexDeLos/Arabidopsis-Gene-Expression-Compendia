@@ -9,7 +9,7 @@
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ── User configuration ─────────────────────────────────────────────────────────
-SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
+SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused_v2.sif
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
 REPO="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 
