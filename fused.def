@@ -16,6 +16,7 @@ From: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
     export R_LIBS_USER=/opt/R_libs
     export HF_HOME=/home/user/.cache/huggingface
     export TRANSFORMERS_CACHE=$HF_HOME
+    export MPLCONFIGDIR=/tmp/matplotlib
 
 %post
     export DEBIAN_FRONTEND=noninteractive
