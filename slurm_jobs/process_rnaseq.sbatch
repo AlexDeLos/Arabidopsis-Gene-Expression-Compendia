@@ -42,7 +42,7 @@ fi
 
 echo "Done with data combination. generating new data matrices"
 
-apptainer exec \
+apptainer exec  --nv \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:/repo" \
     --pwd "/repo" \
