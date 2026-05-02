@@ -90,7 +90,7 @@ wandb.init(
         "lr": LR,
         "epochs": EPOCHS,
         "gene_count": GENE_LENGTH,
-        "load_best": LOAD_BEST
+        "load_best": LOAD_BEST,
     }
 )
 
