@@ -6,7 +6,7 @@
 #SBATCH --nodes=1                 # <--- ADDED: Explicitly state 1 node
 #SBATCH --ntasks=1                # <--- ADDED: Explicitly state 1 task
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --mem=200G
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
 # ── User configuration ─────────────────────────────────────────────────────────
@@ -34,12 +34,12 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
-    --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:/repo" \
-    --pwd "/repo" \
-    "${SIF}" \
-    python src/data_importing/scripts/combine_rna.py --rna
+# srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
+#     --bind "${STORAGE}:${STORAGE}" \
+#     --bind "${REPO}:/repo" \
+#     --pwd "/repo" \
+#     "${SIF}" \
+#     python src/data_importing/scripts/combine_rna.py --rna
 
 echo "Done with data combination. generating new data matrices"
 

@@ -108,7 +108,7 @@ def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, outp
     print(f"  [Plot] Saved to {output_path}")
 
 
-def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_pct: float = 60.0) -> pd.DataFrame:
+def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_pct: float = 60.0) -> tuple[pd.DataFrame,pd.DataFrame]:
     """
     RNA-seq sample and gene filtering:
 
@@ -153,14 +153,19 @@ def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_
     # if log_norm:
     print("  [Norm] Applying log2(x + 1) normalization...")
     # We add 1 to avoid log(0)
-    raw_df = pd.DataFrame(
+    norm_df = pd.DataFrame(
         np.log2(raw_df + 1), 
+        index=raw_df.index, 
+        columns=raw_df.columns
+    )
+    raw_df = pd.DataFrame(
+        raw_df, 
         index=raw_df.index, 
         columns=raw_df.columns
     )
     print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    return raw_df
+    return raw_df,norm_df
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +260,7 @@ def run_rnaseq_preprocessing():
     os.makedirs(RNASEQ_FIGURES, exist_ok=True)
 
     filter_path = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
+    filter_norm_path = os.path.join(RNASEQ_DATA_DIR, "filter_norm.csv")
     combat_seq_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq.csv")
     rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
@@ -267,13 +273,14 @@ def run_rnaseq_preprocessing():
         raw_df = pd.read_csv(RNASEQ_COMBINED, index_col=0)
         print(f"  Raw matrix: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-        filtered_df = run_filtering(raw_df)
+        filtered_df,norm_df = run_filtering(raw_df)
 
         plot_filtering_summary(
             raw_df,
             filtered_df,
             os.path.join(RNASEQ_FIGURES, "filtering_summary.svg"),
         )
+        norm_df.to_csv(filter_norm_path)
         filtered_df.to_csv(filter_path)
         print(f"Saved filtered matrix → {filter_path}")
     # return
