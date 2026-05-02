@@ -47,7 +47,7 @@ apptainer exec \
     --bind "${REPO}:/repo" \
     --pwd "/repo" \
     "${SIF}" \
-    python src/data_importing/rnaseq_norm_and_analysis.py --rna
+    python -u src/data_importing/rnaseq_norm_and_analysis.py --rna
 
 EXIT_CODE=$?
 echo "========================================"
