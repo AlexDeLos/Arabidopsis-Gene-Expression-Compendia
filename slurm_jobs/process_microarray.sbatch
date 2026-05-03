@@ -1,46 +1,57 @@
-#!/bin/sh
-
-#SBATCH --partition=general
-#SBATCH --qos=medium
-#SBATCH --time=5:00:00
+#!/bin/bash
+#SBATCH --job-name=rna_processing
+#SBATCH --account=testusers
+#SBATCH --partition=all
+#SBATCH --time=4:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=50G
-#SBATCH --job-name=microarray_dowload
-#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%j.txt
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=140G
+#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
-# Print job information
-echo "=================================================="
-echo "Job ID: $SLURM_JOB_ID"
-echo "Job Name: $SLURM_JOB_NAME"
-echo "Node: $(hostname)"
-echo "Date: $(date)"
-echo "=================================================="
-echo ""
+# ── User configuration ─────────────────────────────────────────────────────────
+SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
+STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
+REPO="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 
-# # 1. Load Conda Module
-# module use /opt/insy/modulefiles
-# module load miniconda/3.9
+# ADD THESE TWO LINES TO FIX THE UMAP/NUMBA CACHE CRASH:
+mkdir -p "${STORAGE}/numba_cache"
+export APPTAINERENV_NUMBA_CACHE_DIR="${STORAGE}/numba_cache"
+# ──────────────────────────────────────────────────────────────────────────────
+# Make sure the log directory exists before the job starts writing to it
+mkdir -p "$(dirname "$SLURM_STDOUT")" 2>/dev/null || true
+mkdir -p "${STORAGE}/logs"
 
-# # 2. Activate the PACKED environment directly
-# # We use 'source' instead of 'conda activate' to ensure it uses the 
-# # exact folder where we patched the R paths.
-# source /home/nfs/alexdelossanto/.conda/envs/pre_processing_packed/bin/activate
+echo "========================================"
+echo "Job ID      : ${SLURM_JOB_ID}"
+echo "Node        : $(hostname)"
+echo "Started     : $(date)"
+echo "SIF         : ${SIF}"
+echo "========================================"
 
-# 3. Environment Variables
-export BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+if [ ! -f "${SIF}" ]; then
+    echo "ERROR: Container image not found at ${SIF}"
+    exit 1
+fi
 
-# Optional: Force R to use the environment's R if rpy2 gets confused
-export R_HOME=$CONDA_PREFIX/lib/R
+# srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
+#     --bind "${STORAGE}:${STORAGE}" \
+#     --bind "${REPO}:/repo" \
+#     --pwd "/repo" \
+#     "${SIF}" \
+#     python src/data_importing/scripts/combine_rna.py --rna
 
-echo "Environment activated: $CONDA_PREFIX"
-echo "Python being used: $(which python3)"
+echo "Done with data combination. generating new data matrices"
 
-echo "Gethering data..."
-# python3 -u src/data_importing/new_download.py -o '/tudelft.net/staff-umbrella/GeneExpressionStorage/' --ma
-# 4. Run the Script
-echo "Starting analysis..."
-srun apptainer run /tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif -u src/data_importing/data_norm_and_analisys.py
+apptainer exec \
+    --bind "${STORAGE}:${STORAGE}" \
+    --bind "${REPO}:/repo" \
+    --pwd "/repo" \
+    "${SIF}" \
+    python -u src/data_importing/data_norm_and_analisys.py
 
-echo "Job finished successfully."
-echo "Date: $(date)"
+EXIT_CODE=$?
+echo "========================================"
+echo "Finished    : $(date)"
+echo "Exit code   : ${EXIT_CODE}"
+echo "========================================"
+exit ${EXIT_CODE}
