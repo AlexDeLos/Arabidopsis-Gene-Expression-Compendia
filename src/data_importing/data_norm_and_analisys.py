@@ -57,7 +57,7 @@ from src.constants import STORAGE_DIR  # noqa: E402
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-MICROARRAY_COMBINED = os.path.join(STORAGE_DIR, "final_data", "Microarray_Combined_RMA.csv")
+MICROARRAY_COMBINED = os.path.join(STORAGE_DIR, "final_data", "RMA_Microarray_Combined.csv")
 MICROARRAY_DATA_DIR = os.path.join(STORAGE_DIR, "final_data")
 MICROARRAY_FIGURES  = os.path.join(STORAGE_DIR, "figures", "microarray_filtering")
 
