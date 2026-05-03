@@ -262,6 +262,7 @@ def run_rnaseq_preprocessing():
     filter_path = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(RNASEQ_DATA_DIR, "filter_norm.csv")
     combat_seq_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq.csv")
+    combat_norm_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq_norm.csv")
     rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -310,7 +311,15 @@ def run_rnaseq_preprocessing():
         combat_df = run_combat_seq(df_for_combat, valid_batches)
         combat_df.to_csv(combat_seq_path)
         print(f"Saved ComBat-seq result → {combat_seq_path}")
+    # ── Stage 2.5: ComBat-seq log norm ──────────────────────────────────────────────────
 
+
+    log_df = pd.DataFrame(
+        np.log1p(combat_df.clip(lower=0).values),
+        index=combat_df.index,
+        columns=combat_df.columns,
+    )
+    log_df.to_csv(combat_norm_path)
     # ── Stage 3: Rank-in ─────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")
