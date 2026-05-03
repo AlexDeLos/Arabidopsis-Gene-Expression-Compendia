@@ -119,7 +119,11 @@ if __name__ == "__main__":
     group_b_files = [
         (os.path.join(FOLDER_B, "rankin.csv"), "Rankin"),
         (os.path.join(FOLDER_B, "filter.csv"), "Filter"),
-        (os.path.join(FOLDER_B, "combat_seq.csv"), "ComBat")
+        (os.path.join(FOLDER_B, "combat_seq_norm.csv"), "ComBat"),
+
+        (os.path.join(FOLDER_B, "rankin_old.csv"), "Rankin OLD"),
+        (os.path.join(FOLDER_B, "filter_old.csv"), "Filter OLD"),
+        (os.path.join(FOLDER_B, "combat_seq_old.csv"), "ComBat OLD")
     ]
 
     # Process Group A
