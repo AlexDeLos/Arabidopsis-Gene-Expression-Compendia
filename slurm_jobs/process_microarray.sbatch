@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rna_processing
+#SBATCH --job-name=microarray_processing
 #SBATCH --account=testusers
 #SBATCH --partition=all
 #SBATCH --time=4:00:00
