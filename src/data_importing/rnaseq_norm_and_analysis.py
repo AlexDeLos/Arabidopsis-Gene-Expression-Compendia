@@ -312,14 +312,15 @@ def run_rnaseq_preprocessing():
         combat_df.to_csv(combat_seq_path)
         print(f"Saved ComBat-seq result → {combat_seq_path}")
     # ── Stage 2.5: ComBat-seq log norm ──────────────────────────────────────────────────
-
-
-    log_df = pd.DataFrame(
-        np.log1p(combat_df.clip(lower=0).values),
-        index=combat_df.index,
-        columns=combat_df.columns,
-    )
-    log_df.to_csv(combat_norm_path)
+    if os.path.exists(filter_path):
+        print("pre existing norm.csv...")
+    else:
+        log_df = pd.DataFrame(
+            np.log1p(combat_df.clip(lower=0).values),
+            index=combat_df.index,
+            columns=combat_df.columns,
+        )
+        log_df.to_csv(combat_norm_path)
     # ── Stage 3: Rank-in ─────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")

@@ -1,360 +1,390 @@
+"""
+microarray_norm_and_analysis.py
+
+Normalization pipeline for the combined Microarray expression matrix.
+
+Input assumption:
+  - RMA-processed matrix (Robust Multi-Array Average)
+  - RMA output is already log2-transformed and quantile-normalized per array
+  - No NaNs in the input matrix
+  - Column format: {GSE_id}_{GSM_id}   (e.g. GSE12345_GSM123456)
+  - Row format   : gene_id              (e.g. AT1G01010)
+
+Pipeline stages (each cached to disk, skipped on re-run):
+  1. filter.csv          — remove low-variance genes/samples
+                           NOTE: NO log transform applied here.
+                           RMA output is already in log2 space (typically range 2–14).
+                           Applying log2 again would be a double-transform error.
+  2. filter_norm.csv     — mean-centered version of filter.csv for visualization/reference
+                           (mirrors RNA-seq filter_norm.csv for comparability)
+  3. combat.csv          — ComBat batch correction (Gaussian model, log2-space)
+                           Uses sva::ComBat, NOT ComBat_seq.
+                           ComBat expects log2-transformed continuous data — correct for RMA.
+                           ComBat output remains in log2 space.
+  4. rankin.csv          — Rank-in normalization (cross-platform integration)
+                           No log transform before Rank-in: input is already log2 from ComBat.
+                           This mirrors the RNA-seq pipeline where log1p is applied to
+                           raw ComBat-seq counts before Rank-in — the principle is the same
+                           (Rank-in receives log-space data in both pipelines).
+
+ComBat reference:
+  Johnson et al. (2007) Biostatistics 8(1):118-127
+  https://doi.org/10.1093/biostatistics/kxj037
+
+Rank-in reference:
+  Tang et al. (2021) Briefings in Bioinformatics 22(4)
+"""
+
+import os
 import sys
+from collections import Counter
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+# --- R integration ---
 import rpy2.robjects as ro
 from rpy2.robjects import numpy2ri, pandas2ri
-
-# --- R Integration Imports ---
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.packages import importr
 from sklearn.decomposition import TruncatedSVD
-from sklearn.impute import KNNImputer
 
-# Scikit-learn
-
-# Local imports
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import LABELS_PATH, PROCESSED_DATA_FOLDER, SAMPLE_STUDY_MAP  # noqa: E402
-from src.data_analisys.utils.cluster_exploration_utils_final import load_labels_study, make_df_from_labels  # noqa: E402
+from src.constants import STORAGE_DIR  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+MICROARRAY_COMBINED = os.path.join(STORAGE_DIR, "final_data", "microarray_processed", "Microarray_Combined_RMA.csv")
+MICROARRAY_DATA_DIR = os.path.join(STORAGE_DIR, "final_data", "microarray_processed")
+MICROARRAY_FIGURES  = os.path.join(STORAGE_DIR, "figures", "microarray_filtering")
 
 
-def plot_filtering_summary(df_before, df_after, output_path):
-    """
-    Creates a combined visualization showing the counts of genes/samples
-    and a heatmap of missing values before and after filtering.
-    """
-    print("  [Plotting] Generating filtering summary visualization...")
+# ---------------------------------------------------------------------------
+# Helpers — batch label extraction
+# ---------------------------------------------------------------------------
 
+def get_gse_from_col(col: str) -> str:
+    """Extracts the GSE study ID from a column named {GSE_id}_{GSM_id}."""
+    return col.split("_", maxsplit=1)[0]
+
+
+def get_batch_labels(columns) -> list[str]:
+    """Returns one batch label (GSE ID) per column."""
+    return [get_gse_from_col(c) for c in columns]
+
+
+# ---------------------------------------------------------------------------
+# 1. Filtering + summary plot
+# ---------------------------------------------------------------------------
+
+def plot_filtering_summary(df_before: pd.DataFrame, df_after: pd.DataFrame, output_path: str):
+    print("  [Plot] Generating filtering summary...")
     fig = plt.figure(figsize=(16, 12))
-    fig.suptitle("Data Filtering Summary (0s converted to NaNs)", fontsize=20, fontweight="bold")
+    fig.suptitle("Microarray Data Filtering Summary", fontsize=20, fontweight="bold")
 
-    # Create a grid layout: Top half for bar chart, Bottom half for heatmaps
     gs = fig.add_gridspec(2, 2, height_ratios=[1, 2.5])
 
-    # --- 1. Bar Chart: Gene and Sample Counts ---
     ax_bars = fig.add_subplot(gs[0, :])
-
     categories = ["Genes (Rows)", "Samples (Columns)"]
     before_counts = [df_before.shape[0], df_before.shape[1]]
-    after_counts = [df_after.shape[0], df_after.shape[1]]
-
-    x = np.arange(len(categories))
-    width = 0.35
-
-    ax_bars.bar(x - width / 2, before_counts, width, label="Before Filtering", color="#ff9999", edgecolor="black")
-    ax_bars.bar(x + width / 2, after_counts, width, label="After Filtering", color="#66b3ff", edgecolor="black")
-
-    ax_bars.set_ylabel("Count", fontsize=12)
-    ax_bars.set_title("Total Genes and Samples Before vs After", fontsize=14)
+    after_counts  = [df_after.shape[0],  df_after.shape[1]]
+    x, w = np.arange(2), 0.35
+    ax_bars.bar(x - w / 2, before_counts, w, label="Before", color="#ff9999", edgecolor="black")
+    ax_bars.bar(x + w / 2, after_counts,  w, label="After",  color="#66b3ff", edgecolor="black")
     ax_bars.set_xticks(x)
     ax_bars.set_xticklabels(categories, fontsize=12)
+    ax_bars.set_ylabel("Count")
     ax_bars.legend()
-
-    # Add text labels on top of the bars
+    ax_bars.set_title("Genes and Samples Before vs After Filtering")
     for i, v in enumerate(before_counts):
-        ax_bars.text(i - width / 2, v + (max(before_counts) * 0.02), f"{v:,}", ha="center", va="bottom", fontweight="bold")
+        ax_bars.text(i - w / 2, v * 1.01, f"{v:,}", ha="center", fontweight="bold")
     for i, v in enumerate(after_counts):
-        ax_bars.text(i + width / 2, v + (max(before_counts) * 0.02), f"{v:,}", ha="center", va="bottom", fontweight="bold")
+        ax_bars.text(i + w / 2, v * 1.01, f"{v:,}", ha="center", fontweight="bold")
 
-    # --- 2. Heatmap: Missingness Before ---
-    ax_heat_before = fig.add_subplot(gs[1, 0])
-    # Yellow/Light = Missing (True), Dark/Purple = Present (False)
-    ax_heat_before.imshow(df_before.isna(), aspect="auto", cmap="viridis", interpolation="nearest")
+    for ax, df, label in [
+        (fig.add_subplot(gs[1, 0]), df_before, "Before"),
+        (fig.add_subplot(gs[1, 1]), df_after,  "After"),
+    ]:
+        ax.imshow(df.isna(), aspect="auto", cmap="viridis", interpolation="nearest")
+        pct = (df.isna().sum().sum() / df.size) * 100
+        ax.set_title(f"Missingness {label}\n({pct:.1f}% missing)")
+        ax.set_xlabel("Samples")
+        ax.set_ylabel("Genes")
 
-    pct_missing_before = (df_before.isna().sum().sum() / df_before.size) * 100
-    ax_heat_before.set_title(f"Missingness Before\n({pct_missing_before:.1f}% Total Missing)", fontsize=14)
-    ax_heat_before.set_xlabel("Samples", fontsize=12)
-    ax_heat_before.set_ylabel("Genes", fontsize=12)
-
-    # --- 3. Heatmap: Missingness After ---
-    ax_heat_after = fig.add_subplot(gs[1, 1])
-    ax_heat_after.imshow(df_after.isna(), aspect="auto", cmap="viridis", interpolation="nearest")
-
-    pct_missing_after = (df_after.isna().sum().sum() / df_after.size) * 100
-    ax_heat_after.set_title(f"Missingness After\n({pct_missing_after:.1f}% Total Missing)", fontsize=14)
-    ax_heat_after.set_xlabel("Samples", fontsize=12)
-    ax_heat_after.set_ylabel("Genes", fontsize=12)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave room for suptitle
-
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # pyright: ignore[reportArgumentType]
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  [Plotting] Saved to {output_path}")
+    print(f"  [Plot] Saved to {output_path}")
 
 
-def apply_KNN_impute(df: pd.DataFrame, n_neighbors: int = 5) -> pd.DataFrame:
+def run_filtering(
+    raw_df: pd.DataFrame,
+    gene_nan_pct: float = 100.0,
+    sample_nan_pct: float = 60.0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Imputes missing values (NaNs) in a pandas DataFrame using K-Nearest Neighbors.
+    Microarray filtering — mirrors RNA-seq run_filtering() exactly.
 
-    Parameters:
-    - df: The input DataFrame containing missing values.
-    - n_neighbors: The number of nearest neighbors to use for imputation.
+    RMA input is already in log2 space with no zeros by design, so the
+    zero-or-NaN mask is equivalent to a pure NaN mask here. We keep the
+    same (zero | NaN) logic as RNA-seq for consistency.
 
-    Returns:
-    - A new DataFrame with the missing values imputed, preserving index and columns.
+    Returns
+    -------
+    filtered_df : log2-space filtered matrix  → saved as filter.csv
+    norm_df     : mean-centered version        → saved as filter_norm.csv
+                  (analogous to RNA-seq filter_norm.csv; useful for QC plots)
     """
-    print(f"  [KNN Impute] Imputing missing values using {n_neighbors} neighbors...")
+    print(f"  [Filter] Input: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
+    print(f"  [Filter] Input value range: [{raw_df.values.min():.2f}, {raw_df.values.max():.2f}]")
+    print("  [Filter] NOTE: RMA output is already log2-transformed. No additional log applied.")
 
-    # Initialize the imputer
-    imputer = KNNImputer(n_neighbors=n_neighbors, weights="uniform")
+    # Validate log2 scale — RMA data is typically in range 2–14
+    # If max > 20 the input is likely raw intensities, not RMA output → abort early
+    if raw_df.values.max() > 20:
+        raise ValueError(
+            f"Input max value is {raw_df.values.max():.1f}, which suggests raw intensities "
+            "rather than RMA log2 output (expected range ~2–14). "
+            "Please provide RMA-processed data."
+        )
 
-    # Fit and transform the data
-    # Note: KNNImputer returns a numpy array, so we must reconstruct the DataFrame
-    imputed_array = imputer.fit_transform(df)
+    # STEP 1: Filter Genes (Rows)
+    is_zero_or_nan = raw_df.isna() | (raw_df == 0)
+    invalid_pct_per_gene = is_zero_or_nan.mean(axis=1) * 100
+    raw_df = raw_df.loc[invalid_pct_per_gene <= gene_nan_pct, :]
+    print(f"  [Filter] After gene filtering (≤{gene_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    # Reconstruct the DataFrame with original indices and columns
-    df_imputed = pd.DataFrame(imputed_array, index=df.index, columns=df.columns)
+    # STEP 2: Filter Samples (Columns)
+    is_zero_or_nan = raw_df.isna() | (raw_df == 0)
+    invalid_pct_per_sample = is_zero_or_nan.mean(axis=0) * 100
+    raw_df = raw_df.loc[:, invalid_pct_per_sample <= sample_nan_pct]
+    print(f"  [Filter] After sample filtering (≤{sample_nan_pct}% 0/NaN): {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
 
-    print("  [KNN Impute] Imputation complete.")
-    return df_imputed
+    # filter.csv  = log2-space RMA values, filtered only (no further transform)
+    filtered_df = pd.DataFrame(raw_df.values, index=raw_df.index, columns=raw_df.columns)
+
+    # filter_norm.csv = mean-centered across genes (for QC/visualization comparability
+    # with RNA-seq filter_norm.csv which is log2(x+1) of raw counts)
+    print("  [Norm] Computing mean-centered version for filter_norm.csv...")
+    gene_means = filtered_df.mean(axis=1)
+    norm_df = filtered_df.sub(gene_means, axis=0)
+
+    return filtered_df, norm_df
 
 
-def get_study(sample: str):
-    """Extracts StudyID from sample name."""
+# ---------------------------------------------------------------------------
+# 2. ComBat  (Gaussian batch correction, log2-space)
+# ---------------------------------------------------------------------------
+
+def run_combat(
+    log2_df: pd.DataFrame,
+    batch_labels: list[str],
+    covar_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """
+    Runs R's sva::ComBat (Gaussian model) on log2-transformed microarray data.
+
+    Unlike ComBat-seq (negative-binomial, for RNA-seq counts), ComBat uses a
+    Gaussian/empirical-Bayes model and requires log2-transformed continuous input.
+    RMA output satisfies this requirement directly.
+
+    ComBat output is in the same log2 space as the input — no post-hoc
+    log transform is needed before Rank-in (contrast with RNA-seq where
+    log1p is applied to raw ComBat-seq counts before Rank-in).
+
+    Parameters
+    ----------
+    log2_df      : genes × samples log2-space expression matrix (no NaN allowed)
+    batch_labels : one batch string per column (GSE study IDs)
+    covar_df     : optional DataFrame of biological covariates (samples as rows)
+    """
+    print("  [ComBat] Loading R sva package...")
     try:
-        sample_key = sample.split(".", maxsplit=1)[0]
-        return SAMPLE_STUDY_MAP.loc[sample_key, "StudyID"]
-    except KeyError:
-        # Fallback if sample not found
-        return "Unknown_Study"
-
-
-def run_r_combat(df, batch_list, covar_df=None):
-    """
-    Memory-optimized wrapper to run R's sva::ComBat from Python.
-    """
-    print("  [R-ComBat] Initializing R interface...")
-
-    # 1. Activate converters locally to avoid global pollution
-    try:
-        sva = importr("sva")
+        sva   = importr("sva")
         stats = importr("stats")
-        base = importr("base")  # Access to R's garbage collector
+        base  = importr("base")
     except Exception as e:
-        msg = "Could not import R 'sva' package."
+        msg = "R package 'sva' not found. Install with:\n  BiocManager::install('sva')"
         raise ImportError(msg) from e
 
-    # 2. Optimization: Ensure input is strictly float (prevents object-type overhead)
-    # and Fortran-contiguous (R expects column-major, this might speed up conversion)
-    print("  [R-ComBat] preparing input data...")
+    df = log2_df.fillna(0)
     if not np.issubdtype(df.values.dtype, np.floating):
         df = df.astype(float)
 
-    # Create R object
-    dat_r = numpy2ri.py2rpy(df.values)
+    print(f"  [ComBat] Input: {df.shape[0]} genes × {df.shape[1]} samples")
 
-    # Prepare batch vector
-    batch_r = ro.StrVector(batch_list)
+    # Transfer data to R using localconverter (rpy2 3.5 compatible)
+    with localconverter(ro.default_converter + numpy2ri.converter):
+        dat_r = ro.conversion.py2rpy(df.values)
 
-    # Prepare Model Matrix
+    batch_r = ro.StrVector(batch_labels)
+
     mod_r = ro.r("NULL")
     if covar_df is not None and not covar_df.empty:
-        print(f"  [R-ComBat] Creating model matrix with covariates: {list(covar_df.columns)}")
-
-        # 1. Force all columns to be strings so R can interpret them as categorical factors
+        print(f"  [ComBat] Building covariate model for: {list(covar_df.columns)}")
         covar_df = covar_df.astype(str)
-
-        # 2. Use the localconverter context to safely translate Pandas -> R
         with localconverter(ro.default_converter + pandas2ri.converter):
             covar_r = ro.conversion.py2rpy(covar_df)
+        formula  = ro.Formula("~ " + " + ".join(covar_df.columns))
+        mod_r    = stats.model_matrix(formula, data=covar_r)
 
-        # 3. Build the formula
-        formula_str = "~ " + " + ".join(covar_df.columns)
-        formula = ro.Formula(formula_str)
+    print("  [ComBat] Running sva::ComBat (Gaussian model)...")
+    combat_r = sva.ComBat(dat=dat_r, batch=batch_r, mod=mod_r, par_prior=True, prior_plots=False)
 
-        # 4. Generate the model matrix
-        mod_r = stats.model_matrix(formula, data=covar_r)
-
-    # 3. Run ComBat
-    print("  [R-ComBat] Calling sva::ComBat...")
-    combat_data_r = sva.ComBat(dat=dat_r, batch=batch_r, mod=mod_r, par_prior=True, prior_plots=False)
-
-    # --- CRITICAL OPTIMIZATION START ---
-    # Delete the R INPUT data immediately to free memory *before* allocating Python output
-    print("  [R-ComBat] Cleaning up R input objects...")
-    del dat_r
-    del batch_r
-    del mod_r
-
-    # Force R Garbage Collection
+    del dat_r, batch_r, mod_r
     base.gc()
-    # --- CRITICAL OPTIMIZATION END ---
 
-    # 4. Convert back to Pandas
-    print("  [R-ComBat] Converting result back to Python...")
-    # This creates the Python copy. Since dat_r is gone, we have more room.
-    combat_data_np = np.array(combat_data_r)
-
-    # --- CRITICAL OPTIMIZATION 2 ---
-    # Delete the R OUTPUT data immediately
-    del combat_data_r
+    combat_np = np.array(combat_r)
+    del combat_r
     base.gc()
-    # -------------------------------
 
-    return pd.DataFrame(combat_data_np, index=df.index, columns=df.columns)
-
-
-def _flatten_covariate(value):
-    if isinstance(value, list):
-        return "_".join(map(str, value))
-    return str(value)
+    result = pd.DataFrame(combat_np, index=log2_df.index, columns=log2_df.columns)
+    print("  [ComBat] Done.")
+    return result
 
 
-def normalize_by_cov(df_small, cov="treatment"):
-    labels = load_labels_study(LABELS_PATH)
-    df = df_small
+# ---------------------------------------------------------------------------
+# 3. Rank-in normalization
+# ---------------------------------------------------------------------------
 
-    # 1. Prepare Batches
-    batches = list(map(get_study, df.columns))
+def run_rank_in_normalization(
+    df: pd.DataFrame,
+    n_bins: int = 100,
+    variance_threshold: float = 0.95,
+    out_path: str | None = None,
+) -> pd.DataFrame:
+    """
+    Rank-in normalization for cross-platform integration (Tang et al., 2021).
 
-    # 2. Prepare Covariates
-    covariate_data = []
-    for sample_col in df.columns:
-        try:
-            study_id, sample_id = sample_col.split("_", 1)
-            info = labels.get(study_id, {}).get(sample_id, {})
-            covariate_data.append({"tissue": _flatten_covariate(info.get("tissue", "unknown")), "treatment": _flatten_covariate(info.get("treatment", "unknown"))})
-        except ValueError:
-            covariate_data.append({"tissue": "unknown", "treatment": "unknown"})
-
-    covar_df = pd.DataFrame(covariate_data, index=df.columns)
-
-    # 3. Diagnostic Print
-    print("\n--- Confounding Check ---")
-    check_df = covar_df.copy()
-    check_df["batch"] = batches
-    print(pd.crosstab(check_df["tissue"], check_df["batch"]))
-    print(pd.crosstab(check_df["treatment"], check_df["batch"]))
-
-    # 4. Handle Confounding
-    covar_to_use = covar_df[[cov]].copy()
-
-    # Check if variable has at least 2 levels (otherwise model matrix fails)
-    if covar_to_use[cov].nunique() < 2:
-        print(f"Warning: Covariate '{cov}' has only 1 level. Running ComBat without covariates.")
-        covar_to_use = None
-
-    # 5. Run ComBat
-    try:
-        df_corrected = run_r_combat(df, batches, covar_df=covar_to_use)
-        print("ComBat normalization successful.")
-        return df_corrected
-    except Exception as e:
-        print(f"ComBat failed with covariates: {e}")
-        print("Retrying without covariates...")
-        return run_r_combat(df, batches)
-
-
-def normalize_all_with_covariates():
-    print("Running ComBat on full dataset with biological covariates...")
-
-    # 1. Load data
-    df = pd.read_csv(PROCESSED_DATA_FOLDER + "filter.csv", index_col=0)
-    labels = load_labels_study(LABELS_PATH)
-
-    # 2. Get labels
-    labels_df = make_df_from_labels(labels)
-
-    def combine_label_lists(series):
-        combined = set()
-        for val in series:
-            # If the value is a list (e.g., ['heat stress']), add its elements
-            if isinstance(val, list):
-                combined.update([str(v) for v in val if pd.notna(v)])
-            # If it's a single string/value, add it directly
-            elif pd.notna(val):
-                combined.add(str(val))
-        # Return as a unique, sorted list to satisfy the requirement
-        return sorted(combined)
-
-    # Apply the fusion. This guarantees strictly unique indices.
-    labels_df = labels_df.groupby(level=0).agg(combine_label_lists)
-
-    # 3. Align DataFrame and metadata maps perfectly
-    cols_in_maps = [c for c in df.columns if c in labels_df.index]
-    df = df[cols_in_maps]
-    maps_aligned = labels_df.loc[cols_in_maps]
-
-    # 4. Extract batches (Study IDs)
-    batches = [get_study(c) for c in df.columns]
-
-    # 5. Build the Covariate DataFrame containing your labels
-    # R's ComBat requires strings for categorical factors, not Python lists.
-    # We flatten the fused lists with an underscore for the final model matrix.
-    covariates_df = pd.DataFrame(
-        {
-            "treatment": maps_aligned["treatment"].apply("_".join).tolist(),
-            # 'tissue': maps_aligned['tissue'].apply(lambda x: '_'.join(x)).tolist(),
-            # 'medium': maps_aligned['medium'].apply(lambda x: '_'.join(x)).tolist()
-        },
-        index=df.columns,
+    Identical implementation to the RNA-seq pipeline — the algorithm is
+    platform-agnostic and operates on any log-space expression matrix.
+    """
+    print(f"\n[Rank-in] Step 1: Rank transformation ({n_bins} bins)...")
+    rank_matrix  = df.rank(pct=True, method="average")
+    binned_matrix = pd.DataFrame(
+        np.ceil(rank_matrix.values * n_bins),
+        index=df.index,
+        columns=df.columns,
     )
 
-    # 6. Run ComBat
-    df_normalized = run_r_combat(df, batch_list=batches, covar_df=covariates_df)
-
-    # 7. Save results
-    df_normalized.to_csv(PROCESSED_DATA_FOLDER + "/fully_normalized_with_covariates.csv")
-    print("Finished! Saved to fully_normalized_with_covariates.csv")
-
-
-def run_rank_in_normalization(df: pd.DataFrame, n_bins: int = 100, variance_threshold: float = 0.95, out_path: str | None = None):
-    """
-    Approximates the Rank-in algorithm for cross-platform transcriptomic data integration
-    (Microarray & RNA-seq) as described by Tang et al., 2021.
-    :param df: pandas DataFrame of raw expression data (rows = genes, columns = samples).
-    :param n_bins: Number of groups to partition the sorted genes into (default is 100, per the paper).
-    :param variance_threshold: The amount of cumulative variance to retain during SVD reconstruction.
-    :param out_path: Optional path to save the result CSV. If None, defaults to PROCESSED_DATA_FOLDER/rankin.csv.
-    :return: A pandas DataFrame containing the Rank-in adjusted expression matrix.
-    """
-    print(f"\n[Rank-in] Step 1: Transforming raw expression into internal relative rankings ({n_bins} bins)...")
-
-    # 1. Intra-sample Rank Transformation
-    rank_matrix = df.rank(pct=True, method="average")
-
-    # MULTIPLY AND CEILING (Ensuring the result stays a pandas DataFrame)
-    binned_matrix = pd.DataFrame(np.ceil(rank_matrix.values * n_bins), index=df.index, columns=df.columns)
-
-    print("[Rank-in] Step 2: Centering the rank matrix for Singular Value Decomposition (SVD)...")
-    # Center the matrix across samples before applying SVD
-    gene_means = binned_matrix.mean(axis=1)
+    print("[Rank-in] Step 2: Centering for SVD...")
+    gene_means     = binned_matrix.mean(axis=1)
     binned_centered = binned_matrix.sub(gene_means, axis=0)
+    X = binned_centered.T  # sklearn SVD expects (n_samples, n_features)
 
-    # Transpose for sklearn SVD which expects (n_samples, n_features)
-    X = binned_centered.T
-
-    print("[Rank-in] Step 3: Applying SVD adjustment to filter platform noise...")
-    # Determine the number of components needed to retain the specified variance
+    print("[Rank-in] Step 3: SVD adjustment...")
     max_components = min(X.shape) - 1
     svd_test = TruncatedSVD(n_components=max_components, random_state=42)
     svd_test.fit(X)
 
     cumulative_variance = np.cumsum(svd_test.explained_variance_ratio_)
     optimal_k = np.argmax(cumulative_variance >= variance_threshold) + 1
+    print(f"  -> Selected top {optimal_k} SVD components ({variance_threshold * 100:.0f}% variance retained).")
 
-    print(f"  -> Selected top {optimal_k} SVD components to retain {variance_threshold * 100}% biological variance.")
-
-    # Reconstruct the matrix using only the top k components
-    svd_final = TruncatedSVD(n_components=optimal_k, random_state=42)
-    X_reduced = svd_final.fit_transform(X)
+    svd_final    = TruncatedSVD(n_components=optimal_k, random_state=42)
+    X_reduced    = svd_final.fit_transform(X)
     X_reconstructed = svd_final.inverse_transform(X_reduced)
 
-    # Transpose back to (genes x samples) and add the gene means back (de-center)
-    adjusted_matrix = X_reconstructed.T
-    adjusted_df = pd.DataFrame(adjusted_matrix, index=binned_matrix.index, columns=binned_matrix.columns).add(gene_means, axis=0)
+    adjusted_df = pd.DataFrame(
+        X_reconstructed.T,
+        index=binned_matrix.index,
+        columns=binned_matrix.columns,
+    ).add(gene_means, axis=0)
 
     print("[Rank-in] Normalization complete.")
-    save_to = out_path if out_path is not None else PROCESSED_DATA_FOLDER + "rankin.csv"
+    save_to = out_path if out_path is not None else os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
     adjusted_df.to_csv(save_to)
     return adjusted_df
 
 
+# ---------------------------------------------------------------------------
+# 4. Main pipeline
+# ---------------------------------------------------------------------------
+
+def run_microarray_preprocessing():
+    os.makedirs(MICROARRAY_DATA_DIR, exist_ok=True)
+    os.makedirs(MICROARRAY_FIGURES,  exist_ok=True)
+
+    filter_path      = os.path.join(MICROARRAY_DATA_DIR, "filter.csv")
+    filter_norm_path = os.path.join(MICROARRAY_DATA_DIR, "filter_norm.csv")
+    combat_path      = os.path.join(MICROARRAY_DATA_DIR, "combat_seq_norm.csv")
+    rankin_path      = os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
+
+    # ── Stage 1: Filter ──────────────────────────────────────────────────────
+    if os.path.exists(filter_path):
+        print("Loading cached filter.csv...")
+        filtered_df = pd.read_csv(filter_path, index_col=0)
+    else:
+        print(f"Loading RMA matrix from {MICROARRAY_COMBINED}...")
+        raw_df = pd.read_csv(MICROARRAY_COMBINED, index_col=0)
+        print(f"  Raw matrix: {raw_df.shape[0]} genes × {raw_df.shape[1]} samples")
+
+        filtered_df, norm_df = run_filtering(raw_df)
+
+        plot_filtering_summary(
+            raw_df,
+            filtered_df,
+            os.path.join(MICROARRAY_FIGURES, "filtering_summary.svg"),
+        )
+        filtered_df.to_csv(filter_path)
+        norm_df.to_csv(filter_norm_path)
+        print(f"Saved filtered matrix  → {filter_path}")
+        print(f"Saved norm matrix      → {filter_norm_path}")
+
+    # ── Stage 2: ComBat ───────────────────────────────────────────────────────
+    if os.path.exists(combat_path):
+        print("Loading cached combat.csv...")
+        combat_df = pd.read_csv(combat_path, index_col=0)
+    else:
+        print("\nRunning ComBat batch correction...")
+
+        batch_labels  = get_batch_labels(filtered_df.columns)
+        study_counts  = Counter(batch_labels)
+
+        # ComBat requires ≥ 2 samples per batch
+        single_batches = {s for s, c in study_counts.items() if c < 2}
+        if single_batches:
+            print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
+
+        valid_cols    = [c for c, b in zip(filtered_df.columns, batch_labels, strict=False) if b not in single_batches]
+        valid_batches = [b for b in batch_labels if b not in single_batches]
+        df_for_combat = filtered_df[valid_cols]
+
+        print(f"  NaN in input: {df_for_combat.isna().sum().sum()} → filling with 0 for ComBat")
+        df_for_combat = df_for_combat.fillna(0)
+
+        combat_df = run_combat(df_for_combat, valid_batches)
+        combat_df.to_csv(combat_path)
+        print(f"Saved ComBat result    → {combat_path}")
+
+    # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
+    if os.path.exists(rankin_path):
+        print("Loading cached rankin.csv...")
+        rankin_df = pd.read_csv(rankin_path, index_col=0)
+    else:
+        print("\nRunning Rank-in normalization on ComBat output...")
+        # ComBat output is already in log2 space (same space as its input).
+        # No additional log transform is applied here — contrast with RNA-seq
+        # where log1p(combat_seq_counts) is needed because ComBat-seq outputs
+        # raw counts. Here the data is already log-transformed.
+        rankin_df = run_rank_in_normalization(
+            df=combat_df,
+            n_bins=100,
+            variance_threshold=0.95,
+            out_path=rankin_path,
+        )
+        print(f"Saved Rank-in result   → {rankin_path}")
+
+    print("\n=== Pipeline Complete ===")
+    print(f"  filter.csv      : {filtered_df.shape}  (log2 RMA, filtered)")
+    print(f"  filter_norm.csv : {filtered_df.shape}  (mean-centered, for QC)")
+    print(f"  combat.csv      : {combat_df.shape}   (log2, batch corrected)")
+    print(f"  rankin.csv      : {rankin_df.shape}   (rank normalized)")
+    return filtered_df, combat_df, rankin_df
+
+
 if __name__ == "__main__":
-    # run_preprocessing()
-    df = pd.read_csv(PROCESSED_DATA_FOLDER + "imputed.csv", index_col=0)
-    run_rank_in_normalization(df)
-    # normalize_all_with_covariates()
+    run_microarray_preprocessing()
