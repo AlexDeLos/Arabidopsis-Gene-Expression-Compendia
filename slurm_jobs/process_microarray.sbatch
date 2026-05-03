@@ -33,13 +33,6 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-# srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
-#     --bind "${STORAGE}:${STORAGE}" \
-#     --bind "${REPO}:/repo" \
-#     --pwd "/repo" \
-#     "${SIF}" \
-#     python src/data_importing/scripts/combine_rna.py --rna
-
 echo "Done with data combination. generating new data matrices"
 
 apptainer exec \

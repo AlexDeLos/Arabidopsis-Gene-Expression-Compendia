@@ -52,7 +52,7 @@ from sklearn.decomposition import TruncatedSVD
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import STORAGE_DIR  # noqa: E402
+from src.constants import STORAGE_DIR,SAMPLE_STUDY_MAP  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -67,14 +67,21 @@ MICROARRAY_FIGURES  = os.path.join(STORAGE_DIR, "figures", "microarray_filtering
 # ---------------------------------------------------------------------------
 
 def get_gse_from_col(col: str) -> str:
-    """Extracts the GSE study ID from a column named {GSE_id}_{GSM_id}."""
-    return col.split("_", maxsplit=1)[0]
+    """
+    Looks up the GSE study ID for a GSM sample ID using SAMPLE_STUDY_MAP.
+    Falls back to splitting on '_' for any non-GSM formatted columns.
+    """
+    try:
+        sample_key = col.split(".", maxsplit=1)[0]  # strip any suffix
+        return SAMPLE_STUDY_MAP.loc[sample_key, "StudyID"]
+    except KeyError:
+        # Fallback for columns already in GSE_GSM format
+        return col.split("_", maxsplit=1)[0]
 
 
 def get_batch_labels(columns) -> list[str]:
     """Returns one batch label (GSE ID) per column."""
     return [get_gse_from_col(c) for c in columns]
-
 
 # ---------------------------------------------------------------------------
 # 1. Filtering + summary plot
@@ -166,13 +173,7 @@ def run_filtering(
     # filter.csv  = log2-space RMA values, filtered only (no further transform)
     filtered_df = pd.DataFrame(raw_df.values, index=raw_df.index, columns=raw_df.columns)
 
-    # filter_norm.csv = mean-centered across genes (for QC/visualization comparability
-    # with RNA-seq filter_norm.csv which is log2(x+1) of raw counts)
-    print("  [Norm] Computing mean-centered version for filter_norm.csv...")
-    gene_means = filtered_df.mean(axis=1)
-    norm_df = filtered_df.sub(gene_means, axis=0)
-
-    return filtered_df, norm_df
+    return filtered_df, filtered_df # due to RMA normal filter matrix is already log normalized
 
 
 # ---------------------------------------------------------------------------
