@@ -68,11 +68,6 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 
 WEIGHTS_PATH = f'{SAVE_DIR}/BulkFormer_ath_best_on_{MATRIX}.pt'
 
-WEIGHTS_PATHS = {
-    'filter':f'{SAVE_DIR}/BulkFormer_ath_best_on_filter.pt',
-    'rankin':f'{SAVE_DIR}/BulkFormer_ath_best_on_rankin.pt',
-    'combat_seq':f'{SAVE_DIR}/BulkFormer_ath_best_on_combat_seq.pt',
-}
 
 GRAPH_DATA = f"{STORAGE_DIR}graph_data/{'rna' if RNA_USED else 'microarray'}/"
 os.makedirs(GRAPH_DATA, exist_ok=True)
