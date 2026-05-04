@@ -915,11 +915,12 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     with torch.no_grad():
         for i in tqdm(range(0, len(expr_arr), batch_size), desc="  [BulkFormer] Extracting embeddings"):
             batch = torch.tensor(expr_arr[i : i + batch_size], dtype=torch.float32).to(device)
-            out = model(batch, mask_prob=0.0, output_expr=False)
-            results.append(out.cpu())
+            out = model(batch, mask_prob=0.0, output_expr=False)  # [b, Genes, Dim]
+            sample_emb_batch = out.mean(dim=1)                    # [b, Dim] — collapse genes HERE
+            results.append(sample_emb_batch.cpu())                # store only [b, 128]
 
-    embeddings = torch.cat(results, dim=0)  # [Samples, Genes, Dim]
-    sample_emb = embeddings.mean(dim=1).numpy()  # [Samples, Dim]
+    embeddings = torch.cat(results, dim=0)   # [Samples, Dim] — 15000 × 128 × 4 bytes = ~8MB
+    sample_emb = embeddings.numpy()          # no .mean(dim=1) needed anymore
 
     # 5. UMAP Reduction
     print("  [BulkFormer] Computing 2D UMAP projection...")
