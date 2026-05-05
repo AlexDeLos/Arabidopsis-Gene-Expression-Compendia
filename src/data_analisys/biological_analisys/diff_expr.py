@@ -111,34 +111,34 @@ def diff_exp_combine_tissues(
             design_filtered = design_filtered[design_filtered.index.isin(common_samples)]
             data_filtered = data[common_samples]
 
-            # 1. Drop duplicate columns from data
+            # Drop duplicate columns from data
             data_filtered = data_filtered.T.drop_duplicates().T
-            
-            # 2. IMPORTANT: Update design_filtered to ONLY include samples 
-            # that still exist in data_filtered columns
+
+            # Keep only design rows whose sample is still in data after dedup
             design_filtered = design_filtered[design_filtered.index.isin(data_filtered.columns)]
 
-            # 3. Now drop duplicate rows from design (if any)
+            # Drop duplicate rows from design
             design_filtered = design_filtered.drop_duplicates()
 
-            # 4. Filter by count combination
+            # Filter by minimum group size; reset_index makes Sample_ID a plain column
             design_filtered = (
                 design_filtered.sort_values(by="Sample_ID")
-                .reset_index(drop=False)
+                .reset_index(drop=False)          # index → "Sample_ID" column; int range becomes index
                 .groupby(["treatment", "tissue"])
                 .filter(lambda x: len(x) >= filter_low_combination)
             )
-            # After step 4:
-            design_filtered = design_filtered.set_index("Sample_ID")
-            # Then step 5 becomes:
-            data_filtered = data_filtered[design_filtered.index]
+
+            # Select expression columns using the Sample_ID column (not the index)
+            data_filtered = data_filtered[design_filtered["Sample_ID"].values]
 
             print(f"    {len(design_filtered)} samples aligned for '{treatment}' vs. {TreatmentEnum.CONTROL}.")
 
             # ------------------------------------------------------------------
             # 4. Build metadata for the model
             # ------------------------------------------------------------------
-            metadata = design_filtered[["Sample_ID", "treatment", "tissue"]].copy()
+            # Sample_ID is a column here (not the index), so select only what R needs
+            metadata = design_filtered[["treatment", "tissue"]].copy()
+            metadata.index = design_filtered["Sample_ID"].values   # label rows by sample ID
             del design_filtered
             def r_make_names(s):
                 # 1. Replace any non-alphanumeric character (like spaces) with a dot

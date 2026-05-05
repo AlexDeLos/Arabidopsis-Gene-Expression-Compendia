@@ -315,11 +315,17 @@ def run_diff_exp_and_enrichment(
                                     tissue=tissue,
                                     filter_low_combination=fil,
                                 )
-
-                            os.makedirs(diff_exp_outdir, exist_ok=True)
-                            with open(done_file, "w") as fh:
-                                fh.write("completed")
-                            print(f"  Done → {diff_exp_outdir}")
+                            produced = any(
+                                f.endswith("_genes.csv")
+                                for f in os.listdir(diff_exp_outdir)
+                                if os.path.isfile(os.path.join(diff_exp_outdir, f))
+                            )
+                            if produced:
+                                with open(done_file, "w") as fh:
+                                    fh.write("completed")
+                                print(f"  Done → {diff_exp_outdir}")
+                            else:
+                                print(f"  Warning: no gene CSVs produced for {diff_exp_outdir}, not marking done.")
                         else:
                             print(f"  Already done: {diff_exp_outdir}")
 
@@ -340,11 +346,6 @@ def run_diff_exp_and_enrichment(
 
                                 if (not just_plot) and (not os.path.isfile(gsea_csv)):
                                     # Keep only the five root term sub-DAGs
-                                    obodag = {
-                                        k: v for k, v in obodag.items()
-                                        if k in STRESS_IDS
-                                    }
-
                                     diff_csv = (
                                         f"{diff_exp_outdir}"
                                         f"{tissue_display}_{stress}_genes.csv"
