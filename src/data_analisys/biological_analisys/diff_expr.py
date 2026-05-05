@@ -80,7 +80,7 @@ def diff_exp_combine_tissues(
             # ------------------------------------------------------------------
             # 1. Load expression data
             # ------------------------------------------------------------------
-            data = pd.read_csv(f"{save_dir}/{data_type}.csv", index_col=0)
+            data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
 
             # ------------------------------------------------------------------
             # 2. Build sample masks
@@ -128,9 +128,10 @@ def diff_exp_combine_tissues(
                 .groupby(["treatment", "tissue"])
                 .filter(lambda x: len(x) >= filter_low_combination)
             )
-            
-            # 5. This will now work because both are perfectly synced
-            data_filtered = data_filtered[design_filtered["Sample_ID"]]
+            # After step 4:
+            design_filtered = design_filtered.set_index("Sample_ID")
+            # Then step 5 becomes:
+            data_filtered = data_filtered[design_filtered.index]
 
             print(f"    {len(design_filtered)} samples aligned for '{treatment}' vs. {TreatmentEnum.CONTROL}.")
 

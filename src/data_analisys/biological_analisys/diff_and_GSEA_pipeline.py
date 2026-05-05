@@ -176,8 +176,8 @@ def get_spider_plots(
                         f"{EXPERIMENT_NAME}_{data_type}_{tissue_str}_"
                         f"{full_str}_{pure_str}_min_group_{filter_val}"
                     )
-                    out_dir     = (
-                        f"{results_path}GSEA_enrichment_{data_type}_{exp_name}/"
+                    out_dir = (
+                        f"{results_path}GSEA_enrichment_{exp_name}/"
                     )
                     csv_file    = (
                         f"{out_dir}{stress}_gsea_go_enrichment_results_{ITERATIONS}.csv"
@@ -274,6 +274,12 @@ def run_diff_exp_and_enrichment(
     ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
     STRESS_IDS      = set(STRESS_GO_ROOTS.keys())
 
+    # Load GO data once per stress (filtered to roots)
+    obodag, geneid2gos = get_go_data(
+        GO_OBO_FILE,
+        ANNOTATION_FILE,
+        stress_root_go_ids=STRESS_IDS,
+    )
     for fil in filter_low_combination:
         for pure in pures:
             pure_str = "pure" if pure else "mixed"
@@ -322,7 +328,7 @@ def run_diff_exp_and_enrichment(
                         # ------------------------------------------------------
                         gsea_outdir = (
                             f"{FIGURES_DIR}GSEA_enrichment_results/"
-                            f"GSEA_enrichment_{data_type}_{exp_name}/"
+                            f"GSEA_enrichment_{exp_name}/"
                         )
 
                         for stress in TREATMENTS:
@@ -333,12 +339,6 @@ def run_diff_exp_and_enrichment(
                                 )
 
                                 if (not just_plot) and (not os.path.isfile(gsea_csv)):
-                                    # Load GO data once per stress (filtered to roots)
-                                    obodag, geneid2gos = get_go_data(
-                                        GO_OBO_FILE,
-                                        ANNOTATION_FILE,
-                                        stress_root_go_ids=STRESS_IDS,
-                                    )
                                     # Keep only the five root term sub-DAGs
                                     obodag = {
                                         k: v for k, v in obodag.items()

@@ -109,8 +109,11 @@ def get_go_data(
         print(f"Expanding {len(stress_root_go_ids)} root stress GO terms to descendants...")
         for go_id in stress_root_go_ids:
             if go_id in obodag:
+                go_term = obodag[go_id]
                 all_stress_go_ids.add(go_id)
-                all_stress_go_ids.update(obodag[go_id].children)
+                all_stress_go_ids.update(
+                    child.item_id for child in go_term.get_all_children()
+                )
             else:
                 print(f"  Warning: '{go_id}' not found in OBO DAG.")
         print(f"  Total stress-related GO terms (with descendants): {len(all_stress_go_ids)}")

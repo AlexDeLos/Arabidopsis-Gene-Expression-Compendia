@@ -456,7 +456,10 @@ def plot_enrichment_scatter_interactive(
     # 7. Write file
     # ------------------------------------------------------------------
     if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        dirpath = os.path.dirname(save_path)
+        if dirpath:
+            os.makedirs(dirpath, exist_ok=True)
+        # os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, "w", encoding="utf-8") as fh:
             fh.write(html_template)
         print(f"Interactive scatter plot saved → {os.path.abspath(save_path)}")
@@ -635,7 +638,10 @@ def create_gsea_spider_plot(df: pd.DataFrame, save_path: str, term: str) -> None
     ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=12)
     plt.title(f"GSEA Results: {term}", size=18, y=1.1)
 
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    dirpath = os.path.dirname(save_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+    # os.makedirs(os.path.dirname(save_path), exist_ok=True)
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
     print(f"Spider plot saved → {save_path}")
