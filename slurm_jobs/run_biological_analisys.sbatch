@@ -30,7 +30,7 @@ apptainer exec \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py --rna
+    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
 
 
 echo "Job finished successfully."
