@@ -31,6 +31,13 @@ apptainer exec \
     --pwd /repo \
     "$SIF" \
     python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
+echo "running biological pipeline"
+apptainer exec \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
+    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py -rna
 
 
 echo "Job finished successfully."

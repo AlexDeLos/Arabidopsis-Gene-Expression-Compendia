@@ -479,4 +479,4 @@ def run_diff_exp_and_enrichment(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['rankin'],Fulls=[True], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['rankin', 'filter_norm', 'comb_seq_norm'],Fulls=[True], filter_low_combination=[0])
