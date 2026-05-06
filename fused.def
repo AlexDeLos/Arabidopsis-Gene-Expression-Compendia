@@ -134,6 +134,7 @@ From: pytorch/pytorch:2.7.0-cuda12.8-cudnn9-devel
         GEOparse \
         mygene \
         wandb \
+        nltk \
         goatools \
         "rpy2==3.5.16"
 
