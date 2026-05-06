@@ -12,6 +12,8 @@ import sys
 
 import numpy as np
 import pandas as pd
+from difflib import SequenceMatcher
+from nltk.stem import PorterStemmer
 
 module_dir = "./"
 sys.path.append(module_dir)
@@ -22,6 +24,9 @@ from src.constants import (  # noqa: E402
     FIGURES_DIR,
     LABELS_PATH,
     PROCESSED_DATA_FOLDER,
+)
+from src.constants_labeling import ( # noqa: E402
+    TreatmentEnum
 )
 
 from src.data_analisys.biological_analisys.diff_expr import diff_exp_combine_tissues  # noqa: E402
@@ -41,28 +46,99 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E
 # =============================================================================
 # Constants
 # =============================================================================
-
 ITERATIONS = 1000
 
-#: Treatments evaluated in every pipeline run.
-TREATMENTS = [
-    "Drought",
-    "Salinity",
-    "Heat",
-    "Cold",
-    "High Light",
-]
+GO_OBO_FILE     = f"{CORE_DATA_DIR}go-basic.obo"
+ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
 
-#: GO root IDs used to restrict GSEA to stress-relevant terms.
-#: Each value maps to its human-readable label (used in output filenames).
-STRESS_GO_ROOTS = {
-    "GO:0009414": "Drought",      # response to drought
-    "GO:0009651": "Salinity",     # response to salt stress
-    "GO:0009408": "Heat",         # response to heat
-    "GO:0009409": "Cold",         # response to cold
-    "GO:0009644": "High Light",   # response to high light intensity
+# ------------------------------------------------------------------
+# Pass 1: load obodag unfiltered, just to discover GO root IDs
+# ------------------------------------------------------------------
+GO_NAME_OVERRIDES: dict[TreatmentEnum, str | None] = {
+    # Fuzzy match fails — correct name provided manually
+    TreatmentEnum.DEHYDRATION:         "response to water deprivation",
+    TreatmentEnum.BIOTIC:              "response to biotic stimulus",
+    TreatmentEnum.ABIOTIC:             "response to abiotic stimulus",
+    TreatmentEnum.LOW_LIGHT:           "response to light intensity",
+    TreatmentEnum.OTHER_LIGHT:         "response to light stimulus",
+    TreatmentEnum.CUT:                 "response to wounding",
+    TreatmentEnum.NUTRIENT_DEFICIENCY: "response to nutrient levels",
+    
+    # No meaningful GO root — exclude from GSEA entirely
+    TreatmentEnum.OTHER:               None,
+    TreatmentEnum.CONTROL:             None,
+    TreatmentEnum.UNKNOWN:             None,
+    TreatmentEnum.UNSPECIFIED:         None,
 }
 
+_stemmer = PorterStemmer()
+
+def _stem_phrase(phrase: str) -> str:
+    """Stem every word in a phrase and rejoin."""
+    return " ".join(_stemmer.stem(w) for w in phrase.lower().split())
+
+def find_go_root_for_treatment(treatment: TreatmentEnum, obodag) -> str | None:
+    # Check for explicit override first
+    if treatment in GO_NAME_OVERRIDES:
+        override = GO_NAME_OVERRIDES[treatment]
+        if override is None:
+            return None  # explicitly excluded
+        query = override
+    else:
+        query = f"response to {treatment.value.lower()}"
+
+    stemmed_query = _stem_phrase(query)
+    candidates = [
+        (go_id, term) for go_id, term in obodag.items()
+        if term.name.lower().startswith("response to")
+        and term.namespace == "biological_process"
+    ]
+
+    if not candidates:
+        return None
+
+    def score(item):
+        go_id, term = item
+        stemmed_name = _stem_phrase(term.name)
+        name_similarity = SequenceMatcher(
+            None, stemmed_query, stemmed_name
+        ).ratio()
+        depth_penalty = len(term.parents) * 0.01
+        return name_similarity - depth_penalty
+
+    best_go_id, best_term = max(candidates, key=score)
+    best_score = score((best_go_id, best_term))
+
+    print(f"  {treatment.value!r} → '{best_term.name}' ({best_go_id}, score={best_score:.3f})")
+
+    if best_score < 0.6:
+        print(f"  Warning: low confidence match for '{treatment.value}', consider adding an override.")
+        return None
+
+    return best_go_id
+
+
+unfiltered_obodag, _ = get_go_data(GO_OBO_FILE, ANNOTATION_FILE)
+
+TREATMENT_GO_MAP: dict[TreatmentEnum, str] = {}
+for treatment in TreatmentEnum:
+    go_id = find_go_root_for_treatment(treatment, unfiltered_obodag)
+    if go_id:
+        TREATMENT_GO_MAP[treatment] = go_id
+
+# Derived automatically
+TREATMENTS:      list[str]      = [t.value for t in TREATMENT_GO_MAP]
+STRESS_GO_ROOTS: dict[str, str] = {go: t.value for t, go in TREATMENT_GO_MAP.items()}
+STRESS_IDS:      set[str]       = set(STRESS_GO_ROOTS.keys())
+
+# ------------------------------------------------------------------
+# Pass 2: reload with proper descendant filtering now that STRESS_IDS is known
+# ------------------------------------------------------------------
+obodag, geneid2gos = get_go_data(
+    GO_OBO_FILE,
+    ANNOTATION_FILE,
+    stress_root_go_ids=STRESS_IDS,
+)
 #: Sample IDs used for the single-study sanity check (subset of GSE36649).
 SANITY_CHECK_SAMPLES = [
     "GSM1027688", "GSM1027720", "GSM1027701", "GSM1027875", "GSM1027745",
@@ -121,8 +197,7 @@ def get_spider_plots(
     Fulls: list[bool],
     tissues: list[str | None],
     pure_val: bool,
-    filter_val: int,
-    full: bool = False,
+    filter_val: int
 ) -> None:
     """
     Generate radar / spider plots that compare GSEA statistics for each GO
@@ -152,15 +227,7 @@ def get_spider_plots(
     """
     os.makedirs(path, exist_ok=True)
 
-    if full:
-        allowed_types = data_types
-    else:
-        allowed_types = [
-            dt for dt in data_types
-            if dt in {"combat_seq", "tissue_normalized",
-                      "tissue_normalized_2", "imputed"}
-        ]
-
+    allowed_types = data_types
     pure_str = "pure" if pure_val else "mixed"
 
     for term, stress in STRESS_GO_ROOTS.items():
@@ -209,8 +276,7 @@ def get_spider_plots(
             continue
 
         plot_filename = (
-            f"{path}{stress.replace(' ', '_')}_spider_plot"
-            f"{'_full' if full else ''}.svg"
+            f"{path}{stress.replace(' ', '_')}_spider_plot.svg"
         )
         try:
             create_gsea_spider_plot(df, save_path=plot_filename, term=stress)
@@ -258,7 +324,7 @@ def run_diff_exp_and_enrichment(
         If True, skip computation and regenerate plots from existing CSVs only.
     """
     if data_types is None:
-        data_types = ["combat_seq", "imputed", "filter"]
+        data_types = ["combat_seq_norm", "rankin", "filter"]
     if pures is None:
         pures = [False]
     if Fulls is None:
@@ -266,20 +332,11 @@ def run_diff_exp_and_enrichment(
     if filter_low_combination is None:
         filter_low_combination = [0, 15]
     if tissues is None:
-        tissues = [None, "leaf"]
+        tissues = [None]
 
     labels = make_df_from_labels(load_labels_study(LABELS_PATH))
 
-    GO_OBO_FILE     = f"{CORE_DATA_DIR}go-basic.obo"
-    ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
-    STRESS_IDS      = set(STRESS_GO_ROOTS.keys())
 
-    # Load GO data once per stress (filtered to roots)
-    obodag, geneid2gos = get_go_data(
-        GO_OBO_FILE,
-        ANNOTATION_FILE,
-        stress_root_go_ids=STRESS_IDS,
-    )
     for fil in filter_low_combination:
         for pure in pures:
             pure_str = "pure" if pure else "mixed"
@@ -411,8 +468,7 @@ def run_diff_exp_and_enrichment(
                 Fulls=Fulls,
                 tissues=tissues,
                 pure_val=pure,
-                filter_val=fil,
-                full=False,
+                filter_val=fil
             )
 
     print("Pipeline complete.")
@@ -423,4 +479,4 @@ def run_diff_exp_and_enrichment(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False)
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['rankin'],Fulls=[True], filter_low_combination=[0])
