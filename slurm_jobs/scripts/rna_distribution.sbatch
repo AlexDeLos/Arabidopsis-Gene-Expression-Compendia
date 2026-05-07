@@ -37,7 +37,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python -u src/data_importing/scripts/rna_distribution.py
+    python -u src/data_importing/scripts/rna_distribution.py --rna
 
 EXIT_CODE=$?
 echo "========================================"
