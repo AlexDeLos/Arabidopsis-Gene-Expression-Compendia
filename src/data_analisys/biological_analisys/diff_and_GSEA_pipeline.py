@@ -25,6 +25,9 @@ from src.constants import (  # noqa: E402
     LABELS_PATH,
     PROCESSED_DATA_FOLDER,
 )
+print(f'using labels {LABELS_PATH}')
+print(f'using dir {FIGURES_DIR}')
+raise
 from src.constants_labeling import ( # noqa: E402
     TreatmentEnum
 )

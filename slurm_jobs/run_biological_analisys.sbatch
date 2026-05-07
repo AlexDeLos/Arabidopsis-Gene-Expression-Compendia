@@ -17,8 +17,6 @@ echo "Date: $(date)"
 echo "=================================================="
 echo ""
 
-echo "Starting TULIP label generation..."
-
 # Define your directories
 REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
@@ -33,7 +31,7 @@ SIF="$BIG_STORAGE/fused.sif"
 #     python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
 
 
-echo "running biological pipeline om RNA"
+echo "running biological pipeline on RNA"
 
 apptainer exec \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
