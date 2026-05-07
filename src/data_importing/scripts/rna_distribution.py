@@ -12,7 +12,7 @@ sys.path.append(module_dir)
 from src.constants import FIGURES_DIR, STORAGE_DIR  # noqa: E402
 
 # 1. Configuration
-INPUT_FILE = f"{STORAGE_DIR}/final_data/rnaseq_processed/filter.csv"
+INPUT_FILE = f"{STORAGE_DIR}/final_data/rnaseq_processed/filter_norm.csv"
 
 ext = 'TMP_log_norm'
 def read_id(path):
