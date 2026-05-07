@@ -24,14 +24,17 @@ REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="$BIG_STORAGE/fused.sif"
 
-echo "running biological pipeline"
-apptainer exec \
-    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-    --bind "$REPO_DIR":/repo \
-    --pwd /repo \
-    "$SIF" \
-    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
-echo "running biological pipeline"
+# echo "running biological pipeline"
+# apptainer exec \
+#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+#     --bind "$REPO_DIR":/repo \
+#     --pwd /repo \
+#     "$SIF" \
+#     python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
+
+
+echo "running biological pipeline om RNA"
+
 apptainer exec \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
