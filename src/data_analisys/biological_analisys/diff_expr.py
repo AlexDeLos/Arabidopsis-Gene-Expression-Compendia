@@ -166,7 +166,6 @@ def diff_exp_combine_tissues(
                 continue
             else:
                 print(f"we have {len(metadata)}")
-            return
             # ------------------------------------------------------------------
             # 5. Import R libraries
             # ------------------------------------------------------------------
