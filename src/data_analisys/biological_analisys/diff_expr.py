@@ -162,9 +162,11 @@ def diff_exp_combine_tissues(
                 del metadata["tissue"]
 
             if len(set(metadata["Target"])) == 1:
-                print(f"    Not enough unique Target levels for '{treatment}', skipping.")
+                print(f"    Not enough unique Target levels for '{treatment}' we have {len(metadata)}, skipping.")
                 continue
-
+            else:
+                print(f"we have {len(metadata)}")
+            return
             # ------------------------------------------------------------------
             # 5. Import R libraries
             # ------------------------------------------------------------------

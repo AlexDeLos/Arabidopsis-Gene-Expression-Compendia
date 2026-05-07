@@ -9,7 +9,6 @@ import urllib.error
 from collections import OrderedDict
 
 import matplotlib.patches as mpatches
-from torch_geometric.utils import add_self_loops
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
