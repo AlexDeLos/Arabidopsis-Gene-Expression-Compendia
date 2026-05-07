@@ -1,10 +1,10 @@
 #!/bin/sh
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=0:05:00
+#SBATCH --time=5:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=1G
+#SBATCH --mem=24G
 #SBATCH --job-name=biological_pipeline
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
@@ -38,7 +38,7 @@ apptainer exec \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py -rna
+    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py --rna
 
 
 echo "Job finished successfully."
