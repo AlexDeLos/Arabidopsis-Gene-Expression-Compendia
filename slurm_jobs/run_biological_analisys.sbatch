@@ -1,10 +1,10 @@
 #!/bin/sh
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=5:00:00
+#SBATCH --time=0:05:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1G
 #SBATCH --job-name=biological_pipeline
 #SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
 
