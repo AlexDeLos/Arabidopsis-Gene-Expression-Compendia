@@ -31,6 +31,9 @@ PROCESSED_DATA_FOLDER = "new_storage/final_data/"
 if CLUSTER_RUN:
     PROCESSED_DATA_FOLDER = "/tudelft.net/staff-umbrella/GeneExpressionStorage/final_data/"
 
+if RNA_USED:
+    PROCESSED_DATA_FOLDER = PROCESSED_DATA_FOLDER + 'rnaseq_processed/'
+
 COMBINED_DATA_OUTPUT_FILE = f"{PROCESSED_DATA_FOLDER}RMA_Microarray_Combined.csv"
 CORE_DATA_DIR = "./data/core_data/"
 SOFT_PATH = f"{CORE_DATA_DIR}old_geo_downloads/"

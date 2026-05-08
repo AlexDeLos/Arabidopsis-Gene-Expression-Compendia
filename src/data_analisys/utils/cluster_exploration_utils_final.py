@@ -128,6 +128,91 @@ def get_srr_ids(gsm_id: str, max_retries=5) -> list:
     return []
 
 
+SRR_TO_GSM: dict[str, str] = {
+    srr: gsm
+    for gsm, srr_list in SRR_CACHE.items()
+    for srr in srr_list
+}
+
+def get_gsm_id(srr_id: str, max_retries: int = 5) -> str | None:
+    """
+    Given an SRR ID, return the corresponding GSM ID.
+
+    Checks the in-memory cache first by inverting the GSM→[SRR] mapping.
+    Falls back to an NCBI lookup if not found, and stores the result so
+    both get_srr_ids and get_gsm_id benefit from the same cache entry.
+
+    Parameters
+    ----------
+    srr_id : str
+        The SRR run accession to look up (e.g. 'SRR12345678').
+    max_retries : int
+        Number of retry attempts on transient network errors.
+
+    Returns
+    -------
+    str or None
+        The GSM sample accession, or None if not found.
+    """
+    srr_id = srr_id.strip().upper()
+
+    # Check cache by inverting the GSM → [SRR] mapping
+    if srr_id in SRR_TO_GSM:
+        return SRR_TO_GSM[srr_id]
+
+    print(f"    [Cache Miss] Fetching GSM for {srr_id} from NCBI...")
+
+    for attempt in range(max_retries):
+        try:
+            time.sleep(0.4)
+
+            # Search SRA for the run accession
+            handle = Entrez.esearch(db="sra", term=srr_id)
+            record = Entrez.read(handle)
+            handle.close()
+
+            if not record["IdList"]:
+                print(f"    [!] No SRA record found for {srr_id}.")
+                return None
+
+            # Fetch the summary to get the linked GSM accession
+            handle = Entrez.esummary(db="sra", id=",".join(record["IdList"]))
+            summaries = Entrez.read(handle)
+            handle.close()
+
+            for summary in summaries:
+                # GSM accession is stored in the ExpXml field
+                gsm_matches = re.findall(r'GSM\d+', summary.get("ExpXml", ""))
+                if gsm_matches:
+                    gsm_id = gsm_matches[0].upper()
+                    # Populate the forward cache entry so get_srr_ids
+                    # benefits from this lookup too
+                    if gsm_id not in SRR_CACHE:
+                        SRR_CACHE[gsm_id] = []
+                    if srr_id not in SRR_CACHE[gsm_id]:
+                        SRR_CACHE[gsm_id].append(srr_id)
+                    save_srr_cache()
+                    return gsm_id
+
+            print(f"    [!] Could not extract GSM from SRA record for {srr_id}.")
+            return None
+
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait_time = 2 ** attempt
+                print(f"    [!] HTTP 429 for {srr_id}. Waiting {wait_time}s "
+                      f"before retry {attempt + 1}/{max_retries}...")
+                time.sleep(wait_time)
+            else:
+                print(f"    [!] HTTP Error {e.code} for {srr_id}. Skipping.")
+                return None
+        except Exception as e:
+            print(f"    [!] Connection error for {srr_id}: {e}. Retrying in 5s...")
+            time.sleep(5)
+
+    print(f"    [!] Failed to retrieve GSM for {srr_id} after {max_retries} retries.")
+    return None
+
 # =============================================================================
 # 1. DATA AND LABEL PREPARATION (Updated for TULIP LLM Format)
 # =============================================================================

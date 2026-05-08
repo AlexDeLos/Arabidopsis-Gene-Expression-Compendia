@@ -2,6 +2,7 @@ import ast
 import json
 import os
 import sys
+import pandas as pd
 from collections import Counter, defaultdict
 
 import matplotlib as mpl
@@ -14,8 +15,9 @@ import matplotlib.pyplot as plt
 
 # Ensure the script can find your src modules if run from the root directory
 sys.path.append(os.path.abspath("./"))
-from src.constants import FIGURES_DIR, LABELS_PATH, RNA_USED
+from src.constants import FIGURES_DIR, LABELS_PATH, RNA_USED, EXPR_PATH
 from src.constants_labeling import LABELS, IntensityEnum
+from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id
 
 # Keys (in priority order) that hold the primary label value inside a dict item.
 # "val" is checked first to match the {"val": "Control", "intensity": 0} format.
@@ -48,9 +50,7 @@ _INTENSITY_ORDER = [
 
 def load_all_labels(labels_dir):
     """
-    Loads all sample JSON files from the labels directory.
-    Supports both dict-keyed files {sample_id: {...}} and flat list files [{...}].
-    Files starting with 'map_' are skipped (they are lookup tables, not sample data).
+    Loads all sample JSON files and injects the 'Sample_ID' from dictionary keys.
     """
     all_samples = []
     if not os.path.exists(labels_dir):
@@ -58,22 +58,28 @@ def load_all_labels(labels_dir):
         return all_samples
 
     files = sorted(f for f in os.listdir(labels_dir) if f.endswith(".json") and not f.startswith("map_"))
+    
     for file in files:
         file_path = os.path.join(labels_dir, file)
         with open(file_path) as f:
             try:
                 study_data = json.load(f)
-                if isinstance(study_data, dict):
-                    samples = list(study_data.values())
-                elif isinstance(study_data, list):
-                    samples = study_data
-                else:
-                    print(f"  [WARN] Unexpected format in {file}, skipping.")
-                    continue
+                processed_samples = []
 
-                valid = [s for s in samples if isinstance(s, dict)]
-                all_samples.extend(valid)
-                print(f"  Loaded {len(valid):>5} samples  <- {file}")
+                if isinstance(study_data, dict):
+                    # Iterate through the dictionary to keep the GSM ID (the key)
+                    for sample_id, sample_meta in study_data.items():
+                        if isinstance(sample_meta, dict):
+                            # Inject the ID into the dictionary so it's accessible later
+                            sample_meta['Sample_ID'] = sample_id
+                            processed_samples.append(sample_meta)
+                
+                elif isinstance(study_data, list):
+                    # If it's already a list, ensure each item is a dict
+                    processed_samples = [s for s in study_data if isinstance(s, dict)]
+
+                all_samples.extend(processed_samples)
+                print(f"  Loaded {len(processed_samples):>5} samples  <- {file}")
 
             except Exception as e:
                 print(f"  [WARN] Could not read {file_path}: {e}")
@@ -324,12 +330,57 @@ def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    LABELS_DIR = LABELS_PATH
-
-    print(f"Loading data from: {LABELS_DIR}")
-    samples = load_all_labels(LABELS_DIR)
+    print(f"Loading data from: {LABELS_PATH}")
+    samples = load_all_labels(LABELS_PATH)
     print(f"\nTotal samples pooled: {len(samples)}")
 
+    # 1. Get valid IDs from the actual expression data
+    data_cols = pd.read_csv(EXPR_PATH, index_col=0, nrows=0).columns
+    
+    if RNA_USED:
+        valid_data_ids = set([get_gsm_id(col.split('_')[-1]) for col in data_cols])
+    else:
+        valid_data_ids = set(data_cols)
+
+    # 2. Extract IDs, Filter for data presence, and Drop Duplicates
+    label_id_key = 'Sample_ID' 
+    filtered_samples = []
+    seen_ids = set()
+    duplicate_count = 0
+
+    for s in samples:
+        sid = s.get(label_id_key)
+        
+        # Condition 1: Must be in the expression matrix
+        if sid in valid_data_ids:
+            # Condition 2: Must not have been added already
+            if sid not in seen_ids:
+                filtered_samples.append(s)
+                seen_ids.add(sid)
+            else:
+                duplicate_count += 1
+    
+    # 3. Validation Logic (Reporting Mismatches)
+    pooled_label_ids = set([s.get(label_id_key) for s in samples])
+    overlap = seen_ids # After loop, seen_ids is the intersection of unique labels and data
+    
+    print("--- FLORA Label Synchronization Report ---")
+    print(f"  [1] Expression IDs found:             {len(valid_data_ids)}")
+    print(f"  [1] Unique Labels found in JSONs:     {len(pooled_label_ids)}")
+    print(f"  [1] Duplicate Labels dropped:         {duplicate_count}")
+    print(f"  [1] Confirmed Unique Overlap:         {len(overlap)}")
+    
+    # Report mismatches
+    in_labels_not_data = pooled_label_ids - valid_data_ids
+    in_data_not_labels = valid_data_ids - pooled_label_ids
+    
+    if in_labels_not_data:
+        print(f"  [!] Labels UNUSED (not in data):     {len(in_labels_not_data)}")
+    if in_data_not_labels:
+        print(f"  [!] Data UNLABELED (missing JSON):   {len(in_data_not_labels)}")
+
+    samples = filtered_samples
+    print(f"Final unique samples retained: {len(samples)}\n")
     if not samples:
         print("No samples found. Exiting.")
         sys.exit(0)

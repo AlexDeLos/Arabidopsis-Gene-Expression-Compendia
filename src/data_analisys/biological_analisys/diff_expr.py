@@ -19,9 +19,9 @@ from rpy2.robjects.packages import importr
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import CLUSTER_RUN  # noqa: E402
+from src.constants import CLUSTER_RUN, RNA_USED  # noqa: E402
 from src.constants_labeling import TreatmentEnum  # noqa: E402
-
+from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
 
 def diff_exp_combine_tissues(
     treatments: list[str],
@@ -79,9 +79,9 @@ def diff_exp_combine_tissues(
     print(f"  Columns present:                {design.columns.tolist()}")
     print(f"  Unique tissues ({len(design['tissue'].unique())}):  "
           f"{sorted(design['tissue'].dropna().unique())}")
-    print(f"  Treatment value counts (top 15):")
+    print("  Treatment value counts (top 15):")
     print(design["treatment"].value_counts().head(15).to_string())
-    print(f"  Null counts per column:")
+    print("  Null counts per column:")
     print(design.isnull().sum().to_string())
     print("=" * 60 + "\n")
 
@@ -100,7 +100,8 @@ def diff_exp_combine_tissues(
             # 1. Load expression data
             # ------------------------------------------------------------------
             data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
-
+            if RNA_USED:
+                data.columns = [get_gsm_id(col.split('_')[-1]) for col in data.columns]
             print(f"  [1] Expression matrix shape:          {data.shape}")
             print(f"  [1] Expression col dtype:             {data.columns.dtype}")
             print(f"  [1] Expression col sample (first 3):  {list(data.columns[:3])}")
@@ -170,13 +171,14 @@ def diff_exp_combine_tissues(
 
             # Drop duplicate columns from data
             before_dedup = data_filtered.shape[1]
-            data_filtered = data_filtered.T.drop_duplicates().T
+            # data_filtered = data_filtered.T.drop_duplicates().T
+            data_filtered = data_filtered.loc[:, ~data_filtered.columns.duplicated(keep='first')]
 
             # Keep only design rows whose sample is still in data after dedup
             design_filtered = design_filtered[design_filtered.index.isin(data_filtered.columns)]
 
             # Drop duplicate rows from design
-            design_filtered = design_filtered.drop_duplicates()
+            design_filtered = design_filtered[~design_filtered.index.duplicated(keep='first')]
 
             print(f"  [3] Duplicate cols dropped from data: {before_dedup - data_filtered.shape[1]}")
             print(f"  [3] After dedup — data cols:          {data_filtered.shape[1]}")
