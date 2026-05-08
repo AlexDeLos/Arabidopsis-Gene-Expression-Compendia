@@ -336,6 +336,19 @@ def run_diff_exp_and_enrichment(
 
     labels = make_df_from_labels(load_labels_study(LABELS_PATH))
 
+    print("\n" + "="*60)
+    print("DIAGNOSTIC: Label DataFrame")
+    print("="*60)
+    print(f"  Total samples in design:       {len(labels)}")
+    print(f"  Design index name:             {labels.index.name}")
+    print(f"  Design index sample (first 3): {labels.index[:3].tolist()}")
+    print(f"  Columns:                       {labels.columns.tolist()}")
+    print(f"  Unique tissues:                {sorted(labels['tissue'].unique())}")
+    print("\n  Treatment value counts (top 20):")
+    print(labels['treatment'].value_counts().head(20).to_string())
+    print("\n  Null counts per column:")
+    print(labels.isnull().sum().to_string())
+    print("="*60 + "\n")
 
     for fil in filter_low_combination:
         for pure in pures:

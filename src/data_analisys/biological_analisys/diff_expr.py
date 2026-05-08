@@ -66,6 +66,25 @@ def diff_exp_combine_tissues(
     """
     os.makedirs(out_dir, exist_ok=True)
 
+    # ------------------------------------------------------------------
+    # [0] One-time design diagnostics — printed before the treatment loop
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("DIAGNOSTIC [0]: Label DataFrame (design)")
+    print("=" * 60)
+    print(f"  Total samples in design:        {len(design)}")
+    print(f"  Design index name:              {design.index.name!r}")
+    print(f"  Design index dtype:             {design.index.dtype}")
+    print(f"  Design index sample (first 3):  {design.index[:3].tolist()}")
+    print(f"  Columns present:                {design.columns.tolist()}")
+    print(f"  Unique tissues ({len(design['tissue'].unique())}):  "
+          f"{sorted(design['tissue'].dropna().unique())}")
+    print(f"  Treatment value counts (top 15):")
+    print(design["treatment"].value_counts().head(15).to_string())
+    print(f"  Null counts per column:")
+    print(design.isnull().sum().to_string())
+    print("=" * 60 + "\n")
+
     for treatment in treatments:
         try:
             tissue_label = tissue if tissue is not None else "All-Tissues"
@@ -81,6 +100,20 @@ def diff_exp_combine_tissues(
             # 1. Load expression data
             # ------------------------------------------------------------------
             data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
+
+            print(f"  [1] Expression matrix shape:          {data.shape}")
+            print(f"  [1] Expression col dtype:             {data.columns.dtype}")
+            print(f"  [1] Expression col sample (first 3):  {list(data.columns[:3])}")
+            print(f"  [1] Design index sample (first 3):    {design.index[:3].tolist()}")
+            overlap = len(set(design.index) & set(data.columns))
+            print(f"  [1] Index/col overlap:                {overlap}")
+            # Show examples of mismatches — critical for catching format divergence
+            in_design_not_data = set(design.index) - set(data.columns)
+            in_data_not_design = set(data.columns) - set(design.index)
+            print(f"  [1] In design but NOT in data:        "
+                  f"{len(in_design_not_data)}  e.g. {sorted(in_design_not_data)[:3]}")
+            print(f"  [1] In data but NOT in design:        "
+                  f"{len(in_data_not_design)}  e.g. sorted({sorted(in_data_not_design)[:3]})")
 
             # ------------------------------------------------------------------
             # 2. Build sample masks
@@ -104,6 +137,21 @@ def diff_exp_combine_tissues(
             else:
                 design_filtered = design[(is_treatment | is_control) & is_tissue].copy()
 
+            print(f"  [2] is_tissue True count:             {is_tissue.sum()}")
+            print(f"  [2] is_treatment True count:          {is_treatment.sum()}")
+            print(f"  [2] is_control True count:            {is_control.sum()}")
+            if samples is not None:
+                print(f"  [2] is_study True count:              {is_study.sum()}")
+            print(f"  [2] design_filtered rows:             {len(design_filtered)}")
+            print(f"  [2] Treatments in filtered:")
+            print(design_filtered["treatment"].value_counts().to_string())
+            # Catch samples that are labelled as BOTH treatment and control
+            treatment_ids = set(design[is_treatment].index)
+            control_ids   = set(design[is_control].index)
+            print(f"  [2] Treatment-only samples:           {len(treatment_ids - control_ids)}")
+            print(f"  [2] Control-only samples:             {len(control_ids - treatment_ids)}")
+            print(f"  [2] Samples labelled BOTH:            {len(treatment_ids & control_ids)}")
+
             # ------------------------------------------------------------------
             # 3. Synchronise samples between expression data and design
             # ------------------------------------------------------------------
@@ -111,7 +159,17 @@ def diff_exp_combine_tissues(
             design_filtered = design_filtered[design_filtered.index.isin(common_samples)]
             data_filtered = data[common_samples]
 
+            print(f"  [3] common_samples count:             {len(common_samples)}")
+            # Show examples of why samples are lost — format mismatch shows up here
+            not_in_data   = set(design_filtered.index) - set(data.columns)
+            not_in_design = set(data.columns) - set(design_filtered.index)
+            print(f"  [3] design_filtered samples not in data:   "
+                  f"{len(not_in_data)}  e.g. {sorted(not_in_data)[:3]}")
+            print(f"  [3] data columns not in design_filtered:   "
+                  f"{len(not_in_design)}  e.g. {sorted(not_in_design)[:3]}")
+
             # Drop duplicate columns from data
+            before_dedup = data_filtered.shape[1]
             data_filtered = data_filtered.T.drop_duplicates().T
 
             # Keep only design rows whose sample is still in data after dedup
@@ -120,10 +178,30 @@ def diff_exp_combine_tissues(
             # Drop duplicate rows from design
             design_filtered = design_filtered.drop_duplicates()
 
-            # Filter by minimum group size; reset_index makes Sample_ID a plain column
+            print(f"  [3] Duplicate cols dropped from data: {before_dedup - data_filtered.shape[1]}")
+            print(f"  [3] After dedup — data cols:          {data_filtered.shape[1]}")
+            print(f"  [3] After dedup — design rows:        {len(design_filtered)}")
+
+            # ------------------------------------------------------------------
+            # 4. Filter by minimum group size
+            # ------------------------------------------------------------------
+            # Show ALL groups and their sizes BEFORE filtering so we can see
+            # what is about to be dropped
+            all_groups = design_filtered.groupby(["treatment", "tissue"]).size()
+            print(f"  [4] All (treatment × tissue) groups BEFORE filter "
+                  f"(threshold={filter_low_combination}):")
+            print(all_groups.to_string())
+
+            dropped_groups = all_groups[all_groups < filter_low_combination]
+            if not dropped_groups.empty:
+                print(f"  [4] Groups DROPPED (< {filter_low_combination} samples):")
+                print(dropped_groups.to_string())
+            else:
+                print(f"  [4] No groups dropped — all meet the threshold.")
+
             design_filtered = (
                 design_filtered.sort_values(by="Sample_ID")
-                .reset_index(drop=False)          # index → "Sample_ID" column; int range becomes index
+                .reset_index(drop=False)          # index → "Sample_ID" column
                 .groupby(["treatment", "tissue"])
                 .filter(lambda x: len(x) >= filter_low_combination)
             )
@@ -131,29 +209,33 @@ def diff_exp_combine_tissues(
             # Select expression columns using the Sample_ID column (not the index)
             data_filtered = data_filtered[design_filtered["Sample_ID"].values]
 
-            print(f"    {len(design_filtered)} samples aligned for '{treatment}' vs. {TreatmentEnum.CONTROL}.")
+            print(f"  [4] After group filter — rows remaining: {len(design_filtered)}")
+            if len(design_filtered) > 0:
+                print("  [4] Groups surviving filter:")
+                print(design_filtered.groupby(["treatment", "tissue"]).size().to_string())
+
+            print(f"    {len(design_filtered)} samples aligned for "
+                  f"'{treatment}' vs. {TreatmentEnum.CONTROL}.")
 
             # ------------------------------------------------------------------
-            # 4. Build metadata for the model
+            # 4b. Build metadata for the model
             # ------------------------------------------------------------------
-            # Sample_ID is a column here (not the index), so select only what R needs
             metadata = design_filtered[["treatment", "tissue"]].copy()
-            metadata.index = design_filtered["Sample_ID"].values   # label rows by sample ID
-            del design_filtered
+            metadata.index = design_filtered["Sample_ID"].values
+
             def r_make_names(s):
-                # 1. Replace any non-alphanumeric character (like spaces) with a dot
                 s = re.sub(r'[^a-zA-Z0-9_]', '.', str(s))
-                # 2. If it starts with a digit or a dot, prepend 'X' (R requirement)
                 if s[0].isdigit() or s[0] == '.':
                     s = 'X' + s
                 return s
+
             is_control_mask = metadata["treatment"].str.contains("Control", na=False)
             metadata["Target"] = "treatment"
             metadata.loc[is_control_mask, "Target"] = "Control"
             del metadata["treatment"]
 
             metadata["Target"] = metadata["Target"].apply(r_make_names)
-            
+
             if "tissue" in metadata.columns:
                 metadata["tissue"] = metadata["tissue"].apply(r_make_names)
 
@@ -162,10 +244,19 @@ def diff_exp_combine_tissues(
                 del metadata["tissue"]
 
             if len(set(metadata["Target"])) == 1:
-                print(f"    Not enough unique Target levels for '{treatment}' we have {len(metadata)}, skipping.")
+                print(f"    Not enough unique Target levels for '{treatment}' "
+                      f"(n={len(metadata)}), skipping.")
+                print(f"    Target values present: {metadata['Target'].value_counts().to_dict()}")
                 continue
-            else:
-                print(f"we have {len(metadata)}")
+
+            print(f"  [5] Final sample count:               {len(metadata)}")
+            print(f"  [5] Unique Target values:             {sorted(metadata['Target'].unique())}")
+            print(f"  [5] Target value counts:              {metadata['Target'].value_counts().to_dict()}")
+            print(f"  [5] Unique tissues in model:          "
+                  f"{sorted(metadata['tissue'].unique()) if 'tissue' in metadata.columns else 'single (dropped)'}")
+
+            del design_filtered
+
             # ------------------------------------------------------------------
             # 5. Import R libraries
             # ------------------------------------------------------------------
@@ -186,7 +277,6 @@ def diff_exp_combine_tissues(
                 r_metadata = ro.conversion.py2rpy(metadata)
                 genes = ro.StrVector(data_filtered.index.tolist())
 
-            # Clean Target column to valid R names
             target_col = r_metadata.rx2("Target")
             clean_target_col = base.make_names(target_col)
             target_idx = r_metadata.names.index("Target")
