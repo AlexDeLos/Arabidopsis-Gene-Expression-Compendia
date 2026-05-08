@@ -256,7 +256,7 @@ def diff_exp_combine_tissues(
             print(f"  [5] Target value counts:              {metadata['Target'].value_counts().to_dict()}")
             print(f"  [5] Unique tissues in model:          "
                   f"{sorted(metadata['tissue'].unique()) if 'tissue' in metadata.columns else 'single (dropped)'}")
-
+            assert(len(metadata) == len(design_filtered))
             del design_filtered
 
             # ------------------------------------------------------------------

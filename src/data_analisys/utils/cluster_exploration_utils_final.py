@@ -22,9 +22,14 @@ from sklearn.linear_model import LinearRegression
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
-from src.bulk.model.config import model_params
-from src.bulk.utils.BulkFormer import BulkFormer
-from src.constants import (
+# from torch_sparse import SparseTensor  # pyright: ignore[reportMissingImports]
+from tqdm import tqdm
+
+module_dir = "./"
+sys.path.append(module_dir)
+from src.bulk.model.config import model_params  # noqa: E402
+from src.bulk.utils.BulkFormer import BulkFormer  # noqa: E402
+from src.constants import (  # noqa: E402
     RNA_USED,  # Pull in your new constant
     STORAGE_DIR,
     GRAPH_PATH,
@@ -32,9 +37,6 @@ from src.constants import (
     GENE_INFO,
     WEIGHTS_PATH
 )
-from torch_sparse import SparseTensor  # pyright: ignore[reportMissingImports]
-from tqdm import tqdm
-
 Entrez.email = "alexdelossanto@tudelft.nl"
 
 # --- GLOBAL CACHE ---
