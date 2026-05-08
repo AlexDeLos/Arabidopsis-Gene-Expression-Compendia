@@ -101,7 +101,7 @@ def diff_exp_combine_tissues(
             # ------------------------------------------------------------------
             data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
             if RNA_USED:
-                data.columns = [get_gsm_id(col.split('_')[-1]) for col in data.columns]
+                data.columns = [get_gsm_id(col.split('_')[1]) for col in data.columns]
             print(f"  [1] Expression matrix shape:          {data.shape}")
             print(f"  [1] Expression col dtype:             {data.columns.dtype}")
             print(f"  [1] Expression col sample (first 3):  {list(data.columns[:3])}")
