@@ -250,8 +250,97 @@ def run_combat(
 # ---------------------------------------------------------------------------
 # 3. Rank-in normalization
 # ---------------------------------------------------------------------------
-
 def run_rank_in_normalization(
+    df: pd.DataFrame,
+    n_bins: int = 100,
+    variance_threshold: float = 0.95,
+    out_path: str | None = None,
+) -> pd.DataFrame:
+    """
+    Rank-in normalization per Tang et al. (2021), Nucleic Acids Research.
+
+    Input: log2-transformed expression matrix (genes × samples).
+    For RNA-seq: log2(TPM+1) from filter_norm.csv
+    For microarray: log2 RMA values from filter.csv
+
+    Steps:
+      1. Rank genes within each sample into n_bins groups
+      2. Weight ranks by expression intensity slope (quadratic fit per sample)
+      3. SVD on the weighted rank matrix to SUBTRACT nonbiological effects
+    """
+    from scipy.optimize import curve_fit
+
+    print(f"\n[Rank-in] Step 1: Binned rank transformation ({n_bins} bins)...")
+    # Rank genes within each sample (column), low→high, as percentile
+    rank_matrix = df.rank(pct=True, method="average")
+    binned_matrix = pd.DataFrame(
+        np.ceil(rank_matrix.values * n_bins),
+        index=df.index,
+        columns=df.columns,
+    )  # values in [1, n_bins]
+
+    print("[Rank-in] Step 2: Weighting ranks by expression intensity slope...")
+    # For each sample (column), fit quadratic e = a*r^2 + b*r + c
+    # then compute weight w = 2a*r + b, and R_weighted = r * w
+    weighted_matrix = np.zeros_like(binned_matrix.values, dtype=float)
+
+    for j, col in enumerate(binned_matrix.columns):
+        r = binned_matrix[col].values.astype(float)   # bin ranks for this sample
+        e = df[col].values.astype(float)               # raw log expression
+
+        # Fit quadratic: e = a*r^2 + b*r + c
+        try:
+            coeffs = np.polyfit(r, e, deg=2)           # [a, b, c]
+            a, b = coeffs[0], coeffs[1]
+        except Exception:
+            a, b = 0.0, 1.0                             # fallback: no weighting
+
+        # Weight: w_ij = 2a*r_ij + b
+        w = 2 * a * r + b
+        weighted_matrix[:, j] = r * w
+
+    weighted_df = pd.DataFrame(
+        weighted_matrix,
+        index=binned_matrix.index,
+        columns=binned_matrix.columns,
+    )
+
+    print("[Rank-in] Step 3: SVD — estimating and subtracting nonbiological effects...")
+    # Center across samples (gene-wise mean) before SVD
+    gene_means = weighted_df.mean(axis=1)
+    centered = weighted_df.sub(gene_means, axis=0)
+    X = centered.T  # (n_samples, n_genes) for sklearn
+
+    # Determine k: number of components explaining variance_threshold
+    # These top-k components represent nonbiological (platform/batch) variance
+    max_components = min(X.shape) - 1
+    svd_test = TruncatedSVD(n_components=max_components, random_state=42)
+    svd_test.fit(X)
+    cumulative_variance = np.cumsum(svd_test.explained_variance_ratio_)
+    optimal_k = np.argmax(cumulative_variance >= variance_threshold) + 1
+    print(f"  -> Removing top {optimal_k} SVD components ({variance_threshold * 100:.0f}% nonbiological variance).")
+
+    # Reconstruct nonbiological effect matrix y = U_k * Σ_k * V_k^T
+    svd_final = TruncatedSVD(n_components=optimal_k, random_state=42)
+    X_reduced = svd_final.fit_transform(X)
+    nonbio_effects = svd_final.inverse_transform(X_reduced)  # (n_samples, n_genes)
+
+    # Subtract nonbiological effects: R_adjusted = centered - y
+    X_adjusted = X - nonbio_effects  # (n_samples, n_genes)
+
+    # Transpose back, re-add gene means
+    adjusted_df = pd.DataFrame(
+        X_adjusted.T,
+        index=weighted_df.index,
+        columns=weighted_df.columns,
+    ).add(gene_means, axis=0)
+
+    print("[Rank-in] Normalization complete.")
+    save_to = out_path if out_path is not None else os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
+    adjusted_df.to_csv(save_to)
+    return adjusted_df
+
+def run_rank_in_normalization_old(
     df: pd.DataFrame,
     n_bins: int = 100,
     variance_threshold: float = 0.95,

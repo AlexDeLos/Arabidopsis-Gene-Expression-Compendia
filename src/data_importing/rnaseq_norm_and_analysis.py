@@ -269,6 +269,7 @@ def run_rnaseq_preprocessing():
     if os.path.exists(filter_path):
         print("Loading cached filter.csv...")
         filtered_df = pd.read_csv(filter_path, index_col=0)
+        norm_df = pd.read_csv(filter_norm_path, index_col=0)
     else:
         print(f"Loading combined count matrix from {RNASEQ_COMBINED}...")
         raw_df = pd.read_csv(RNASEQ_COMBINED, index_col=0)
@@ -315,8 +316,9 @@ def run_rnaseq_preprocessing():
     if os.path.exists(filter_path):
         print("pre existing norm.csv...")
     else:
+        shifted = combat_df - combat_df.values.min()
         log_df = pd.DataFrame(
-            np.log1p(combat_df.clip(lower=0).values),
+            np.log1p(shifted.values),
             index=combat_df.index,
             columns=combat_df.columns,
         )
@@ -330,13 +332,14 @@ def run_rnaseq_preprocessing():
 
         # Log1p-transform corrected counts before Rank-in.
         # np.log1p returns an ndarray so we reconstruct the DataFrame explicitly.
-        log_df = pd.DataFrame(
-            np.log1p(combat_df.clip(lower=0).values),
-            index=combat_df.index,
-            columns=combat_df.columns,
-        )
+        # log_df = pd.DataFrame(
+        #     # np.log1p(combat_df.clip(lower=0).values),
+        #     np.log1p(norm_df.values),
+        #     index=norm_df.index,
+        #     columns=norm_df.columns,
+        # )
 
-        rankin_df = run_rank_in_normalization(df=log_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path)
+        rankin_df = run_rank_in_normalization(df=norm_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path)
         print(f"Saved Rank-in result → {rankin_path}")
 
     print("\n=== Pipeline Complete ===")
