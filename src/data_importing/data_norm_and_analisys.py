@@ -268,7 +268,6 @@ def run_rank_in_normalization(
       2. Weight ranks by expression intensity slope (quadratic fit per sample)
       3. SVD on the weighted rank matrix to SUBTRACT nonbiological effects
     """
-    from scipy.optimize import curve_fit
 
     print(f"\n[Rank-in] Step 1: Binned rank transformation ({n_bins} bins)...")
     # Rank genes within each sample (column), low→high, as percentile
@@ -407,6 +406,7 @@ def run_microarray_preprocessing():
     if os.path.exists(filter_path):
         print("Loading cached filter.csv...")
         filtered_df = pd.read_csv(filter_path, index_col=0)
+        norm_df = pd.read_csv(filter_norm_path, index_col=0)
     else:
         print(f"Loading RMA matrix from {MICROARRAY_COMBINED}...")
         raw_df = pd.read_csv(MICROARRAY_COMBINED, index_col=0)
@@ -461,7 +461,7 @@ def run_microarray_preprocessing():
         # where log1p(combat_seq_counts) is needed because ComBat-seq outputs
         # raw counts. Here the data is already log-transformed.
         rankin_df = run_rank_in_normalization(
-            df=combat_df,
+            df=norm_df,
             n_bins=100,
             variance_threshold=0.95,
             out_path=rankin_path,
