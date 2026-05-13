@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=50:00:00
+#SBATCH --time=40:00:00
 #SBATCH --mem=4G  
 #SBATCH --cpus-per-task=1
 #SBATCH --array=100-199%1
