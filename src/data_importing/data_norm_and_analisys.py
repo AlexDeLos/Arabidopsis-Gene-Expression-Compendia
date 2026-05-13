@@ -455,7 +455,7 @@ def run_microarray_preprocessing():
         print("Loading cached rankin.csv...")
         rankin_df = pd.read_csv(rankin_path, index_col=0)
     else:
-        print("\nRunning Rank-in normalization on ComBat output...")
+        print("\nRunning Rank-in normalization on normalized filter output...")
         # ComBat output is already in log2 space (same space as its input).
         # No additional log transform is applied here — contrast with RNA-seq
         # where log1p(combat_seq_counts) is needed because ComBat-seq outputs
