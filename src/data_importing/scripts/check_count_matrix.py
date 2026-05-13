@@ -1,5 +1,6 @@
 import glob
 import os
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +8,10 @@ import pandas as pd
 import seaborn as sns
 from sklearn.decomposition import PCA
 
+module_dir = "./"
+sys.path.append(module_dir)
+
+from src.constants import STORAGE_DIR  # noqa: E402
 # 1. CRITICAL FOR CLUSTERS: Use non-interactive backend
 plt.switch_backend("Agg")
 
@@ -31,7 +36,7 @@ def check_rnaseq_quality(file_path, output_dir, study_id):
             return
 
         # Setup output prefix inside the central folder
-        # Result: ./outputs/plots/GSE108118_qc
+        # Result: {STORAGE_DIR}/outputs/plots/GSE108118_qc
         prefix = os.path.join(output_dir, f"{study_id}_qc")
 
         # --- PRE-PROCESSING ---
@@ -123,5 +128,5 @@ def run_batch_qc(search_root, output_root):
 if __name__ == "__main__":
     # --- CONFIGURATION ---
     SEARCH_DIR = "/tudelft.net/staff-umbrella/GeneExpressionStorage/rnaseq_data/processed_rnaseq"  # Where to look for GSE folders
-    OUTPUT_DIR = "./outputs/plots/"  # Where to save all images
+    OUTPUT_DIR = f"{STORAGE_DIR}/outputs/plots/"  # Where to save all images
     run_batch_qc(SEARCH_DIR, OUTPUT_DIR)

@@ -9,7 +9,7 @@ import seaborn as sns
 module_dir = "./"
 sys.path.append(module_dir)
 
-from src.constants import STATUS_DOWNLOADED, STATUS_ERROR, STATUS_IGNORE, STATUS_LOCKED, STATUS_PROCESSED  # noqa: E402
+from src.constants import STATUS_DOWNLOADED, STATUS_ERROR, STATUS_IGNORE, STATUS_LOCKED, STATUS_PROCESSED,STORAGE_DIR  # noqa: E402
 
 
 # Ensure these match your constants file
@@ -154,7 +154,7 @@ class FileTracker:
 
     # ---------------- PLOTTING METHODS ----------------
 
-    def get_pie_charts(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_pie_charts.svg"):
+    def get_pie_charts(self, save_path=f"{STORAGE_DIR}/outputs/scanner_plots/RNA-seq/tracker_pie_charts.svg"):
         """
         Function 1: Produces pie charts showing SRA (Raw Data) availability
         for both Studies and Samples.
@@ -183,7 +183,7 @@ class FileTracker:
         plt.close()
         print(f"Pie charts saved to {save_path}")
 
-    def produce_study_dis(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_histogram_top6_stacked.svg"):
+    def produce_study_dis(self, save_path=f"{STORAGE_DIR}/outputs/scanner_plots/RNA-seq/tracker_histogram_top6_stacked.svg"):
         """
         Function 2: Stacked Histogram of Study Sizes (Samples per Study),
         split by the Top 6 Platforms.
@@ -222,7 +222,7 @@ class FileTracker:
         plt.close()
         print(f"Study distribution saved to {save_path}")
 
-    def produce_platform_dis(self, save_path="./outputs/scanner_plots/RNA-seq/tracker_platforms.svg"):
+    def produce_platform_dis(self, save_path=f"{STORAGE_DIR}/outputs/scanner_plots/RNA-seq/tracker_platforms.svg"):
         """
         Function 3: Bar plot showing Total Samples per Platform.
         """
