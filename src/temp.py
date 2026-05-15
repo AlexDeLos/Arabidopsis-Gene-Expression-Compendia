@@ -44,7 +44,7 @@ def plot_comparisons(data_dicts, group_name):
     if not data_dicts:
         return
         
-    output_dir = f"plots_{group_name}"
+    output_dir = f"{STORAGE_DIR}plots_{group_name}"
     os.makedirs(output_dir, exist_ok=True)
     sns.set_theme(style="whitegrid")
     num_files = len(data_dicts)

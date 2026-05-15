@@ -313,8 +313,8 @@ def run_rnaseq_preprocessing():
         combat_df.to_csv(combat_seq_path)
         print(f"Saved ComBat-seq result → {combat_seq_path}")
     # ── Stage 2.5: ComBat-seq log norm ──────────────────────────────────────────────────
-    if os.path.exists(filter_path):
-        print("pre existing norm.csv...")
+    if os.path.exists(combat_norm_path):
+        print("pre existing combat_seq_norm.csv...")
     else:
         shifted = combat_df - combat_df.values.min()
         log_df = pd.DataFrame(
