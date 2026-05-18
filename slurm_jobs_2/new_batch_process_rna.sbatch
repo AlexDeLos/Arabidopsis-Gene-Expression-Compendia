@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=ewi-insy-prb
-#SBATCH --partition=insy
+#SBATCH --partition=general
 #SBATCH --time=36:00:00
 #SBATCH --qos=medium
 #SBATCH --mem=4G  

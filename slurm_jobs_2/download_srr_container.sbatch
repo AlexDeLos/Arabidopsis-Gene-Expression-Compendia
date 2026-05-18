@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=new_fastq_download
 #SBATCH --account=ewi-insy-prb
-#SBATCH --partition=insy
+#SBATCH --partition=general
 #SBATCH --qos=short
 #SBATCH --time=4:00:00
 #SBATCH --mem=5G
