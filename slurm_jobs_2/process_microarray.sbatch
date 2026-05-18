@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=microarray_processing
-#SBATCH --account=testusers
-#SBATCH --partition=all
+#SBATCH --account=ewi-insy-prb
+#SBATCH --partition=insy
+#SBATCH --qos=short
 #SBATCH --time=4:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=140G
-#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ── User configuration ─────────────────────────────────────────────────────────
 SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
