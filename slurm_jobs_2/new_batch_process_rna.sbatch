@@ -110,8 +110,8 @@ apptainer exec \
     --bind "$HOST_SLURM_DIR":/etc/slurm \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/munge:/etc/munge \
-    --bind /usr/lib64:/usr/lib64 \
     --bind /usr/lib64/slurm:/usr/lib64/slurm \
+    --bind /usr/lib64/slurm-spank:/usr/lib64/slurm-spank \
     --bind /etc/resolv.conf:/etc/resolv.conf \
     --bind /etc/hosts:/etc/hosts \
     --bind /etc/auks:/etc/auks \
@@ -121,7 +121,7 @@ apptainer exec \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
-    --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
+    --env LD_LIBRARY_PATH="/usr/lib64/slurm:/usr/lib64/slurm-spank" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
@@ -141,7 +141,7 @@ apptainer exec \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 10 --rna --container
-
+        
 # ══════════════════════════════════════════════════
 #  CLEANUP
 # ══════════════════════════════════════════════════
