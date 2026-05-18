@@ -12,7 +12,7 @@
 # ── User configuration ─────────────────────────────────────────────────────────
 SIF=/tudelft.net/staff-umbrella/GeneExpressionStorage/fused.sif
 STORAGE=/tudelft.net/staff-umbrella/GeneExpressionStorage
-REPO="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
+REPO="/home/nfs/alexdelossanto/Dataset_fusion_Microarray"
 
 # ADD THESE TWO LINES TO FIX THE UMAP/NUMBA CACHE CRASH:
 mkdir -p "${STORAGE}/numba_cache"
