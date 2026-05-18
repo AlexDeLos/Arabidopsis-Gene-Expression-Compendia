@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=testusers
-#SBATCH --partition=all
+#SBATCH --partition=general
 #SBATCH --time=40:00:00
 #SBATCH --mem=4G  
 #SBATCH --cpus-per-task=1
