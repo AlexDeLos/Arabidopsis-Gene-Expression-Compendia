@@ -256,34 +256,6 @@ class RNASeq_processor:
     # Private helpers for download_fastq
     # ------------------------------------------------------------------
 
-    def _run_sbatch_download(self, srrs: list, output_folder: str, logs_folder: str):
-        """Write an SRR list file and block until the SLURM array finishes."""
-        srr_list_path = os.path.join(output_folder, "srr_list.txt")
-        with open(srr_list_path, "w") as f:
-            for srr in srrs:
-                f.write(f"{srr}\n")
-
-        print(f"Submitting SLURM array job for {len(srrs)} SRRs...")
-        sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
-
-        if not os.path.exists(sbatch_script):
-            print(f"CRITICAL ERROR: {sbatch_script} not found! Cannot execute download.")
-            return
-        cmd = ["sbatch", "--wait", f"--array=1-{len(srrs)}", f"--output={logs_folder}/fastq_dump_%A_%a.out", f"--error={logs_folder}/fastq_dump_%A_%a.err", sbatch_script, srr_list_path, output_folder]
-
-        # --- NEW HANDOFF LOGIC ---
-        # Get the current array ID to prevent parallel jobs from overwriting each other
-        task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "dev")
-        submit_script_path = f"submit_slurm_array_{task_id}.sh"
-
-        try:
-            with open(submit_script_path, "w") as f:
-                f.write("#!/bin/bash\n")
-                # Join the command list into a single string
-                f.write(" ".join(cmd) + "\n")
-            print(f"Apptainer finished. Generated host submission script: {submit_script_path}")
-        except Exception as e:
-            print(f"Error generating submission script: {e}")
 
     def _get_missing_or_corrupt_srrs(self, srrs: list, output_folder: str) -> list:
         """
