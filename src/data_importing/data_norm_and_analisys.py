@@ -42,7 +42,8 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+from pathlib import Path
+import warnings
 # --- R integration ---
 import rpy2.robjects as ro
 from rpy2.robjects import numpy2ri, pandas2ri
@@ -52,7 +53,7 @@ from sklearn.decomposition import TruncatedSVD
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import STORAGE_DIR,SAMPLE_STUDY_MAP  # noqa: E402
+from src.constants import STORAGE_DIR,SAMPLE_STUDY_MAP, LABELS_PATH  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -252,7 +253,7 @@ def run_combat(
 # ---------------------------------------------------------------------------
 def run_rank_in_normalization(
     df: pd.DataFrame,
-    sample_classes: pd.Series,
+    sample_classes: pd.Series | None,
     n_bins: int = 100,
     k: int | None = None,
     k_max: int = 10,
@@ -289,8 +290,81 @@ def run_rank_in_normalization(
     pd.DataFrame
         Adjusted ranking matrix (genes × samples), nonbiological effects removed.
     """
-    #TODO: add a mechanism to get the sample classes from LABELS_PATH
+# ------------------------------------------------------------------ #
+    # Mechanism to get the sample classes from LABELS_PATH if not provided#
     # ------------------------------------------------------------------ #
+    if sample_classes is None:
+        print(f"[Rank-In] sample_classes not provided. Loading from {LABELS_PATH}...")
+        
+        # Define groupings to build the class signature (matching your script)
+        groupings = ['treatment', 'tissue']
+        raw_metadata = {}
+
+        # 1. Parse all files and map Sample IDs to their raw dictionary entries
+        for path in sorted(Path(LABELS_PATH).glob("*.json")):
+            if path.name.startswith("map_"):
+                continue
+            try:
+                data = json.loads(path.read_text())
+            except Exception as e:
+                warnings.warn(f"Failed to read metadata file {path.name}: {e}")
+                continue
+            
+            if isinstance(data, dict):
+                # Assuming top-level keys are sample identifiers (e.g., GSM/SRR IDs)
+                for sample_id, sample_dict in data.items():
+                    if isinstance(sample_dict, dict):
+                        raw_metadata[str(sample_id)] = sample_dict
+            elif isinstance(data, list):
+                # If it's a list, look inside the sample dictionary for common ID keys
+                for item in data:
+                    if isinstance(item, dict):
+                        for id_key in ['sample_id', 'id', 'name', 'run', 'sample']:
+                            if id_key in item:
+                                raw_metadata[str(item[id_key])] = item
+                                break
+
+        # 2. Extract standardized combinations to formulate class strings
+        class_mapping = {}
+        for sample_id, sample in raw_metadata.items():
+            vals_parts = []
+            for label in groupings:
+                raw = sample.get(label, [])
+                if not isinstance(raw, list):
+                    raw = [raw]
+                
+                vals = []
+                for item in raw:
+                    if isinstance(item, dict):
+                        vals.append(item.get("val") or item.get("value") or "Unspecified")
+                    else:
+                        vals.append(str(item) if item else "Unspecified")
+                
+                # Combine multiple values within a single factor (e.g. ['leaf', 'stem'] -> 'leaf-stem')
+                vals_parts.append("-".join(sorted(vals)))
+            
+            # Combine across multiple groupings (e.g., 'drought' + 'leaf' -> 'drought_leaf')
+            class_mapping[sample_id] = "_".join(vals_parts)
+
+        # 3. Align class labels strictly with the columns present in df
+        series_dict = {}
+        for col in df.columns:
+            col_str = str(col)
+            if col_str in class_mapping:
+                series_dict[col] = class_mapping[col_str]
+            else:
+                # Soft fallback matching: checks if the dict key is embedded inside the column name
+                matched = False
+                for k, v in class_mapping.items():
+                    if k in col_str or col_str in k:
+                        series_dict[col] = v
+                        matched = True
+                        break
+                if not matched:
+                    series_dict[col] = np.nan
+
+        sample_classes = pd.Series(series_dict)
+        print(f"  -> Successfully generated classes for {sample_classes.notna().sum()} / {len(df.columns)} samples.")    # ------------------------------------------------------------------ #
     # Validate inputs                                                      #
     # ------------------------------------------------------------------ #
     if not df.columns.equals(sample_classes.index):
@@ -582,8 +656,7 @@ def run_microarray_preprocessing():
         # raw counts. Here the data is already log-transformed.
         rankin_df = run_rank_in_normalization(
             df=norm_df,
-            n_bins=100,
-            variance_threshold=0.95,
+            sample_classes=None,
             out_path=rankin_path,
         )
         print(f"Saved Rank-in result   → {rankin_path}")
