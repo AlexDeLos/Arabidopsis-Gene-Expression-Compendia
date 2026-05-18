@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=testusers
+#SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
 #SBATCH --time=40:00:00
 #SBATCH --mem=4G  

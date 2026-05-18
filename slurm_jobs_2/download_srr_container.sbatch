@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=new_fastq_download
-#SBATCH --account=testusers
+#SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
 #SBATCH --time=4:00:00
 #SBATCH --mem=5G
