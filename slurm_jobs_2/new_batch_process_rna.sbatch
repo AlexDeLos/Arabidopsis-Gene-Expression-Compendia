@@ -95,6 +95,10 @@ chmod +x "$FAKE_BIN/singularity"
 # ══════════════════════════════════════════════════
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Resolve the true physical directory on the host node to bypass the symlink trap
+HOST_SLURM_CONF=$(realpath "${SLURM_CONF:-/etc/slurm/slurm.conf}")
+HOST_SLURM_DIR=$(dirname "$HOST_SLURM_CONF")
+
 apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
     --bind "$FAKE_BIN/singularity":/usr/bin/singularity \
@@ -103,14 +107,13 @@ apptainer exec \
     --bind /usr/bin/squeue:/usr/bin/squeue \
     --bind /usr/bin/scancel:/usr/bin/scancel \
     --bind /usr/bin/scontrol:/usr/bin/scontrol \
-    --bind /usr/lib64/slurm:/usr/lib64/slurm \
-    --bind /usr/lib64/libslurm.so.37:/usr/lib64/libslurm.so.37 \
-    --bind /usr/lib64/libcrypt.so.1:/usr/lib64/libcrypt.so.1 \
-    --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
-    --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
-    --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
+    --bind "$HOST_SLURM_DIR":/etc/slurm \
     --bind /var/run/munge:/var/run/munge \
-    --bind /etc/slurm:/etc/slurm \
+    --bind /etc/munge:/etc/munge \
+    --bind /usr/lib64:/usr/lib64 \
+    --bind /usr/lib64/slurm:/usr/lib64/slurm \
+    --bind /etc/resolv.conf:/etc/resolv.conf \
+    --bind /etc/hosts:/etc/hosts \
     --bind /etc/auks:/etc/auks \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
@@ -119,6 +122,7 @@ apptainer exec \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
+    --env SLURM_CONF="/etc/slurm/slurm.conf" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
