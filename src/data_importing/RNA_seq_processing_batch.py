@@ -348,7 +348,7 @@ class RNASeq_processor:
     def run_pipeline_batch(self, samplesheet_path, batch_out_dir, refs: dict):
         os.makedirs(batch_out_dir, exist_ok=True)
         project_root = os.getcwd()
-        config_path = os.path.join(project_root, ".nextflow.config")
+        config_path = os.path.join(project_root, ".new_nextflow.config")
 
         # Unique log file inside batch_out_dir — safe across concurrent array jobs
         batch_name = os.path.basename(batch_out_dir)
