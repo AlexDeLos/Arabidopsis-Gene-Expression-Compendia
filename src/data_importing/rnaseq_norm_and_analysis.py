@@ -328,7 +328,7 @@ def run_rnaseq_preprocessing():
         print("Loading cached rankin.csv...")
         rankin_df = pd.read_csv(rankin_path, index_col=0)
     else:
-        print("\nRunning Rank-in normalization on ComBat-seq output...")
+        print("\nRunning Rank-in normalization on log normalized filter output...")
 
         # Log1p-transform corrected counts before Rank-in.
         # np.log1p returns an ndarray so we reconstruct the DataFrame explicitly.
@@ -339,7 +339,7 @@ def run_rnaseq_preprocessing():
         #     columns=norm_df.columns,
         # )
 
-        rankin_df = run_rank_in_normalization(df=norm_df, n_bins=100, variance_threshold=0.95, out_path=rankin_path)
+        rankin_df = run_rank_in_normalization(df=norm_df,sample_classes=None, out_path=rankin_path)
         print(f"Saved Rank-in result → {rankin_path}")
 
     print("\n=== Pipeline Complete ===")

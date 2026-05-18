@@ -252,91 +252,211 @@ def run_combat(
 # ---------------------------------------------------------------------------
 def run_rank_in_normalization(
     df: pd.DataFrame,
+    sample_classes: pd.Series,
     n_bins: int = 100,
-    variance_threshold: float = 0.95,
+    k: int | None = None,
+    k_max: int = 10,
     out_path: str | None = None,
 ) -> pd.DataFrame:
     """
-    Rank-in normalization per Tang et al. (2021), Nucleic Acids Research.
-
-    Input: log2-transformed expression matrix (genes × samples).
-    For RNA-seq: log2(TPM+1) from filter_norm.csv
-    For microarray: log2 RMA values from filter.csv
-
-    Steps:
-      1. Rank genes within each sample into n_bins groups
-      2. Weight ranks by expression intensity slope (quadratic fit per sample)
-      3. SVD on the weighted rank matrix to SUBTRACT nonbiological effects
+    Rank-In normalization per Tang et al. (2021).
+ 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Log2-transformed expression matrix, shape (n_genes, n_samples).
+        Genes as rows, samples as columns.
+    sample_classes : pd.Series
+        Class label for each sample (index must match df.columns).
+        E.g. pd.Series({"S1": "cancer", "S2": "normal", ...})
+        Used to compute per-group means for the centering step (Step 3),
+        matching the paper's use of experimental vs. control group means.
+    n_bins : int
+        Number of rank bins (default 100, as in the paper).
+    k : int or None
+        Number of SVD components to treat as nonbiological effects.
+        If None (default), k is selected automatically by finding the
+        elbow / dominant drop in singular values (small k, typically 1–5).
+        The paper says k should capture the dominant nonbiological variance,
+        NOT explain a large fraction of total variance.
+    k_max : int
+        Upper bound when auto-selecting k (default 10).
+    out_path : str or None
+        If provided, the adjusted matrix is saved to this CSV path.
+ 
+    Returns
+    -------
+    pd.DataFrame
+        Adjusted ranking matrix (genes × samples), nonbiological effects removed.
     """
-
-    print(f"\n[Rank-in] Step 1: Binned rank transformation ({n_bins} bins)...")
-    # Rank genes within each sample (column), low→high, as percentile
+    #TODO: add a mechanism to get the sample classes from LABELS_PATH
+    # ------------------------------------------------------------------ #
+    # Validate inputs                                                      #
+    # ------------------------------------------------------------------ #
+    if not df.columns.equals(sample_classes.index):
+        # Align just in case columns and series index are in different order
+        sample_classes = sample_classes.reindex(df.columns)
+    if sample_classes.isna().any():
+        raise ValueError(
+            "sample_classes has missing labels for some samples. "
+            "Every sample column must have a class label."
+        )
+ 
+    classes = sample_classes.unique()
+    if len(classes) < 2:
+        raise ValueError(
+            "At least two distinct class labels are required "
+            "(e.g. 'cancer' and 'normal')."
+        )
+ 
+    # ------------------------------------------------------------------ #
+    # Step 1: Binned rank transformation                                   #
+    # ------------------------------------------------------------------ #
+    print(f"\n[Rank-In] Step 1: Binned rank transformation ({n_bins} bins)...")
+ 
+    # Rank genes within each sample, low → high.
+    # pct=True gives fractional rank in (0, 1]; ceil * n_bins → [1, n_bins].
     rank_matrix = df.rank(pct=True, method="average")
     binned_matrix = pd.DataFrame(
-        np.ceil(rank_matrix.values * n_bins),
+        np.ceil(rank_matrix.values * n_bins).astype(float),
         index=df.index,
         columns=df.columns,
     )  # values in [1, n_bins]
-
-    print("[Rank-in] Step 2: Weighting ranks by expression intensity slope...")
-    # For each sample (column), fit quadratic e = a*r^2 + b*r + c
-    # then compute weight w = 2a*r + b, and R_weighted = r * w
+ 
+    # ------------------------------------------------------------------ #
+    # Step 2: Weight ranks by expression intensity slope                   #
+    # ------------------------------------------------------------------ #
+    print("[Rank-In] Step 2: Weighting ranks by expression intensity slope...")
+ 
     weighted_matrix = np.zeros_like(binned_matrix.values, dtype=float)
-
+ 
     for j, col in enumerate(binned_matrix.columns):
-        r = binned_matrix[col].values.astype(float)   # bin ranks for this sample
-        e = df[col].values.astype(float)               # raw log expression
-
-        # Fit quadratic: e = a*r^2 + b*r + c
+        r = binned_matrix[col].values.astype(float)   # bin ranks [1, n_bins]
+        e = df[col].values.astype(float)               # log2 expression
+ 
+        # Fit quadratic:  e = a*r^2 + b*r + c  (least-squares, per paper)
         try:
             coeffs = np.polyfit(r, e, deg=2)           # [a, b, c]
             a, b = coeffs[0], coeffs[1]
-        except Exception:
-            a, b = 0.0, 1.0                             # fallback: no weighting
-
-        # Weight: w_ij = 2a*r_ij + b
+        except (np.linalg.LinAlgError, ValueError) as exc:
+            warnings.warn(
+                f"Quadratic fit failed for sample '{col}' ({exc}). "
+                "Falling back to identity weighting (w=1) for this sample.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            a, b = 0.0, 1.0                             # w = 1 → R_ij = r_ij
+ 
+        # Weight:  w_ij = 2a*r_ij + b  (derivative of the quadratic)
         w = 2 * a * r + b
-        weighted_matrix[:, j] = r * w
-
+        weighted_matrix[:, j] = r * w                  # R_ij = r_ij * w_ij
+ 
     weighted_df = pd.DataFrame(
         weighted_matrix,
         index=binned_matrix.index,
         columns=binned_matrix.columns,
     )
-
-    print("[Rank-in] Step 3: SVD — estimating and subtracting nonbiological effects...")
-    # Center across samples (gene-wise mean) before SVD
-    gene_means = weighted_df.mean(axis=1)
-    centered = weighted_df.sub(gene_means, axis=0)
-    X = centered.T  # (n_samples, n_genes) for sklearn
-
-    # Determine k: number of components explaining variance_threshold
-    # These top-k components represent nonbiological (platform/batch) variance
-    max_components = min(X.shape) - 1
-    svd_test = TruncatedSVD(n_components=max_components, random_state=42)
-    svd_test.fit(X)
-    cumulative_variance = np.cumsum(svd_test.explained_variance_ratio_)
-    optimal_k = np.argmax(cumulative_variance >= variance_threshold) + 1
-    print(f"  -> Removing top {optimal_k} SVD components ({variance_threshold * 100:.0f}% nonbiological variance).")
-
-    # Reconstruct nonbiological effect matrix y = U_k * Σ_k * V_k^T
-    svd_final = TruncatedSVD(n_components=optimal_k, random_state=42)
-    X_reduced = svd_final.fit_transform(X)
-    nonbio_effects = svd_final.inverse_transform(X_reduced)  # (n_samples, n_genes)
-
-    # Subtract nonbiological effects: R_adjusted = centered - y
-    X_adjusted = X - nonbio_effects  # (n_samples, n_genes)
-
-    # Transpose back, re-add gene means
-    adjusted_df = pd.DataFrame(
-        X_adjusted.T,
+ 
+    # ------------------------------------------------------------------ #
+    # Step 3: SVD — estimate and subtract nonbiological effects            #
+    # ------------------------------------------------------------------ #
+    print("[Rank-In] Step 3: SVD — estimating and subtracting nonbiological effects...")
+ 
+    # --- FIX 1: center using per-class group means, not a grand mean ----
+    #
+    # The paper models:  R = x + y + α_j + ε
+    # and approximates the "real" signal as:  R_real ≈ Me_ij
+    # where Me_ij is the mean of gene i within each experimental group.
+    # Subtracting these group means leaves the variance matrix R̃ that
+    # is dominated by nonbiological (batch/platform) effects.
+    #
+    group_mean_matrix = pd.DataFrame(
+        np.zeros_like(weighted_df.values, dtype=float),
         index=weighted_df.index,
         columns=weighted_df.columns,
-    ).add(gene_means, axis=0)
-
-    print("[Rank-in] Normalization complete.")
-    save_to = out_path if out_path is not None else os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
-    adjusted_df.to_csv(save_to)
+    )
+    for cls in classes:
+        cols_in_class = sample_classes[sample_classes == cls].index.tolist()
+        class_mean = weighted_df[cols_in_class].mean(axis=1).values  # (n_genes,)
+        for col in cols_in_class:
+            group_mean_matrix[col] = class_mean
+ 
+    # Variance matrix:  R̃ = R - Me_ij  (genes × samples)
+    variance_matrix = weighted_df - group_mean_matrix   # shape: (n_genes, n_samples)
+ 
+    # --- FIX 2: choose k as the number of DOMINANT singular values ------
+    #
+    # The paper says k captures the main nonbiological variables.
+    # This should be a small number (typically 1–5), NOT chosen to explain
+    # a large fraction of variance (which would remove biological signal).
+    #
+    # Auto-selection: compute up to k_max singular values and find the
+    # elbow — the point where the ratio between consecutive singular
+    # values drops most sharply, indicating the end of the dominant
+    # nonbiological structure.
+    #
+    n_genes, n_samples = variance_matrix.shape
+    k_max_safe = min(k_max, n_samples - 1, n_genes - 1)
+ 
+    if k is not None:
+        # User-supplied k: trust it but warn if it looks large
+        k_use = int(k)
+        if k_use > k_max_safe:
+            warnings.warn(
+                f"Requested k={k_use} exceeds k_max_safe={k_max_safe}. "
+                f"Clamping to {k_max_safe}.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            k_use = k_max_safe
+        print(f"  -> Using user-supplied k={k_use} SVD components.")
+    else:
+        # Compute top-(k_max_safe) singular values via sparse SVD
+        # svds returns singular values in *ascending* order → reverse
+        _, singular_values, _ = svds(
+            variance_matrix.values.astype(float), k=k_max_safe
+        )
+        singular_values = singular_values[::-1]  # descending
+ 
+        # Elbow detection: largest *ratio drop* between consecutive values
+        # s[i] / s[i+1] — biggest ratio means sharpest drop after component i
+        ratios = singular_values[:-1] / (singular_values[1:] + 1e-12)
+        k_use = int(np.argmax(ratios)) + 1   # +1 because k counts from 1
+ 
+        print(
+            f"  -> Auto-selected k={k_use} dominant SVD components "
+            f"(singular values: {np.round(singular_values[:k_use+2], 2)})."
+        )
+ 
+    # --- Full SVD for reconstruction (economy / thin SVD) ---------------
+    #
+    # We need U, Σ, Vᵀ of the variance matrix (genes × samples).
+    # Using numpy's full SVD with full_matrices=False for efficiency.
+    #
+    U, s, Vt = np.linalg.svd(variance_matrix.values.astype(float), full_matrices=False)
+ 
+    # Nonbiological effect matrix:  y ≈ U_k * Σ_k * V_kᵀ
+    U_k  = U[:, :k_use]                        # (n_genes,  k)
+    s_k  = np.diag(s[:k_use])                  # (k, k)
+    Vt_k = Vt[:k_use, :]                       # (k, n_samples)
+    nonbio_effects = U_k @ s_k @ Vt_k          # (n_genes, n_samples)
+ 
+    # Adjusted matrix:  R_adj = R - y  (subtract nonbio from *weighted* matrix,
+    # not the variance matrix — we want to keep the biological signal Me_ij)
+    adjusted_values = weighted_df.values - nonbio_effects
+ 
+    adjusted_df = pd.DataFrame(
+        adjusted_values,
+        index=weighted_df.index,
+        columns=weighted_df.columns,
+    )
+ 
+    print("[Rank-In] Normalization complete.")
+ 
+    if out_path is not None:
+        adjusted_df.to_csv(out_path)
+        print(f"  -> Saved adjusted matrix to: {out_path}")
+ 
     return adjusted_df
 
 def run_rank_in_normalization_old(
