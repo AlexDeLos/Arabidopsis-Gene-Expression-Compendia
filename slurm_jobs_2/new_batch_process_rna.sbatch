@@ -91,14 +91,28 @@ EOF
 chmod +x "$FAKE_BIN/singularity"
 
 # ══════════════════════════════════════════════════
-#  RUN THE PIPELINE INSIDE THE CONTAINER
+#  DYNAMIC SLURM & PLUGIN CONFIGURATION
 # ══════════════════════════════════════════════════
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Resolve the true physical directory on the host node to bypass the symlink trap
+# 1. Resolve the true physical directory for Slurm config
 HOST_SLURM_CONF=$(realpath "${SLURM_CONF:-/etc/slurm/slurm.conf}")
 HOST_SLURM_DIR=$(dirname "$HOST_SLURM_CONF")
 
+# 2. Dynamically locate the AUKS plugin to avoid mounting all of /usr/lib64
+AUKS_SO=$(find /usr/lib64 -name "auks.so" 2>/dev/null | head -n 1)
+if [ -n "$AUKS_SO" ]; then
+    AUKS_BIND="--bind $AUKS_SO:$AUKS_SO"
+    AUKS_DIR=$(dirname "$AUKS_SO")
+    DYNAMIC_LD_LIB="/usr/lib64/slurm:$AUKS_DIR"
+else
+    AUKS_BIND=""
+    DYNAMIC_LD_LIB="/usr/lib64/slurm"
+fi
+
+# ══════════════════════════════════════════════════
+#  RUN THE PIPELINE INSIDE THE CONTAINER
+# ══════════════════════════════════════════════════
 apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
     --bind "$FAKE_BIN/singularity":/usr/bin/singularity \
@@ -111,17 +125,17 @@ apptainer exec \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/munge:/etc/munge \
     --bind /usr/lib64/slurm:/usr/lib64/slurm \
-    --bind /usr/lib64/slurm-spank:/usr/lib64/slurm-spank \
     --bind /etc/resolv.conf:/etc/resolv.conf \
     --bind /etc/hosts:/etc/hosts \
     --bind /etc/auks:/etc/auks \
+    $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
     --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
-    --env LD_LIBRARY_PATH="/usr/lib64/slurm:/usr/lib64/slurm-spank" \
+    --env LD_LIBRARY_PATH="$DYNAMIC_LD_LIB" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
@@ -141,7 +155,7 @@ apptainer exec \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 10 --rna --container
-        
+
 # ══════════════════════════════════════════════════
 #  CLEANUP
 # ══════════════════════════════════════════════════
