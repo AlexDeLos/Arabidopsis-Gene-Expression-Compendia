@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=insy
-#SBATCH --qos=short
 #SBATCH --time=36:00:00
 #SBATCH --qos=medium
 #SBATCH --mem=4G  
@@ -100,14 +99,13 @@ apptainer exec \
     --bind /usr/bin/apptainer:/usr/bin/apptainer \
     --bind "$FAKE_BIN/singularity":/usr/bin/singularity \
     --bind /etc/apptainer:/etc/apptainer \
-    --bind /lib64/libsubid.so.3:/usr/lib64/libsubid.so.3 \
-    --bind /lib64/libcrypt.so.2:/usr/lib64/libcrypt.so.2 \
     --bind /usr/bin/sbatch:/usr/bin/sbatch \
     --bind /usr/bin/squeue:/usr/bin/squeue \
     --bind /usr/bin/scancel:/usr/bin/scancel \
     --bind /usr/bin/scontrol:/usr/bin/scontrol \
     --bind /usr/lib64/slurm:/usr/lib64/slurm \
-    --bind /usr/lib64/libslurm.so.43:/usr/lib64/libslurm.so.43 \
+    --bind /usr/lib64/libslurm.so.37:/usr/lib64/libslurm.so.37 \
+    --bind /usr/lib64/libcrypt.so.1:/usr/lib64/libcrypt.so.1 \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
     --bind /usr/lib64/libauksapi.so.0:/usr/lib64/libauksapi.so.0 \
@@ -119,7 +117,7 @@ apptainer exec \
     --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
-    --bind /home/alexdelossanto/linuxhome/Dataset_fusion_Microarray:/repo \
+    --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
@@ -132,7 +130,7 @@ apptainer exec \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
-    --env SLURM_ACCOUNT="testusers" \
+    --env SLURM_ACCOUNT="ewi-insy-prb" \
     --pwd /repo \
     "$SIF" \
     python3 -u /repo/src/data_importing/new_download.py \
