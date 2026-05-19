@@ -398,6 +398,9 @@ class TulipLabelGenerator:
                             raw_text = reasoning
                     labels = self._parse_labels(raw_text)  # generates default unspecified schema
                     results[sample_id] = labels
+                    logger.info("label generated for (study=%s sample=%s)",
+                                study_id,
+                                sample_id)
                     break
 
                 except Exception as exc:
