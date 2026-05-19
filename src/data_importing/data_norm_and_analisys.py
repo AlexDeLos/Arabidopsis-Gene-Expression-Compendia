@@ -364,7 +364,10 @@ def run_rank_in_normalization(
                     series_dict[col] = np.nan
 
         sample_classes = pd.Series(series_dict)
-        print(f"  -> Successfully generated classes for {sample_classes.notna().sum()} / {len(df.columns)} samples.")    # ------------------------------------------------------------------ #
+        print(f"  -> Successfully generated classes for {sample_classes.notna().sum()} / {len(df.columns)} samples.")
+        print(f"len of sample_classes {len(sample_classes)}")
+        print(sample_classes)
+    # ------------------------------------------------------------------ #
     # Validate inputs                                                      #
     # ------------------------------------------------------------------ #
     if not df.columns.equals(sample_classes.index):
