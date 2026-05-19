@@ -123,7 +123,7 @@ class RNASeq_processor:
         print(f"    [!] Failed to retrieve SRR for {gsm_id} after {max_retries} retries.")
         return []
 
-    def download_fastq(self, gse, output_folder, temp_files, container):
+    def download_fastq(self, gse, output_folder, temp_files, container,old):
         """Downloads using fastq-dump via parallel SLURM array jobs."""
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
@@ -185,8 +185,12 @@ class RNASeq_processor:
 
         print(f"Submitting SLURM array job for {len(srrs_to_download)} SRRs...")
         if container:
-            print('using: slurm_jobs_2/download_srr_container.sbatch')
-            sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs_2/download_srr_container.sbatch"))
+            if old:
+                pa = "slurm_jobs_2/download_srr_container.sbatch"
+            else:
+                pa = "slurm_jobs/download_srr_container.sbatch"
+            print(f'using: {pa}')
+            sbatch_script = os.path.abspath(os.path.join(module_dir, pa))
         else:
             sbatch_script = os.path.abspath(os.path.join(module_dir, "slurm_jobs/download_srr.sbatch"))
 
@@ -318,11 +322,14 @@ class RNASeq_processor:
                 rows.append([unique_sample_name, fq1, "", "auto"])
         return rows
 
-    def run_pipeline_batch(self, samplesheet_path, batch_out_dir, refs: dict):
+    def run_pipeline_batch(self, samplesheet_path, batch_out_dir, refs: dict,old:bool):
         os.makedirs(batch_out_dir, exist_ok=True)
         project_root = os.getcwd()
-        config_path = os.path.join(project_root, ".new_nextflow.config")
-
+        if old:
+            config_path = os.path.join(project_root, ".new_nextflow.config")
+        else:
+            config_path = os.path.join(project_root, ".nextflow.config")
+        print(f"using config: {config_path}")
         # Unique log file inside batch_out_dir — safe across concurrent array jobs
         batch_name = os.path.basename(batch_out_dir)
         log_path = os.path.join(batch_out_dir, f"nextflow_{batch_name}.log")
@@ -721,6 +728,7 @@ def download_experiments_RNA_seq_nf_core(
     batch_size: int = 5,
     debug: bool = False,
     container: bool = False,
+    old:bool = False
 ):
     """
     Orchestrates the download and processing of RNA-Seq studies in BATCHES.
@@ -851,7 +859,7 @@ def download_experiments_RNA_seq_nf_core(
                     # 3. Download (FIX 2: retry on corruption baked into download_fastq)
                     if download_raw and not tracker.is_downloaded(gse_id):
                         try:
-                            processor.download_fastq(gse, fastq_folder, cluster_temp, container)
+                            processor.download_fastq(gse, fastq_folder, cluster_temp, container,old)
                             tracker.mark_downloaded(gse_id)
                             print(f"Download completed for {gse_id}")
                         except Exception as e:
@@ -910,7 +918,7 @@ def download_experiments_RNA_seq_nf_core(
             time.sleep(10)
 
             # FIX 3: run_pipeline_batch now returns (success, bad_samples)
-            success, bad_samples = processor.run_pipeline_batch(samplesheet_path, batch_dir, refs)
+            success, bad_samples = processor.run_pipeline_batch(samplesheet_path, batch_dir, refs,old)
 
             # --- PHASE 3: DISTRIBUTE RESULTS & CLEANUP ---
             if success:

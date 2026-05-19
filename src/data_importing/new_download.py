@@ -71,6 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--ma", action="store_true", default=False)
     parser.add_argument("--rna", action="store_true", default=False)
     parser.add_argument("--container", action="store_true", default=False)
+    parser.add_argument("--old", action="store_true", default=False)
     args = parser.parse_args()
 
     root_storage_dir = args.out_dir
