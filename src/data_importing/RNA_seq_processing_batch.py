@@ -397,7 +397,7 @@ class RNASeq_processor:
             "-ansi-log",
             "false",
             "--slurm_account",
-            "testusers",
+            "ewi-insy-prb" if old else 'testusers',
             "--slurm_partition",
             "general" if old else 'all',
             "--input",
