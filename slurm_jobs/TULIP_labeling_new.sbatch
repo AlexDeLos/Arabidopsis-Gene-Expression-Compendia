@@ -24,24 +24,24 @@ REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="$BIG_STORAGE/dataset_fusion.sif"
 
-# echo "running Microarray labels"
-# apptainer exec \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python -u src/meta_data_processing/tulip_label_generation.py \
-#     --in-folder "$BIG_STORAGE/processed_microarray_data/"
-
-echo "running RNA labels"
+echo "running Microarray labels"
 apptainer exec \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
     python -u src/meta_data_processing/tulip_label_generation.py \
-    --in-folder "$BIG_STORAGE/rnaseq_data/metadata/" \
-    --rna
+    --in-folder "$BIG_STORAGE/processed_microarray_data/"
+
+# echo "running RNA labels"
+# apptainer exec \
+#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+#     --bind "$REPO_DIR":/repo \
+#     --pwd /repo \
+#     "$SIF" \
+#     python -u src/meta_data_processing/tulip_label_generation.py \
+#     --in-folder "$BIG_STORAGE/rnaseq_data/metadata/" \
+#     --rna
 
 
 
