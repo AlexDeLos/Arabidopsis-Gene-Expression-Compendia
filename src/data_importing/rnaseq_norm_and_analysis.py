@@ -316,6 +316,7 @@ def run_rnaseq_preprocessing():
     if os.path.exists(combat_norm_path):
         print("pre existing combat_seq_norm.csv...")
     else:
+        print("shifting matrix to avoid clipping...")
         shifted = combat_df - combat_df.values.min()
         log_df = pd.DataFrame(
             np.log1p(shifted.values),
