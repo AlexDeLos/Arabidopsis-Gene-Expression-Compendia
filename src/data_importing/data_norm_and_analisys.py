@@ -371,9 +371,14 @@ def run_rank_in_normalization(
         # Align just in case columns and series index are in different order
         sample_classes = sample_classes.reindex(df.columns)
     if sample_classes.isna().any():
+        missing = sample_classes[sample_classes.isna()].index.tolist()
+        n_missing = len(missing)
+        n_total = len(sample_classes)
+        examples = missing[:10]
         raise ValueError(
-            "sample_classes has missing labels for some samples. "
-            "Every sample column must have a class label."
+            f"sample_classes has missing labels for {n_missing}/{n_total} samples. "
+            f"Every sample column must have a class label.\n"
+            f"  First {len(examples)} missing sample IDs: {examples}"
         )
  
     classes = sample_classes.unique()
