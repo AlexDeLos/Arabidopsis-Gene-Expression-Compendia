@@ -341,7 +341,7 @@ class RNASeq_processor:
         max_isolation_rounds = 10
 
         for round_num in range(max_isolation_rounds):
-            success = self._run_nextflow(current_samplesheet, batch_out_dir, refs, config_path, log_path)
+            success = self._run_nextflow(current_samplesheet, batch_out_dir, refs, config_path, log_path,old)
 
             if success:
                 return True, all_bad_samples
@@ -377,7 +377,7 @@ class RNASeq_processor:
     # Private helpers for run_pipeline_batch
     # ------------------------------------------------------------------
 
-    def _run_nextflow(self, samplesheet_path: str, batch_out_dir: str, refs: dict, config_path: str, log_path: str) -> bool:
+    def _run_nextflow(self, samplesheet_path: str, batch_out_dir: str, refs: dict, config_path: str, log_path: str,old:bool) -> bool:
         """Execute the nextflow command and return True on success."""
         cmd = [
             "nextflow",
@@ -399,7 +399,7 @@ class RNASeq_processor:
             "--slurm_account",
             "testusers",
             "--slurm_partition",
-            "all",
+            "general" if old else 'all',
             "--input",
             samplesheet_path,
             "--outdir",
