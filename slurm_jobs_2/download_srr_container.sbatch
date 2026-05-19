@@ -6,7 +6,6 @@
 #SBATCH --time=4:00:00
 #SBATCH --mem=5G
 #SBATCH --cpus-per-task=4
-#SBATCH --exclude=gpu36
 
 # Fix the /repo chdir bug by moving to the safe storage drive before running
 cd /tudelft.net/staff-umbrella/GeneExpressionStorage || exit 1

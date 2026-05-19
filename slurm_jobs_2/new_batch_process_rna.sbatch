@@ -138,7 +138,7 @@ apptainer exec \
     --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
-    --env LD_LIBRARY_PATH="$DYNAMIC_LD_LIB" \
+    --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
     --env JAVA_HOME="$BIG_STORAGE/java" \
     --env NXF_HOME="$NXF_HOME" \
