@@ -379,9 +379,8 @@ class TulipLabelGenerator:
 
             message.append({"role": "user", "content": user_content})
 
-            max_retries = 10
+            max_retries = 50
             raw_text = ""
-            # labels = None
             for attempt in range(max_retries):
                 try:
                     response = self._client.chat.completions.create(
@@ -397,11 +396,9 @@ class TulipLabelGenerator:
                         reasoning = getattr(msg, "reasoning_content", None) or ""
                         if reasoning:
                             raw_text = reasoning
-
-                    # break  # success
-
                     labels = self._parse_labels(raw_text)  # generates default unspecified schema
                     results[sample_id] = labels
+                    break
 
                 except Exception as exc:
                     logger.warning(
@@ -410,10 +407,17 @@ class TulipLabelGenerator:
                         sample_id,
                         attempt + 1,
                         max_retries,
-                        exc,
+                        exc
                     )
                     if attempt == max_retries - 1:
-                        raw_text = ""
+                        logger.error("Reached the max amount of retries: (study=%s sample=%s attempt %d/%d): %s",
+                        study_id,
+                        sample_id,
+                        attempt + 1,
+                        max_retries,
+                        exc,
+                        )
+                        raise RuntimeError("Something is very wrong, look into it")
 
             # Append the assistant's response to history so the next sample
             # sees what was already assigned — this is the memory mechanism.
@@ -465,7 +469,8 @@ class TulipLabelGenerator:
         Any axis that is missing or invalid defaults to ["unspecified"].
         """
         cleaned = re.sub(r"```(?:json)?\s*|\s*```", "", raw_text).strip()
-
+        if raw_text == '':
+            raise ValueError("Empty raw text")
         parsed = {}
         try:
             parsed = json.loads(cleaned)
