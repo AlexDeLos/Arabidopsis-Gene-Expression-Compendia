@@ -314,14 +314,14 @@ def run_rank_in_normalization(
                 # Assuming top-level keys are sample identifiers (e.g., GSM/SRR IDs)
                 for sample_id, sample_dict in data.items():
                     if isinstance(sample_dict, dict):
-                        raw_metadata[str(sample_id)] = sample_dict
+                        raw_metadata[str(sample_id).upper()] = sample_dict
             elif isinstance(data, list):
                 # If it's a list, look inside the sample dictionary for common ID keys
                 for item in data:
                     if isinstance(item, dict):
                         for id_key in ['sample_id', 'id', 'name', 'run', 'sample']:
                             if id_key in item:
-                                raw_metadata[str(item[id_key])] = item
+                                raw_metadata[str(item[id_key]).upper()] = item
                                 break
 
         # 2. Extract standardized combinations to formulate class strings
@@ -349,7 +349,7 @@ def run_rank_in_normalization(
         # 3. Align class labels strictly with the columns present in df
         series_dict = {}
         for col in df.columns:
-            col_str = str(col)
+            col_str = str(col).upper()
             if col_str in class_mapping:
                 series_dict[col] = class_mapping[col_str]
             else:
@@ -362,7 +362,23 @@ def run_rank_in_normalization(
                         break
                 if not matched:
                     series_dict[col] = np.nan
+        case_mismatches = []
+        for col in df.columns:
+            col_str_original = str(col)
+            col_str_upper = col_str_original.upper()
+            if col_str_original != col_str_upper and col_str_upper in class_mapping:
+                case_mismatches.append(col_str_original)
 
+        if case_mismatches:
+            warnings.warn(
+                f"[Rank-In] Case normalization matched {len(case_mismatches)} sample ID(s) "
+                f"that were lowercase in df.columns but uppercase in metadata.\n"
+                f"  First 10 affected sample IDs: {case_mismatches[:10]}\n"
+                f"  Check the source of these columns in your data matrix — "
+                f"likely a CSV read or merge step is lowercasing column names.",
+                UserWarning,
+                stacklevel=2,
+            )
         sample_classes = pd.Series(series_dict)
         print(f"  -> Successfully generated classes for {sample_classes.notna().sum()} / {len(df.columns)} samples.")
         print(f"len of sample_classes {len(sample_classes)}")
