@@ -170,6 +170,7 @@ if __name__ == "__main__":
                     batch_size=BATCH_SIZE,  # Should match slice size
                     debug=False,
                     container=args.container,
+                    old = args.old
                 )
             else:
                 print(f"Index {args.array_index} (Start ID {start_idx}) is out of bounds for {len(target_list)} studies.")

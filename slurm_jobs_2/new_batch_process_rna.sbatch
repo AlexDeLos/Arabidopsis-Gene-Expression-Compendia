@@ -128,6 +128,9 @@ apptainer exec \
     --bind /etc/resolv.conf:/etc/resolv.conf \
     --bind /etc/hosts:/etc/hosts \
     --bind /etc/auks:/etc/auks \
+    --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
+    --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
+    --bind /var/run/munge:/var/run/munge \
     $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
