@@ -53,7 +53,8 @@ from sklearn.decomposition import TruncatedSVD
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import STORAGE_DIR,SAMPLE_STUDY_MAP, LABELS_PATH  # noqa: E402
+from src.constants import STORAGE_DIR,SAMPLE_STUDY_MAP, LABELS_PATH,RNA_USED # noqa: E402
+from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -323,7 +324,29 @@ def run_rank_in_normalization(
                             if id_key in item:
                                 raw_metadata[str(item[id_key]).upper()] = item
                                 break
+        if RNA_USED:
+            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
+            remapped_metadata = {}
+            failed_remaps = []
 
+            for sample_id, sample_dict in raw_metadata.items():
+                gsm_id = get_gsm_id(sample_id)
+                if gsm_id is not None:
+                    remapped_metadata[gsm_id.upper()] = sample_dict
+                else:
+                    failed_remaps.append(sample_id)
+
+            if failed_remaps:
+                warnings.warn(
+                    f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
+                    f"These samples will have no class label.\n"
+                    f"  First 10 failed: {failed_remaps[:10]}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+            raw_metadata = remapped_metadata
+            print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
         # 2. Extract standardized combinations to formulate class strings
         class_mapping = {}
         for sample_id, sample in raw_metadata.items():
