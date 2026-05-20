@@ -414,33 +414,37 @@ def run_rank_in_normalization(
                                 raw_metadata[str(item[id_key]).upper()] = item
                                 break
         if RNA_USED:
-            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
-            remapped_metadata = {}
-            failed_remaps = []
+            # print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
+            # remapped_metadata = {}
+            # failed_remaps = []
 
-            for sample_id, sample_dict in raw_metadata.items():
-                gsm_id = get_gsm_id(sample_id)
-                if gsm_id is not None:
-                    remapped_metadata[gsm_id.upper()] = sample_dict
-                else:
-                    failed_remaps.append(sample_id)
+            # for sample_id, sample_dict in raw_metadata.items():
+            #     gsm_id = get_gsm_id(sample_id)
+            #     if gsm_id is not None:
+            #         remapped_metadata[gsm_id.upper()] = sample_dict
+            #     else:
+            #         failed_remaps.append(sample_id)
 
-            if failed_remaps:
-                warnings.warn(
-                    f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
-                    f"These samples will have no class label.\n"
-                    f"  First 10 failed: {failed_remaps[:10]}",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            # if failed_remaps:
+            #     warnings.warn(
+            #         f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
+            #         f"These samples will have no class label.\n"
+            #         f"  First 10 failed: {failed_remaps[:10]}",
+            #         UserWarning,
+            #         stacklevel=2,
+            #     )
 
-            raw_metadata = remapped_metadata
-            print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
+            # raw_metadata = remapped_metadata
+            # print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
 
             # Build a lookup from original SRR column name → GSM ID (for label alignment below)
             srr_to_gsm = {}
             for col in df.columns:
-                srr_id = str(col).split('_')[1] if '_' in str(col) else str(col)
+                col_str = str(col)
+                if '_' in col_str:
+                    srr_id = col_str.split('_', 1)[1]  # take everything after the first '_' → SRR...
+                else:
+                    srr_id = col_str
                 gsm = get_gsm_id(srr_id)
                 if gsm is not None:
                     srr_to_gsm[col] = gsm.upper()
