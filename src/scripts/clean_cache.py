@@ -2,7 +2,7 @@ import json
 import os
 
 # Define the path to your json cache file
-cache_file_path = "srr_GSM_cache.json"
+cache_file_path = "srr_mapping_cache.json"
 
 # 1. Check if the file exists before attempting to open it
 if not os.path.exists(cache_file_path):
