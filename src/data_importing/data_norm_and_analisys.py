@@ -293,7 +293,9 @@ def run_rank_in_normalization(
     pd.DataFrame
         Adjusted ranking matrix (genes × samples), nonbiological effects removed.
     """
-# ------------------------------------------------------------------ #
+    df_og_index = df.index.copy()
+    df_og_col = df.columns.copy()
+    # ------------------------------------------------------------------ #
     # Mechanism to get the sample classes from LABELS_PATH if not provided#
     # ------------------------------------------------------------------ #
     if sample_classes is None:
@@ -327,29 +329,30 @@ def run_rank_in_normalization(
                                 raw_metadata[str(item[id_key]).upper()] = item
                                 break
         if RNA_USED:
-            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
-            lookin
-            remapped_metadata = {}
-            failed_remaps = []
+            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in the df...")
+            df.columns.map(lambda x: get_gsm_id(x.split('_')[1]))
+            print(f"[Rank-In] RNA mode: remapped form {df_og_col} to {df.columns} temporarily...")
+            # remapped_metadata = {}
+            # failed_remaps = []
 
-            for sample_id, sample_dict in raw_metadata.items():
-                gsm_id = get_gsm_id(sample_id)
-                if gsm_id is not None:
-                    remapped_metadata[gsm_id.upper()] = sample_dict
-                else:
-                    failed_remaps.append(sample_id)
+            # for sample_id, sample_dict in raw_metadata.items():
+            #     gsm_id = get_gsm_id(sample_id)
+            #     if gsm_id is not None:
+            #         remapped_metadata[gsm_id.upper()] = sample_dict
+            #     else:
+            #         failed_remaps.append(sample_id)
 
-            if failed_remaps:
-                warnings.warn(
-                    f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
-                    f"These samples will have no class label.\n"
-                    f"  First 10 failed: {failed_remaps[:10]}",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            # if failed_remaps:
+            #     warnings.warn(
+            #         f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
+            #         f"These samples will have no class label.\n"
+            #         f"  First 10 failed: {failed_remaps[:10]}",
+            #         UserWarning,
+            #         stacklevel=2,
+            #     )
 
-            raw_metadata = remapped_metadata
-            print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
+            # raw_metadata = remapped_metadata
+            # print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
         # 2. Extract standardized combinations to formulate class strings
         class_mapping = {}
         for sample_id, sample in raw_metadata.items():
@@ -477,8 +480,8 @@ def run_rank_in_normalization(
  
     weighted_df = pd.DataFrame(
         weighted_matrix,
-        index=binned_matrix.index,
-        columns=binned_matrix.columns,
+        index=df_og_index,
+        columns=df_og_col,
     )
  
     # ------------------------------------------------------------------ #
@@ -571,8 +574,8 @@ def run_rank_in_normalization(
  
     adjusted_df = pd.DataFrame(
         adjusted_values,
-        index=weighted_df.index,
-        columns=weighted_df.columns,
+        index=df_og_index,
+        columns=df_og_col,
     )
  
     print("[Rank-In] Normalization complete.")
