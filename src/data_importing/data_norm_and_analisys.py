@@ -293,6 +293,91 @@ def run_rank_in_normalization(
     pd.DataFrame
         Adjusted ranking matrix (genes × samples), nonbiological effects removed.
     """
+    # =============================================================================
+    #   THOROUGH PIPELINE DIAGNOSTIC ENGINE
+    # =============================================================================
+    print("\n" + "═"*80)
+    print(" [RANK-IN DIAGNOSIS] EXAMINING INPUT EXPRESSION MATRIX AND LABELS")
+    print("═"*80)
+    
+    # 1. Structural/Dimension Profiles
+    print("─── 1. Core Matrix Geometry ───")
+    print(f"  • Matrix Type:              {type(df)}")
+    print(f"  • Shape (Genes × Samples):  {df.shape}")
+    print(f"  • Row (Gene) Index Type:    {type(df.index)} (Name: '{df.index.name}')")
+    print(f"  • Column (Sample) ID Type:  {type(df.columns)} (Name: '{df.columns.name}')")
+    print(f"  • Is Row Index MultiIndex?  {isinstance(df.index, pd.MultiIndex)}")
+    print(f"  • Is Column MultiIndex?     {isinstance(df.columns, pd.MultiIndex)}")
+    
+    # 2. Sample Label/Class Structure
+    print("\n─── 2. Class Labels Metadata (sample_classes) ───")
+    print(f"  • sample_classes Type:      {type(sample_classes)}")
+    if sample_classes is not None:
+        print(f"  • Label Dimensions/Length:  {sample_classes.shape}")
+        print(f"  • Label Index Type:         {type(sample_classes.index)}")
+        print(f"  • Cohort Unique Groups:     {sample_classes.unique().tolist()}")
+        
+        # Check alignment matches between column array and labels index
+        missing_from_classes = set(df.columns) - set(sample_classes.index)
+        missing_from_columns = set(sample_classes.index) - set(df.columns)
+        print(f"  • Matrix columns missing from metadata index:  {len(missing_from_classes)}")
+        print(f"  • Metadata indices missing from matrix columns: {len(missing_from_columns)}")
+        if len(missing_from_classes) > 0:
+            print(f"    ↳ First 5 unmatched columns: {list(missing_from_classes)[:5]}")
+    else:
+        print("  • WARNING: sample_classes is explicitly 'None'!")
+        print("    ↳ Step 3 Centering calculations will use global/fallback column vectors.")
+        
+    # 3. Memory & Numerical Data Types
+    print("\n─── 3. Data Integrity & Column Formats ───")
+    dtype_breakdown = df.dtypes.value_counts()
+    print("  • Column Data Type Allocations:")
+    print(dtype_breakdown.to_string(prefix="      "))
+    
+    # Track down invalid float conditions (NaNs/Infs)
+    total_nans = df.isna().sum().sum()
+    try:
+        total_infs = np.isinf(df).sum().sum()
+    except Exception:
+        total_infs = "Could not compute (Non-numeric values present)"
+    print(f"  • Total Null/NaN values inside matrix: {total_nans}")
+    print(f"  • Total Infinite (Inf) values inside matrix: {total_infs}")
+    
+    # 4. Sparsity & Value Distribution (The Microarray vs RNA-seq Pivot Point)
+    print("\n─── 4. Sparsity & Distribution Profiling ───")
+    total_cells = df.size
+    if total_cells > 0:
+        exact_zeros = (df == 0).sum().sum()
+        sparsity_pct = (exact_zeros / total_cells) * 100
+        print(f"  • Global Sparsity: {exact_zeros} true zeros out of {total_cells} cells ({sparsity_pct:.2f}%)")
+    
+    # Sample distributions of the first 3 columns to inspect how they drop or group
+    sample_cols = list(df.columns[:3])
+    print(f"  • Distribution metrics for up to 3 sample columns: {sample_cols}")
+    for col in sample_cols:
+        col_vec = df[col]
+        # Check for numeric vector specifically to avoid string conversion failures
+        if pd.api.types.is_numeric_dtype(col_vec):
+            col_zeros = (col_vec == 0).sum()
+            col_zeros_pct = (col_zeros / len(col_vec)) * 100
+            print(f"    ↳ Sample [{col}]:")
+            print(f"        Range: [{col_vec.min():.4f} to {col_vec.max():.4f}] | Mean: {col_vec.mean():.4f}")
+            print(f"        Zeros: {col_zeros} values ({col_zeros_pct:.2f}%) | Uniques: {col_vec.nunique()}")
+        else:
+            print(f"    ↳ Sample [{col}]: FAILED INSPECTION (Column contains non-numeric data!)")
+            
+    # 5. Invariance & Degeneracy Diagnostics (Identical tiers that break bin rank sizing)
+    print("\n─── 5. Structural Variance Checks ───")
+    try:
+        invariant_genes = (df.nunique(axis=1) <= 1).sum()
+        invariant_samples = (df.nunique(axis=0) <= 1).sum()
+        print(f"  • Flat / Constant Genes (All samples are identical across row): {invariant_genes}")
+        print(f"  • Flat / Constant Samples (All genes are identical across column): {invariant_samples}")
+    except Exception as e:
+        print(f"  • Multi-axis variance calculation failed: {e}")
+        
+    print("═"*80 + "\n")
+    # =============================================================================
     df_og_index = df.index.copy()
     df_og_col = df.columns.copy()
     # ------------------------------------------------------------------ #
