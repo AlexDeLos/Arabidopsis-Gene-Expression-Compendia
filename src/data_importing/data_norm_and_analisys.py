@@ -264,7 +264,34 @@ def run_rank_in_normalization(
 ) -> pd.DataFrame:
     """
     Rank-In normalization per Tang et al. (2021).
-    Position-indexed and immune to duplicate column names.
+ 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Log2-transformed expression matrix, shape (n_genes, n_samples).
+        Genes as rows, samples as columns.
+    sample_classes : pd.Series
+        Class label for each sample (index must match df.columns).
+        E.g. pd.Series({"S1": "cancer", "S2": "normal", ...})
+        Used to compute per-group means for the centering step (Step 3),
+        matching the paper's use of experimental vs. control group means.
+    n_bins : int
+        Number of rank bins (default 100, as in the paper).
+    k : int or None
+        Number of SVD components to treat as nonbiological effects.
+        If None (default), k is selected automatically by finding the
+        elbow / dominant drop in singular values (small k, typically 1–5).
+        The paper says k should capture the dominant nonbiological variance,
+        NOT explain a large fraction of total variance.
+    k_max : int
+        Upper bound when auto-selecting k (default 10).
+    out_path : str or None
+        If provided, the adjusted matrix is saved to this CSV path.
+ 
+    Returns
+    -------
+    pd.DataFrame
+        Adjusted ranking matrix (genes × samples), nonbiological effects removed.
     """
     # =============================================================================
     #   THOROUGH PIPELINE DIAGNOSTIC ENGINE
@@ -273,6 +300,7 @@ def run_rank_in_normalization(
     print(" [RANK-IN DIAGNOSIS] EXAMINING INPUT EXPRESSION MATRIX AND LABELS")
     print("═"*80)
     
+    # 1. Structural/Dimension Profiles
     print("─── 1. Core Matrix Geometry ───")
     print(f"  • Matrix Type:              {type(df)}")
     print(f"  • Shape (Genes × Samples):  {df.shape}")
@@ -281,37 +309,88 @@ def run_rank_in_normalization(
     print(f"  • Is Row Index MultiIndex?  {isinstance(df.index, pd.MultiIndex)}")
     print(f"  • Is Column MultiIndex?     {isinstance(df.columns, pd.MultiIndex)}")
     
+    # 2. Sample Label/Class Structure
     print("\n─── 2. Class Labels Metadata (sample_classes) ───")
     print(f"  • sample_classes Type:      {type(sample_classes)}")
     if sample_classes is not None:
         print(f"  • Label Dimensions/Length:  {sample_classes.shape}")
+        print(f"  • Label Index Type:         {type(sample_classes.index)}")
+        print(f"  • Cohort Unique Groups:     {sample_classes.unique().tolist()}")
+        
+        # Check alignment matches between column array and labels index
+        missing_from_classes = set(df.columns) - set(sample_classes.index)
+        missing_from_columns = set(sample_classes.index) - set(df.columns)
+        print(f"  • Matrix columns missing from metadata index:  {len(missing_from_classes)}")
+        print(f"  • Metadata indices missing from matrix columns: {len(missing_from_columns)}")
+        if len(missing_from_classes) > 0:
+            print(f"    ↳ First 5 unmatched columns: {list(missing_from_classes)[:5]}")
     else:
         print("  • WARNING: sample_classes is explicitly 'None'!")
         print("    ↳ Step 3 Centering calculations will use global/fallback column vectors.")
         
+    # 3. Memory & Numerical Data Types
     print("\n─── 3. Data Integrity & Column Formats ───")
-    print(f"  • Total Null/NaN values inside matrix: {df.isna().sum().sum()}")
+    dtype_breakdown = df.dtypes.value_counts()
+    print("  • Column Data Type Allocations:")
+    print(dtype_breakdown.to_string())
     
+    # Track down invalid float conditions (NaNs/Infs)
+    total_nans = df.isna().sum().sum()
+    try:
+        total_infs = np.isinf(df).sum().sum()
+    except Exception:
+        total_infs = "Could not compute (Non-numeric values present)"
+    print(f"  • Total Null/NaN values inside matrix: {total_nans}")
+    print(f"  • Total Infinite (Inf) values inside matrix: {total_infs}")
+    
+    # 4. Sparsity & Value Distribution (The Microarray vs RNA-seq Pivot Point)
     print("\n─── 4. Sparsity & Distribution Profiling ───")
     total_cells = df.size
     if total_cells > 0:
         exact_zeros = (df == 0).sum().sum()
         sparsity_pct = (exact_zeros / total_cells) * 100
         print(f"  • Global Sparsity: {exact_zeros} true zeros out of {total_cells} cells ({sparsity_pct:.2f}%)")
+    
+    # Sample distributions of the first 3 columns to inspect how they drop or group
+    sample_cols = list(df.columns[:3])
+    print(f"  • Distribution metrics for up to 3 sample columns: {sample_cols}")
+    for col in sample_cols:
+        col_vec = df[col]
+        # Check for numeric vector specifically to avoid string conversion failures
+        if pd.api.types.is_numeric_dtype(col_vec):
+            col_zeros = (col_vec == 0).sum()
+            col_zeros_pct = (col_zeros / len(col_vec)) * 100
+            print(f"    ↳ Sample [{col}]:")
+            print(f"        Range: [{col_vec.min():.4f} to {col_vec.max():.4f}] | Mean: {col_vec.mean():.4f}")
+            print(f"        Zeros: {col_zeros} values ({col_zeros_pct:.2f}%) | Uniques: {col_vec.nunique()}")
+        else:
+            print(f"    ↳ Sample [{col}]: FAILED INSPECTION (Column contains non-numeric data!)")
+            
+    # 5. Invariance & Degeneracy Diagnostics (Identical tiers that break bin rank sizing)
+    print("\n─── 5. Structural Variance Checks ───")
+    try:
+        invariant_genes = (df.nunique(axis=1) <= 1).sum()
+        invariant_samples = (df.nunique(axis=0) <= 1).sum()
+        print(f"  • Flat / Constant Genes (All samples are identical across row): {invariant_genes}")
+        print(f"  • Flat / Constant Samples (All genes are identical across column): {invariant_samples}")
+    except Exception as e:
+        print(f"  • Multi-axis variance calculation failed: {e}")
+        
     print("═"*80 + "\n")
-
+    # =============================================================================
     df_og_index = df.index.copy()
     df_og_col = df.columns.copy()
-
     # ------------------------------------------------------------------ #
     # Mechanism to get the sample classes from LABELS_PATH if not provided#
     # ------------------------------------------------------------------ #
     if sample_classes is None:
         print(f"[Rank-In] sample_classes not provided. Loading from {LABELS_PATH}...")
         
+        # Define groupings to build the class signature (matching your script)
         groupings = ['treatment', 'tissue']
         raw_metadata = {}
 
+        # 1. Parse all files and map Sample IDs to their raw dictionary entries
         for path in sorted(Path(LABELS_PATH).glob("*.json")):
             if path.name.startswith("map_"):
                 continue
@@ -322,22 +401,44 @@ def run_rank_in_normalization(
                 continue
             
             if isinstance(data, dict):
+                # Assuming top-level keys are sample identifiers (e.g., GSM/SRR IDs)
                 for sample_id, sample_dict in data.items():
                     if isinstance(sample_dict, dict):
                         raw_metadata[str(sample_id).upper()] = sample_dict
             elif isinstance(data, list):
+                # If it's a list, look inside the sample dictionary for common ID keys
                 for item in data:
                     if isinstance(item, dict):
                         for id_key in ['sample_id', 'id', 'name', 'run', 'sample']:
                             if id_key in item:
                                 raw_metadata[str(item[id_key]).upper()] = item
                                 break
-
         if RNA_USED:
             print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in the df...")
             df.columns = df.columns.map(lambda x: get_gsm_id(x.split('_')[1]))
             print(f"[Rank-In] RNA mode: remapped form {df_og_col} to {df.columns} temporarily...")
+            # remapped_metadata = {}
+            # failed_remaps = []
 
+            # for sample_id, sample_dict in raw_metadata.items():
+            #     gsm_id = get_gsm_id(sample_id)
+            #     if gsm_id is not None:
+            #         remapped_metadata[gsm_id.upper()] = sample_dict
+            #     else:
+            #         failed_remaps.append(sample_id)
+
+            # if failed_remaps:
+            #     warnings.warn(
+            #         f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
+            #         f"These samples will have no class label.\n"
+            #         f"  First 10 failed: {failed_remaps[:10]}",
+            #         UserWarning,
+            #         stacklevel=2,
+            #     )
+
+            # raw_metadata = remapped_metadata
+            # print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
+        # 2. Extract standardized combinations to formulate class strings
         class_mapping = {}
         for sample_id, sample in raw_metadata.items():
             vals_parts = []
@@ -345,116 +446,225 @@ def run_rank_in_normalization(
                 raw = sample.get(label, [])
                 if not isinstance(raw, list):
                     raw = [raw]
-                vals = [str(item.get("val") or item.get("value") or "Unspecified") if isinstance(item, dict) else str(item) if item else "Unspecified" for item in raw]
+                
+                vals = []
+                for item in raw:
+                    if isinstance(item, dict):
+                        vals.append(item.get("val") or item.get("value") or "Unspecified")
+                    else:
+                        vals.append(str(item) if item else "Unspecified")
+                
+                # Combine multiple values within a single factor (e.g. ['leaf', 'stem'] -> 'leaf-stem')
                 vals_parts.append("-".join(sorted(vals)))
+            
+            # Combine across multiple groupings (e.g., 'drought' + 'leaf' -> 'drought_leaf')
             class_mapping[sample_id] = "_".join(vals_parts)
 
-        # FIX 1: Use a list to prevent dictionary collisions on duplicate column IDs
-        classes_list = []
+        # 3. Align class labels strictly with the columns present in df
+        series_dict = {}
         for col in df.columns:
             col_str = str(col).upper()
             if col_str in class_mapping:
-                classes_list.append(class_mapping[col_str])
+                series_dict[col] = class_mapping[col_str]
             else:
+                # Soft fallback matching: checks if the dict key is embedded inside the column name
                 matched = False
                 for map_key, map_val in class_mapping.items():
                     if map_key in col_str or col_str in map_key:
-                        classes_list.append(map_val)
+                        series_dict[col] = map_val
                         matched = True
                         break
                 if not matched:
-                    classes_list.append(np.nan)
+                    series_dict[col] = np.nan
+        case_mismatches = []
+        for col in df.columns:
+            col_str_original = str(col)
+            col_str_upper = col_str_original.upper()
+            if col_str_original != col_str_upper and col_str_upper in class_mapping:
+                case_mismatches.append(col_str_original)
 
-        # Construct Series using the original explicit list order
-        sample_classes = pd.Series(classes_list, index=df.columns)
+        if case_mismatches:
+            warnings.warn(
+                f"[Rank-In] Case normalization matched {len(case_mismatches)} sample ID(s) "
+                f"that were lowercase in df.columns but uppercase in metadata.\n"
+                f"  First 10 affected sample IDs: {case_mismatches[:10]}\n"
+                f"  Check the source of these columns in your data matrix — "
+                f"likely a CSV read or merge step is lowercasing column names.",
+                UserWarning,
+                stacklevel=2,
+            )
+        sample_classes = pd.Series(series_dict)
         print(f"  -> Successfully generated classes for {sample_classes.notna().sum()} / {len(df.columns)} samples.")
-        print(f"len of sample_classes: {len(sample_classes)}")
-
+        print(f"len of sample_classes {len(sample_classes)}")
+        print(sample_classes)
     # ------------------------------------------------------------------ #
     # Validate inputs                                                      #
     # ------------------------------------------------------------------ #
+    if not df.columns.equals(sample_classes.index):
+        # Align just in case columns and series index are in different order
+        sample_classes = sample_classes.reindex(df.columns)
     if sample_classes.isna().any():
         missing = sample_classes[sample_classes.isna()].index.tolist()
-        raise ValueError(f"sample_classes has missing labels for {len(missing)} samples. Examples: {missing[:5]}")
+        n_missing = len(missing)
+        n_total = len(sample_classes)
+        examples = missing[:10]
+        raise ValueError(
+            f"sample_classes has missing labels for {n_missing}/{n_total} samples. "
+            f"Every sample column must have a class label.\n"
+            f"  First {len(examples)} missing sample IDs: {examples}"
+        )
  
     classes = sample_classes.unique()
     if len(classes) < 2:
-        raise ValueError("At least two distinct class labels are required.")
+        raise ValueError(
+            "At least two distinct class labels are required "
+            "(e.g. 'cancer' and 'normal')."
+        )
  
     # ------------------------------------------------------------------ #
     # Step 1: Binned rank transformation                                   #
     # ------------------------------------------------------------------ #
     print(f"\n[Rank-In] Step 1: Binned rank transformation ({n_bins} bins)...")
+ 
+    # Rank genes within each sample, low → high.
+    # pct=True gives fractional rank in (0, 1]; ceil * n_bins → [1, n_bins].
     rank_matrix = df.rank(pct=True, method="average")
     binned_matrix = pd.DataFrame(
         np.ceil(rank_matrix.values * n_bins).astype(float),
         index=df.index,
         columns=df.columns,
-    )
+    )  # values in [1, n_bins]
  
     # ------------------------------------------------------------------ #
     # Step 2: Weight ranks by expression intensity slope                   #
     # ------------------------------------------------------------------ #
     print("[Rank-In] Step 2: Weighting ranks by expression intensity slope...")
+ 
     weighted_matrix = np.zeros_like(binned_matrix.values, dtype=float)
  
-    # FIX 2: Iterate and slice by numerical column index location (.iloc)
-    for j in range(binned_matrix.shape[1]):
-        r = binned_matrix.iloc[:, j].values.astype(float)   # Guaranteed 1D array
-        e = df.iloc[:, j].values.astype(float)              # Guaranteed 1D array
+    for j, col in enumerate(binned_matrix.columns):
+        r = binned_matrix[col].values.astype(float)   # bin ranks [1, n_bins]
+        e = df[col].values.astype(float)               # log2 expression
  
+        # Fit quadratic:  e = a*r^2 + b*r + c  (least-squares, per paper)
         try:
-            coeffs = np.polyfit(r, e, deg=2)
+            coeffs = np.polyfit(r, e, deg=2)           # [a, b, c]
             a, b = coeffs[0], coeffs[1]
         except (np.linalg.LinAlgError, ValueError) as exc:
-            warnings.warn(f"Quadratic fit failed for column index {j}. Using identity weighting.", RuntimeWarning)
-            a, b = 0.0, 1.0
+            warnings.warn(
+                f"Quadratic fit failed for sample '{col}' ({exc}). "
+                "Falling back to identity weighting (w=1) for this sample.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            a, b = 0.0, 1.0                             # w = 1 → R_ij = r_ij
  
+        # Weight:  w_ij = 2a*r_ij + b  (derivative of the quadratic)
         w = 2 * a * r + b
-        weighted_matrix[:, j] = r * w
-
-    # weighted_df = pd.DataFrame(weighted_matrix, index=df_og_index, columns=df_og_col)
+        weighted_matrix[:, j] = r * w                  # R_ij = r_ij * w_ij
+ 
+    weighted_df = pd.DataFrame(
+        weighted_matrix,
+        index=df_og_index,
+        columns=df_og_col,
+    )
  
     # ------------------------------------------------------------------ #
     # Step 3: SVD — estimate and subtract nonbiological effects            #
     # ------------------------------------------------------------------ #
     print("[Rank-In] Step 3: SVD — estimating and subtracting nonbiological effects...")
  
-    # FIX 3: Compute class means safely using positional indexes instead of label matching
-    group_mean_matrix = np.zeros_like(weighted_matrix, dtype=float)
+    # --- FIX 1: center using per-class group means, not a grand mean ----
+    #
+    # The paper models:  R = x + y + α_j + ε
+    # and approximates the "real" signal as:  R_real ≈ Me_ij
+    # where Me_ij is the mean of gene i within each experimental group.
+    # Subtracting these group means leaves the variance matrix R̃ that
+    # is dominated by nonbiological (batch/platform) effects.
+    #
+    group_mean_matrix = pd.DataFrame(
+        np.zeros_like(weighted_df.values, dtype=float),
+        index=weighted_df.index,
+        columns=weighted_df.columns,
+    )
     for cls in classes:
-        class_indices = np.where(sample_classes.values == cls)[0]
-        if len(class_indices) > 0:
-            class_mean = np.mean(weighted_matrix[:, class_indices], axis=1)
-            for idx in class_indices:
-                group_mean_matrix[:, idx] = class_mean
+        cols_in_class = sample_classes[sample_classes == cls].index.tolist()
+        class_mean = weighted_df[cols_in_class].mean(axis=1).values  # (n_genes,)
+        for col in cols_in_class:
+            group_mean_matrix[col] = class_mean
  
-    variance_matrix = weighted_matrix - group_mean_matrix
+    # Variance matrix:  R̃ = R - Me_ij  (genes × samples)
+    variance_matrix = weighted_df - group_mean_matrix   # shape: (n_genes, n_samples)
  
+    # --- FIX 2: choose k as the number of DOMINANT singular values ------
+    #
+    # The paper says k captures the main nonbiological variables.
+    # This should be a small number (typically 1–5), NOT chosen to explain
+    # a large fraction of variance (which would remove biological signal).
+    #
+    # Auto-selection: compute up to k_max singular values and find the
+    # elbow — the point where the ratio between consecutive singular
+    # values drops most sharply, indicating the end of the dominant
+    # nonbiological structure.
+    #
     n_genes, n_samples = variance_matrix.shape
     k_max_safe = min(k_max, n_samples - 1, n_genes - 1)
  
     if k is not None:
-        k_use = min(int(k), k_max_safe)
+        # User-supplied k: trust it but warn if it looks large
+        k_use = int(k)
+        if k_use > k_max_safe:
+            warnings.warn(
+                f"Requested k={k_use} exceeds k_max_safe={k_max_safe}. "
+                f"Clamping to {k_max_safe}.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            k_use = k_max_safe
         print(f"  -> Using user-supplied k={k_use} SVD components.")
     else:
-        _, singular_values, _ = svds(variance_matrix, k=k_max_safe)
-        singular_values = singular_values[::-1]
+        # Compute top-(k_max_safe) singular values via sparse SVD
+        # svds returns singular values in *ascending* order → reverse
+        _, singular_values, _ = svds(
+            variance_matrix.values.astype(float), k=k_max_safe
+        )
+        singular_values = singular_values[::-1]  # descending
+ 
+        # Elbow detection: largest *ratio drop* between consecutive values
+        # s[i] / s[i+1] — biggest ratio means sharpest drop after component i
         ratios = singular_values[:-1] / (singular_values[1:] + 1e-12)
-        k_use = int(np.argmax(ratios)) + 1
-        print(f"  -> Auto-selected k={k_use} dominant SVD components.")
+        k_use = int(np.argmax(ratios)) + 1   # +1 because k counts from 1
  
-    U, s, Vt = np.linalg.svd(variance_matrix, full_matrices=False)
+        print(
+            f"  -> Auto-selected k={k_use} dominant SVD components "
+            f"(singular values: {np.round(singular_values[:k_use+2], 2)})."
+        )
  
-    U_k  = U[:, :k_use]
-    s_k  = np.diag(s[:k_use])
-    Vt_k = Vt[:k_use, :]
-    nonbio_effects = U_k @ s_k @ Vt_k
+    # --- Full SVD for reconstruction (economy / thin SVD) ---------------
+    #
+    # We need U, Σ, Vᵀ of the variance matrix (genes × samples).
+    # Using numpy's full SVD with full_matrices=False for efficiency.
+    #
+    U, s, Vt = np.linalg.svd(variance_matrix.values.astype(float), full_matrices=False)
  
-    adjusted_values = weighted_matrix - nonbio_effects
-    adjusted_df = pd.DataFrame(adjusted_values, index=df_og_index, columns=df_og_col)
+    # Nonbiological effect matrix:  y ≈ U_k * Σ_k * V_kᵀ
+    U_k  = U[:, :k_use]                        # (n_genes,  k)
+    s_k  = np.diag(s[:k_use])                  # (k, k)
+    Vt_k = Vt[:k_use, :]                       # (k, n_samples)
+    nonbio_effects = U_k @ s_k @ Vt_k          # (n_genes, n_samples)
+ 
+    # Adjusted matrix:  R_adj = R - y  (subtract nonbio from *weighted* matrix,
+    # not the variance matrix — we want to keep the biological signal Me_ij)
+    adjusted_values = weighted_df.values - nonbio_effects
+ 
+    adjusted_df = pd.DataFrame(
+        adjusted_values,
+        index=df_og_index,
+        columns=df_og_col,
+    )
  
     print("[Rank-In] Normalization complete.")
+ 
     if out_path is not None:
         adjusted_df.to_csv(out_path)
         print(f"  -> Saved adjusted matrix to: {out_path}")
