@@ -24,6 +24,7 @@ from src.constants import (  # noqa: E402
     FIGURES_DIR,
     LABELS_PATH,
     PROCESSED_DATA_FOLDER,
+    DEBUG
 )
 from src.constants_labeling import ( # noqa: E402
     TreatmentEnum
@@ -128,6 +129,7 @@ for treatment in TreatmentEnum:
 
 # Derived automatically
 TREATMENTS:      list[str]      = [t.value for t in TREATMENT_GO_MAP]
+print(TREATMENTS)
 STRESS_GO_ROOTS: dict[str, str] = {go: t.value for t, go in TREATMENT_GO_MAP.items()}
 STRESS_IDS:      set[str]       = set(STRESS_GO_ROOTS.keys())
 
@@ -255,6 +257,7 @@ def get_spider_plots(
 
                     try:
                         gsea_df  = pd.read_csv(csv_file)
+                        
                         term_row = gsea_df[gsea_df["go_id"] == term].copy()
                         if term_row.empty:
                             continue
@@ -335,6 +338,15 @@ def run_diff_exp_and_enrichment(
         tissues = [None]
 
     labels = make_df_from_labels(load_labels_study(LABELS_PATH))
+
+    if DEBUG:
+        print("\n  *** DEBUG MODE — using random subset of data ***\n")
+        labels = subsample_labels_for_debug(
+            labels,
+            n_per_group=DEBUG_N_SAMPLES_PER_GROUP,
+            treatments=TREATMENTS,
+            seed=DEBUG_SEED,
+        )
 
     print("\n" + "="*60)
     print("DIAGNOSTIC: Label DataFrame")
@@ -488,8 +500,52 @@ def run_diff_exp_and_enrichment(
 
 
 # =============================================================================
+# Debug flag — set to True to run locally on a small random subset
+# =============================================================================
+DEBUG_SEED  = None  # Set to None for a completely different random subset every run!
+DEBUG_N_SAMPLES_PER_GROUP = 10  # samples per (treatment × tissue) group to keep
+
+def subsample_labels_for_debug(
+    labels: pd.DataFrame,
+    n_per_group: int,
+    treatments: list[str],
+    seed: int | None = None,
+) -> pd.DataFrame:
+    """
+    Subsamples the labels dataframe for local debugging.
+    If seed is None, it uses OS entropy to guarantee a unique set of 
+    samples every single time you execute the script.
+    """
+    # Initialize Generator. None means truly random every time.
+    rng = np.random.default_rng(seed)
+
+    # Keep only relevant treatments + Control
+    is_active = labels["treatment"].isin(treatments + ["Control"])
+    subset = labels[is_active].copy()
+
+    sampled_indices = []
+    
+    # Iterate through each group and sample safely from their true indices
+    for position, grp in subset.groupby(["treatment", "tissue"]):
+        n = min(len(grp), n_per_group)
+        # Sample directly from the index labels (preserves Sample_IDs)
+        chosen_samples = rng.choice(grp.index, size=n, replace=False)
+        sampled_indices.extend(chosen_samples)
+        
+    # Extract the final dataframe matching our randomly chosen samples
+    final_subset = labels.loc[sampled_indices].copy()
+
+    print(f"  [DEBUG] Labels subsampled: {len(labels)} → {len(final_subset)} samples")
+    print("  [DEBUG] Treatment counts in subset:")
+    print(final_subset["treatment"].value_counts().to_string())
+    print("  [DEBUG] Tissue counts in subset:")
+    print(final_subset["tissue"].value_counts().to_string())
+    
+    return final_subset
+
+# =============================================================================
 # CLI entry point
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['rankin', 'filter_norm', 'combat_seq_norm'],Fulls=[True], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_seq_norm'],Fulls=[True], filter_low_combination=[0])

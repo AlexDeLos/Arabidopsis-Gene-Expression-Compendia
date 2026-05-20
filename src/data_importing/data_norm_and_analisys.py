@@ -328,6 +328,7 @@ def run_rank_in_normalization(
                                 break
         if RNA_USED:
             print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
+            lookin
             remapped_metadata = {}
             failed_remaps = []
 

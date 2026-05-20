@@ -36,14 +36,14 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python -u src/visualize_labels.py
+    python -u src/scripts/visualize_labels.py
 
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python -u src/visualize_labels.py --rna
+    python -u src/scripts/visualize_labels.py --rna
 
 EXIT_CODE=$?
 echo "========================================"

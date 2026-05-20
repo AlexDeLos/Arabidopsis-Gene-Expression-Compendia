@@ -19,7 +19,7 @@ from rpy2.robjects.packages import importr
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import CLUSTER_RUN, RNA_USED  # noqa: E402
+from src.constants import CLUSTER_RUN, RNA_USED,DEBUG  # noqa: E402
 from src.constants_labeling import TreatmentEnum  # noqa: E402
 from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
 
@@ -100,6 +100,11 @@ def diff_exp_combine_tissues(
             # 1. Load expression data
             # ------------------------------------------------------------------
             data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
+            if DEBUG:
+                # Keep only the samples we need + a random gene subset for speed
+                debug_genes = data.index[:500]   # first 500 genes — deterministic, fast
+                data = data.loc[debug_genes]
+                print(f"  [DEBUG] Expression matrix capped to {data.shape}")
             if RNA_USED:
                 data.columns = [get_gsm_id(col.split('_')[1]) for col in data.columns]
             print(f"  [1] Expression matrix shape:          {data.shape}")
