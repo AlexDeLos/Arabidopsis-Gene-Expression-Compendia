@@ -332,7 +332,7 @@ def run_rank_in_normalization(
     print("\n─── 3. Data Integrity & Column Formats ───")
     dtype_breakdown = df.dtypes.value_counts()
     print("  • Column Data Type Allocations:")
-    print(dtype_breakdown.to_string(prefix="      "))
+    print(dtype_breakdown.to_string())
     
     # Track down invalid float conditions (NaNs/Infs)
     total_nans = df.isna().sum().sum()
