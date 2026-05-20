@@ -330,7 +330,7 @@ def run_rank_in_normalization(
                                 break
         if RNA_USED:
             print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in the df...")
-            df.columns.map(lambda x: get_gsm_id(x.split('_')[1]))
+            df.columns = df.columns.map(lambda x: get_gsm_id(x.split('_')[1]))
             print(f"[Rank-In] RNA mode: remapped form {df_og_col} to {df.columns} temporarily...")
             # remapped_metadata = {}
             # failed_remaps = []
