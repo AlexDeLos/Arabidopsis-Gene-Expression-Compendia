@@ -414,36 +414,30 @@ def run_rank_in_normalization(
                                 raw_metadata[str(item[id_key]).upper()] = item
                                 break
         if RNA_USED:
-            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in metadata...")
-            remapped_metadata = {}
-            failed_remaps = []
+            print("[Rank-In] RNA mode: remapping SRR IDs to GSM IDs in the df...")
+            df.columns = df.columns.map(lambda x: get_gsm_id(x.split('_')[1]))
+            print(f"[Rank-In] RNA mode: remapped form {df_og_col} to {df.columns} temporarily...")
+            # remapped_metadata = {}
+            # failed_remaps = []
 
-            for sample_id, sample_dict in raw_metadata.items():
-                gsm_id = get_gsm_id(sample_id)
-                if gsm_id is not None:
-                    remapped_metadata[gsm_id.upper()] = sample_dict
-                else:
-                    failed_remaps.append(sample_id)
+            # for sample_id, sample_dict in raw_metadata.items():
+            #     gsm_id = get_gsm_id(sample_id)
+            #     if gsm_id is not None:
+            #         remapped_metadata[gsm_id.upper()] = sample_dict
+            #     else:
+            #         failed_remaps.append(sample_id)
 
-            if failed_remaps:
-                warnings.warn(
-                    f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
-                    f"These samples will have no class label.\n"
-                    f"  First 10 failed: {failed_remaps[:10]}",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            # if failed_remaps:
+            #     warnings.warn(
+            #         f"[Rank-In] Could not remap {len(failed_remaps)} SRR ID(s) to GSM. "
+            #         f"These samples will have no class label.\n"
+            #         f"  First 10 failed: {failed_remaps[:10]}",
+            #         UserWarning,
+            #         stacklevel=2,
+            #     )
 
-            raw_metadata = remapped_metadata
-            print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
-
-            # Build a lookup from original SRR column name → GSM ID (for label alignment below)
-            srr_to_gsm = {}
-            for col in df.columns:
-                srr_id = str(col).split('_')[1] if '_' in str(col) else str(col)
-                gsm = get_gsm_id(srr_id)
-                if gsm is not None:
-                    srr_to_gsm[col] = gsm.upper()
+            # raw_metadata = remapped_metadata
+            # print(f"  -> Successfully remapped {len(remapped_metadata)} SRR IDs to GSM IDs.")
         # 2. Extract standardized combinations to formulate class strings
         class_mapping = {}
         for sample_id, sample in raw_metadata.items():
@@ -469,18 +463,11 @@ def run_rank_in_normalization(
         # 3. Align class labels strictly with the columns present in df
         series_dict = {}
         for col in df.columns:
-            # For RNA, translate original SRR column name to GSM for metadata lookup
-            if RNA_USED:
-                col_str = srr_to_gsm.get(col, None)
-                if col_str is None:
-                    series_dict[col] = np.nan
-                    continue
-            else:
-                col_str = str(col).upper()
-
+            col_str = str(col).upper()
             if col_str in class_mapping:
                 series_dict[col] = class_mapping[col_str]
             else:
+                # Soft fallback matching: checks if the dict key is embedded inside the column name
                 matched = False
                 for map_key, map_val in class_mapping.items():
                     if map_key in col_str or col_str in map_key:
