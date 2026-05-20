@@ -378,9 +378,9 @@ def run_rank_in_normalization(
             else:
                 # Soft fallback matching: checks if the dict key is embedded inside the column name
                 matched = False
-                for k, v in class_mapping.items():
-                    if k in col_str or col_str in k:
-                        series_dict[col] = v
+                for map_key, map_val in class_mapping.items():
+                    if map_key in col_str or col_str in map_key:
+                        series_dict[col] = map_val
                         matched = True
                         break
                 if not matched:
