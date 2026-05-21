@@ -4,7 +4,7 @@
 #SBATCH --time=8:00:00
 #SBATCH --qos=medium
 #SBATCH --mem=320G
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
