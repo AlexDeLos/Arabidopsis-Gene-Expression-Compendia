@@ -6,7 +6,7 @@
 #SBATCH --mem=4G  
 #SBATCH --cpus-per-task=1
 #SBATCH --array=109-149%5
-#SBATCH --output=/home/nfs/alexdelossanto/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
 #  PATHS

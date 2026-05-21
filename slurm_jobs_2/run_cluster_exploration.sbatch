@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --account=testusers
-#SBATCH --partition=all
+#SBATCH --account=ewi-insy-prb
+#SBATCH --partition=general
 #SBATCH --time=8:00:00
+#SBATCH --qos=medium
 #SBATCH --mem=320G
-#SBATCH --gres=gpu
 #SBATCH --cpus-per-task=4
-#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
 # It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
