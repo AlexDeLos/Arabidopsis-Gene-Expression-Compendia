@@ -548,4 +548,4 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm'],Fulls=[True], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True], filter_low_combination=[0])
