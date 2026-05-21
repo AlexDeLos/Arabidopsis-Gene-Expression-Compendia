@@ -178,8 +178,7 @@ def run_rnaseq_preprocessing():
 
     filter_path = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(RNASEQ_DATA_DIR, "filter_norm.csv")
-    combat_path = os.path.join(RNASEQ_DATA_DIR, "combat.csv")
-    combat_norm_path = os.path.join(RNASEQ_DATA_DIR, "combat_norm.csv")
+    combat_path = os.path.join(RNASEQ_DATA_DIR, "combat_norm.csv")
     rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -229,17 +228,17 @@ def run_rnaseq_preprocessing():
         combat_df.to_csv(combat_path)
         print(f"Saved ComBat result → {combat_path}")
     # ── Stage 2.5: ComBat-seq log norm ──────────────────────────────────────────────────
-    if os.path.exists(combat_norm_path):
-        print("pre existing combat_norm.csv...")
-    else:
-        print("shifting matrix to avoid clipping...")
-        shifted = combat_df - combat_df.values.min()
-        log_df = pd.DataFrame(
-            np.log1p(shifted.values),
-            index=combat_df.index,
-            columns=combat_df.columns,
-        )
-        log_df.to_csv(combat_norm_path)
+    # if os.path.exists(combat_norm_path):
+    #     print("pre existing combat_norm.csv...")
+    # else:
+    #     print("shifting matrix to avoid clipping...")
+    #     shifted = combat_df - combat_df.values.min()
+    #     log_df = pd.DataFrame(
+    #         np.log1p(shifted.values),
+    #         index=combat_df.index,
+    #         columns=combat_df.columns,
+    #     )
+    #     log_df.to_csv(combat_norm_path)
     # ── Stage 3: Rank-in ─────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")
