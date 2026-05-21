@@ -1,7 +1,7 @@
 #!/bin/sh
 #SBATCH --account=testusers
 #SBATCH --partition=all
-#SBATCH --time=5:00:00
+#SBATCH --time=7:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=200G
@@ -22,13 +22,13 @@ REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="$BIG_STORAGE/fused.sif"
 
-# echo "running biological pipeline Microarray"
-# apptainer exec \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
+echo "running biological pipeline Microarray"
+apptainer exec \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
+    python -u src/data_analisys/biological_analisys/diff_and_GSEA_pipeline.py
 
 
 echo "running biological pipeline on RNA"
