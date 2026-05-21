@@ -56,7 +56,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/bulk/utils/train_arabidopsis.py --train_matrix "combat_seq_norm"
+    python src/bulk/utils/train_arabidopsis.py --train_matrix "combat_norm"
 
 EXIT_CODE=$?
 echo "========================================"

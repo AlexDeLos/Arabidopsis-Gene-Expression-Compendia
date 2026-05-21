@@ -922,7 +922,7 @@ if __name__ == "__main__":
     # LABELS_PATH = '/tudelft.net/staff-umbrella/GeneExpressionStorage/labels/TULIP_1.2/5.0'
     labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
     # "Salmon_RNAseq_Combined_TPM", 
-    stages = ["filter_norm", "combat_seq_norm", "rankin"] if RNA_USED else ["filter", "combat_seq_norm", "rankin"]
+    stages = ["filter_norm", "combat_norm", "rankin"] if RNA_USED else ["filter", "combat_norm", "rankin"]
     for file in stages:
         data_path = f"{STORAGE_DIR}final_data/rnaseq_processed/{file}.csv" if RNA_USED else f"{STORAGE_DIR}final_data/{file}.csv"
 

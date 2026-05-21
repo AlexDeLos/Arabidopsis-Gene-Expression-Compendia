@@ -18,7 +18,7 @@ Pipeline stages (each cached to disk, skipped on re-run):
   2. filter_norm.csv     — mean-centered version of filter.csv for visualization/reference
                            (mirrors RNA-seq filter_norm.csv for comparability)
   3. combat.csv          — ComBat batch correction (Gaussian model, log2-space)
-                           Uses sva::ComBat, NOT ComBat_seq.
+                           Uses sva::ComBat, NOT combat.
                            ComBat expects log2-transformed continuous data — correct for RMA.
                            ComBat output remains in log2 space.
   4. rankin.csv          — Rank-in normalization (cross-platform integration)
@@ -215,7 +215,9 @@ def run_combat(
         msg = "R package 'sva' not found. Install with:\n  BiocManager::install('sva')"
         raise ImportError(msg) from e
 
-    df = log2_df.fillna(0)
+    # df = log2_df.fillna(0)
+    df = log2_df
+    assert not df.isna().values.any(), "DataFrame contains NaN values!"
     if not np.issubdtype(df.values.dtype, np.floating):
         df = df.astype(float)
 
@@ -521,7 +523,7 @@ def run_microarray_preprocessing():
 
     filter_path      = os.path.join(MICROARRAY_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(MICROARRAY_DATA_DIR, "filter_norm.csv")
-    combat_path      = os.path.join(MICROARRAY_DATA_DIR, "combat_seq_norm.csv")
+    combat_path      = os.path.join(MICROARRAY_DATA_DIR, "combat_norm.csv")
     rankin_path      = os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -551,27 +553,27 @@ def run_microarray_preprocessing():
         print("Loading cached combat.csv...")
         combat_df = pd.read_csv(combat_path, index_col=0)
     else:
-        print("\nRunning ComBat batch correction...")
+        print("\nRunning ComBat batch correction (Gaussian, RMA log2 input)...")
+        batch_labels = get_batch_labels(norm_df.columns)
+        study_counts = Counter(batch_labels)
 
-        batch_labels  = get_batch_labels(filtered_df.columns)
-        study_counts  = Counter(batch_labels)
-
-        # ComBat requires ≥ 2 samples per batch
         single_batches = {s for s, c in study_counts.items() if c < 2}
         if single_batches:
             print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
 
-        valid_cols    = [c for c, b in zip(filtered_df.columns, batch_labels, strict=False) if b not in single_batches]
-        valid_batches = [b for b in batch_labels if b not in single_batches]
-        df_for_combat = filtered_df[valid_cols]
+        col_batch_pairs = [(c, b) for c, b in zip(norm_df.columns, batch_labels)
+                        if b not in single_batches]
+        valid_cols, valid_batches = zip(*col_batch_pairs)
 
-        print(f"  NaN in input: {df_for_combat.isna().sum().sum()} → filling with 0 for ComBat")
-        df_for_combat = df_for_combat.fillna(0)
+        # RMA is already log2 — pass filtered_df directly, no norm_df needed
+        df_for_combat = norm_df[list(valid_cols)]
 
-        combat_df = run_combat(df_for_combat, valid_batches)
+        assert df_for_combat.isna().sum().sum() == 0, \
+            f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
+
+        combat_df = run_combat(df_for_combat, list(valid_batches))
         combat_df.to_csv(combat_path)
-        print(f"Saved ComBat result    → {combat_path}")
-
+        print(f"Saved ComBat result → {combat_path}")
     # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")
@@ -580,7 +582,7 @@ def run_microarray_preprocessing():
         print("\nRunning Rank-in normalization on normalized filter output...")
         # ComBat output is already in log2 space (same space as its input).
         # No additional log transform is applied here — contrast with RNA-seq
-        # where log1p(combat_seq_counts) is needed because ComBat-seq outputs
+        # where log1p(combat_counts) is needed because ComBat-seq outputs
         # raw counts. Here the data is already log-transformed.
         rankin_df = run_rank_in_normalization(
             df=norm_df,

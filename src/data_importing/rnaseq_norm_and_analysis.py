@@ -8,7 +8,7 @@ Row format   : gene_id              (e.g. AT1G01010)
 
 Pipeline stages (each cached to disk, skipped on re-run):
   1. filter.csv          — remove low-coverage genes/samples, zero → NaN
-  2. combat_seq.csv      — ComBat-seq batch correction (count-space, negative-binomial)
+  2. combat.csv      — ComBat-seq batch correction (count-space, negative-binomial)
   3. rankin.csv          — Rank-in normalization (cross-platform integration)
 
 ComBat-seq reference:
@@ -24,16 +24,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# --- R integration ---
-import rpy2.robjects as ro
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.conversion import localconverter
-from rpy2.robjects.packages import importr
-
 module_dir = "./"
 sys.path.append(module_dir)
 from src.constants import STORAGE_DIR  # provides STORAGE_DIR, COMBINED_DATA_OUTPUT_FILE, etc.  # noqa: E402
-from src.data_importing.data_norm_and_analisys import run_rank_in_normalization  # noqa: E402
+from src.data_importing.data_norm_and_analisys import run_rank_in_normalization,run_combat  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths  (edit RNASEQ_DATA_DIR / RNASEQ_FIGURES_DIR in src/constants.py
@@ -119,7 +113,13 @@ def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_
 
     Parameters
     ----------
-    raw_df         : genes × samples count matrix (integer or float counts)
+    raw_df         : genes × samples count matrix (integer or fl
+# ---------------------------------------------------------------------------
+# 4. Main pipeline
+# ---------------------------------------------------------------------------
+
+
+oat counts)
     gene_nan_pct   : max % of (0 or NaN) per gene (row) to keep [default 20.0]
     sample_nan_pct : max % of (0 or NaN) per sample (col) to keep [default 20.0]
     """
@@ -167,89 +167,6 @@ def run_filtering(raw_df: pd.DataFrame, gene_nan_pct: float = 100.0, sample_nan_
 
     return raw_df,norm_df
 
-
-# ---------------------------------------------------------------------------
-# 2. ComBat-seq  (count-space batch correction via R's sva package)
-# ---------------------------------------------------------------------------
-
-
-def run_combat_seq(
-    counts_df: pd.DataFrame,
-    batch_labels: list[str],
-    covar_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """
-    Runs R's sva::ComBat_seq on integer count data.
-
-    Unlike the microarray ComBat (Gaussian), ComBat-seq uses a negative-binomial
-    model and operates on RAW counts — do NOT log-transform before passing in.
-
-    Parameters
-    ----------
-    counts_df    : genes × samples integer/float count matrix (no NaN allowed)
-    batch_labels : one batch string per column (e.g. GSE study IDs)
-    covar_df     : optional DataFrame of biological covariates (samples as rows)
-                   passed as the 'covar_mod' argument to ComBat_seq
-    """
-    print("  [ComBat-seq] Loading R sva package...")
-    try:
-        sva = importr("sva")
-        base = importr("base")
-    except Exception as e:
-        msg = "R package 'sva' not found. Install with:\n  BiocManager::install('sva')"
-        raise ImportError(msg) from e
-
-    # ComBat-seq requires integer counts — coerce
-    counts_int = counts_df.fillna(0).astype(int)
-    print(f"  [ComBat-seq] Input: {counts_int.shape[0]} genes × {counts_int.shape[1]} samples")
-
-    # Genes * samples matrix → R integer matrix
-    counts_r = ro.r.matrix(
-        ro.IntVector(counts_int.values.flatten(order="F")),
-        nrow=counts_int.shape[0],
-        ncol=counts_int.shape[1],
-    )  # pyright: ignore[reportCallIssue]
-
-    batch_r = ro.StrVector(batch_labels)
-
-    # Build covariate model matrix if provided
-    covar_mod_r = ro.r("NULL")
-    if covar_df is not None and not covar_df.empty:
-        print(f"  [ComBat-seq] Building covariate model for: {list(covar_df.columns)}")
-        covar_df = covar_df.astype(str)
-        stats = importr("stats")
-        with localconverter(ro.default_converter + pandas2ri.converter):
-            covar_r = ro.conversion.py2rpy(covar_df)
-        formula = ro.Formula("~ " + " + ".join(covar_df.columns))
-        covar_mod_r = stats.model_matrix(formula, data=covar_r)
-
-    print("  [ComBat-seq] Running sva::ComBat_seq (this may take several minutes)...")
-    corrected_r = sva.ComBat_seq(
-        counts=counts_r,
-        batch=batch_r,
-        covar_mod=covar_mod_r,
-    )
-
-    # Free R memory before allocating Python copy
-    del counts_r, batch_r, covar_mod_r
-    base.gc()
-
-    corrected_np = np.array(corrected_r)
-    del corrected_r
-    base.gc()
-
-    result = pd.DataFrame(corrected_np, index=counts_df.index, columns=counts_df.columns)
-    print("  [ComBat-seq] Done.")
-    return result
-
-
-# ---------------------------------------------------------------------------
-# 3. Rank-in normalization — imported from data_norm_and_analisys.py
-# ---------------------------------------------------------------------------
-# run_rank_in_normalization is shared with the microarray pipeline.
-# It expects a pd.DataFrame, so np.log1p output must be wrapped back into one.
-
-
 # ---------------------------------------------------------------------------
 # 4. Main pipeline
 # ---------------------------------------------------------------------------
@@ -261,8 +178,8 @@ def run_rnaseq_preprocessing():
 
     filter_path = os.path.join(RNASEQ_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(RNASEQ_DATA_DIR, "filter_norm.csv")
-    combat_seq_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq.csv")
-    combat_norm_path = os.path.join(RNASEQ_DATA_DIR, "combat_seq_norm.csv")
+    combat_path = os.path.join(RNASEQ_DATA_DIR, "combat.csv")
+    combat_norm_path = os.path.join(RNASEQ_DATA_DIR, "combat_norm.csv")
     rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -286,35 +203,34 @@ def run_rnaseq_preprocessing():
         filtered_df.to_csv(filter_path)
         print(f"Saved filtered matrix → {filter_path}")
     # return
-    # ── Stage 2: ComBat-seq ──────────────────────────────────────────────────
-    if os.path.exists(combat_seq_path):
-        print("Loading cached combat_seq.csv...")
-        combat_df = pd.read_csv(combat_seq_path, index_col=0)
+    # ── Stage 2: ComBat ──────────────────────────────────────────────────
+    if os.path.exists(combat_path):
+        print("Loading cached combat.csv...")
+        combat_df = pd.read_csv(combat_path, index_col=0)
     else:
-        print("\nRunning ComBat-seq batch correction...")
-
-        batch_labels = get_batch_labels(filtered_df.columns)
+        print("\nRunning ComBat batch correction (Gaussian, log2 input)...")
+        batch_labels = get_batch_labels(norm_df.columns)
         study_counts = Counter(batch_labels)
 
-        # ComBat-seq requires ≥ 2 samples per batch
+        # ComBat requires ≥ 2 samples per batch
         single_batches = {s for s, c in study_counts.items() if c < 2}
         if single_batches:
             print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
 
-        valid_cols = [c for c, b in zip(filtered_df.columns, batch_labels, strict=False) if b not in single_batches]
+        valid_cols = [c for c, b in zip(norm_df.columns, batch_labels, strict=False)
+                    if b not in single_batches]
         valid_batches = [b for b in batch_labels if b not in single_batches]
-        df_for_combat = filtered_df[valid_cols]
+        df_for_combat = norm_df[valid_cols]
 
-        # ComBat-seq needs integer counts and no NaN — fill remaining NaNs with 0
-        print(f"  NaN in input: {df_for_combat.isna().sum().sum()} → filling with 0 for ComBat-seq")
-        df_for_combat = df_for_combat.fillna(0)
+        assert df_for_combat.isna().sum().sum() == 0, \
+            f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
 
-        combat_df = run_combat_seq(df_for_combat, valid_batches)
-        combat_df.to_csv(combat_seq_path)
-        print(f"Saved ComBat-seq result → {combat_seq_path}")
+        combat_df = run_combat(df_for_combat, valid_batches)
+        combat_df.to_csv(combat_path)
+        print(f"Saved ComBat result → {combat_path}")
     # ── Stage 2.5: ComBat-seq log norm ──────────────────────────────────────────────────
     if os.path.exists(combat_norm_path):
-        print("pre existing combat_seq_norm.csv...")
+        print("pre existing combat_norm.csv...")
     else:
         print("shifting matrix to avoid clipping...")
         shifted = combat_df - combat_df.values.min()
@@ -345,7 +261,7 @@ def run_rnaseq_preprocessing():
 
     print("\n=== Pipeline Complete ===")
     print(f"  filter.csv    : {filtered_df.shape}")
-    print(f"  combat_seq.csv: {combat_df.shape}")
+    print(f"  combat.csv: {combat_df.shape}")
     print(f"  rankin.csv    : {rankin_df.shape}")
     return filtered_df, combat_df, rankin_df
 

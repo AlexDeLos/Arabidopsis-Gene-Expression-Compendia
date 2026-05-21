@@ -225,7 +225,7 @@ def get_spider_plots(
         Minimum-group-size filter value used for this run.
     full : bool
         If True, include all `data_types`; otherwise restrict to a curated
-        subset (combat_seq, tissue_normalized*, imputed).
+        subset (combat, tissue_normalized*, imputed).
     """
     os.makedirs(path, exist_ok=True)
 
@@ -327,7 +327,7 @@ def run_diff_exp_and_enrichment(
         If True, skip computation and regenerate plots from existing CSVs only.
     """
     if data_types is None:
-        data_types = ["combat_seq_norm", "rankin", "filter"]
+        data_types = ["combat_norm", "rankin", "filter"]
     if pures is None:
         pures = [False]
     if Fulls is None:
@@ -548,4 +548,4 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_seq_norm'],Fulls=[True], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm'],Fulls=[True], filter_low_combination=[0])
