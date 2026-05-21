@@ -38,7 +38,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/temp.py
+    python src/scripts/temp.py
 
 EXIT_CODE=$?
 echo "========================================"
