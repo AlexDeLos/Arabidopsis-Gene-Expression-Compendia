@@ -3,9 +3,9 @@
 #SBATCH --partition=general
 #SBATCH --time=36:00:00
 #SBATCH --qos=medium
-#SBATCH --mem=4G  
+#SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
-#SBATCH --array=109-149%3
+#SBATCH --array=121-149%3
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
