@@ -67,6 +67,7 @@ def plot_enrichment_scatter_interactive(
     save_path: str = "interactive_plot.html",
     treatments: list | None = None,
     normalizations: list | None = None,
+    filter_options: list[int] | None = None
 ) -> None:
     """
     Generate a self-contained interactive HTML scatter plot from GSEA results.
@@ -252,8 +253,8 @@ def plot_enrichment_scatter_interactive(
     path_parts = save_path.split("/")
 
     dataset_types = ["full", "sanity"]
-    tissue_options = ["All-Tissues", "leaf"]
-    threshold_options = ["0", "10", "15"]
+    tissue_options = ["All_Tissues", "leaf"]
+    threshold_options = [str(f) for f in (filter_options or [0, 10, 15])]
     purity_options = ["pure", "mixed"]
 
     # Defaults

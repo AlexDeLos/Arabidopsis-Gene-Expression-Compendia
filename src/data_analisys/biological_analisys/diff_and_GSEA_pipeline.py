@@ -381,7 +381,7 @@ def run_diff_exp_and_enrichment(
                         done_file       = f"{diff_exp_outdir}done.txt"
 
                         # ------------------------------------------------------
-                        # Differential expression
+                        # Differential expressionrun_diff_exp_and_enrichment
                         # ------------------------------------------------------
                         if not os.path.isfile(done_file):
                             if not just_plot:
@@ -465,7 +465,7 @@ def run_diff_exp_and_enrichment(
                                 )
                                 plot_out = (
                                     f"{FIGURES_DIR}plots_enrichment/"
-                                    f"{EXPERIMENT_NAME}/{full_str}/{tissue_display}/"
+                                    f"{EXPERIMENT_NAME}/{full_str}/{tissue_str}/"
                                     f"{data_type}/{fil}/{pure_str}/{stress}.html"
                                 )
                                 plot_enrichment_scatter_interactive(
@@ -474,6 +474,7 @@ def run_diff_exp_and_enrichment(
                                     title=plot_title,
                                     treatments=TREATMENTS,
                                     normalizations=data_types,
+                                    filter_options=filter_low_combination
                                 )
 
                             except Exception as exc:
@@ -548,4 +549,4 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True,False], filter_low_combination=[0,10,15])
