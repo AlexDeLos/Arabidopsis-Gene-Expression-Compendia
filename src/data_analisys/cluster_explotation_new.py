@@ -974,10 +974,16 @@ if __name__ == "__main__":
         os.makedirs(comparison_output_dir, exist_ok=True)
 
         print("\nGenerating Metric Comparisons (gene expression space)...")
-        plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+        combined_meta = pd.concat(all_metas.values())
+        # Only deduplicate if all columns are hashable
+        try:
+            combined_meta = combined_meta.drop_duplicates()
+        except TypeError:
+            combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
+        plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
 
         print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
-        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=pd.DataFrame(labels_map), bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
+        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
         print("Generating linked multi-stage UMAP comparison...")
         plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
