@@ -198,7 +198,7 @@ _RE_BATCH_ERR = re.compile(r"Nextflow Batch Error")
 _RE_BATCH_FATAL = re.compile(r"\[!\] No bad samples identified")
 _RE_NF_START = re.compile(r"N E X T F L O W  ~  version")
 _RE_NF_DONE = re.compile(r"Pipeline completed")
-_RE_NF_ERROR = re.compile(r"Pipeline completed with errors")
+_RE_NF_BATCH_CMD_ERR = re.compile(r"Nextflow Batch Error: Command .* returned non-zero exit status (\d+)")
 _RE_RETRY = re.compile(r"\[Retry (\d+)/(\d+)\] Re-downloading (\d+) failed SRRs")
 _RE_ARRAY_JOB = re.compile(r"--- ARRAY JOB #(\d+) ---")
 _RE_BATCH_IDS = re.compile(r"IDs: (\[.*?\])")
@@ -352,8 +352,10 @@ def parse_log_file(path: str) -> dict:
 
                 if _RE_BATCH_ERR.search(line) and current_batch:
                     result["batches"][current_batch] = "error"
-                    result["errors"].append(f"Batch {current_batch}: Nextflow error")
-
+                    m_exit = _RE_NF_BATCH_CMD_ERR.search(line)
+                    exit_code = f" (exit {m_exit.group(1)})" if m_exit else ""
+                    result["errors"].append(f"Batch {current_batch}: Nextflow error{exit_code}")
+                    
                 if _RE_TMP_NODEV.search(line):
                     result["nodev_error"] = True
                     result["warnings"].append("⚠ /tmp nodev error detected — APPTAINER_TMPDIR not set correctly")
