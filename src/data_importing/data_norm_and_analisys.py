@@ -70,6 +70,134 @@ MICROARRAY_FIGURES  = os.path.join(STORAGE_DIR, "figures", "microarray_filtering
 # Helpers — batch label extraction
 # ---------------------------------------------------------------------------
 
+def build_combat_covariates(
+    sample_names: list[str],
+    labels_path: str | Path,
+    covariates: list[str] = ["tissue", "treatment"],
+) -> pd.DataFrame:
+    """
+    Build sample-level biological covariate DataFrame for ComBat.
+
+    Parameters
+    ----------
+    sample_names
+        Expression matrix column names
+
+    labels_path
+        Path containing GEO metadata JSON files
+
+    covariates
+        Metadata variables to preserve during ComBat
+
+    Returns
+    -------
+    pd.DataFrame
+        Indexed by sample names, suitable for ComBat model matrix
+    """
+
+    print(f"[ComBat] Loading biological covariates from {labels_path}...")
+
+    raw_metadata = {}
+
+    # ------------------------------------------------------------------
+    # Load all metadata JSON files
+    # ------------------------------------------------------------------
+
+    for path in sorted(Path(labels_path).glob("*.json")):
+
+        if path.name.startswith("map_"):
+            continue
+
+        try:
+            data = json.loads(path.read_text())
+
+        except Exception as e:
+            warnings.warn(
+                f"Failed to read metadata file {path.name}: {e}"
+            )
+            continue
+
+        # --------------------------------------------------------------
+        # Dict-style JSON
+        # --------------------------------------------------------------
+
+        if isinstance(data, dict):
+
+            for sample_id, sample_dict in data.items():
+
+                if isinstance(sample_dict, dict):
+
+                    raw_metadata[str(sample_id).upper()] = sample_dict
+
+        # --------------------------------------------------------------
+        # List-style JSON
+        # --------------------------------------------------------------
+
+        elif isinstance(data, list):
+
+            for item in data:
+
+                if not isinstance(item, dict):
+                    continue
+
+                for id_key in [
+                    "sample_id",
+                    "id",
+                    "name",
+                    "run",
+                    "sample",
+                ]:
+
+                    if id_key in item:
+
+                        raw_metadata[str(item[id_key]).upper()] = item
+                        break
+
+    # ------------------------------------------------------------------
+    # Build covariate table aligned to expression matrix
+    # ------------------------------------------------------------------
+
+    rows = []
+
+    for sample in sample_names:
+
+        sample_upper = str(sample).upper()
+
+        meta = raw_metadata.get(sample_upper, {})
+
+        row = {}
+
+        for cov in covariates:
+
+            value = meta.get(cov, "unknown")
+
+            # Flatten lists
+            if isinstance(value, list):
+                value = "_".join(map(str, value))
+
+            row[cov] = str(value)
+
+        rows.append(row)
+
+    covar_df = pd.DataFrame(rows, index=sample_names)
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+
+    print(f"[ComBat] Covariate matrix shape: {covar_df.shape}")
+
+    for cov in covar_df.columns:
+
+        nunique = covar_df[cov].nunique()
+
+        print(f"  - {cov}: {nunique} levels")
+
+        if nunique <= 1:
+            print(f"    WARNING: '{cov}' has only one level")
+
+    return covar_df
+
 def get_gse_from_col(col: str) -> str:
     """
     Looks up the GSE study ID for a GSM sample ID using SAMPLE_STUDY_MAP.
@@ -77,7 +205,7 @@ def get_gse_from_col(col: str) -> str:
     """
     try:
         sample_key = col.split(".", maxsplit=1)[0]  # strip any suffix
-        return SAMPLE_STUDY_MAP.loc[sample_key, "StudyID"]
+        return str(SAMPLE_STUDY_MAP.loc[sample_key, "StudyID"])
     except KeyError:
         # Fallback for columns already in GSE_GSM format
         return col.split("_", maxsplit=1)[0]
@@ -183,8 +311,145 @@ def run_filtering(
 # ---------------------------------------------------------------------------
 # 2. ComBat  (Gaussian batch correction, log2-space)
 # ---------------------------------------------------------------------------
-
 def run_combat(
+    log2_df: pd.DataFrame,
+    batch_labels: list[str],
+    covar_df: pd.DataFrame | None = None,
+    preserve_covariates: list[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Run Gaussian ComBat on log2 microarray data.
+
+    Parameters
+    ----------
+    log2_df
+        genes × samples matrix in log2 expression space
+
+    batch_labels
+        batch/study label for each sample
+
+    covar_df
+        sample metadata DataFrame indexed by sample IDs
+
+    preserve_covariates
+        biological variables to preserve during batch correction
+        e.g. ["tissue", "treatment"]
+    """
+
+    print("  [ComBat] Loading R sva package...")
+    if covar_df is None:
+        covar_df = build_combat_covariates(
+            sample_names=list(log2_df.columns),
+            labels_path=LABELS_PATH,
+            covariates=["tissue", "treatment"],
+        )
+    try:
+        sva = importr("sva")
+        stats = importr("stats")
+        base = importr("base")
+    except Exception as e:
+        raise ImportError(
+            "R package 'sva' not found.\n"
+            "Install with: BiocManager::install('sva')"
+        ) from e
+
+    df = log2_df.copy()
+
+    assert not df.isna().values.any(), "DataFrame contains NaN values!"
+
+    if not np.issubdtype(df.values.dtype, np.floating):
+        df = df.astype(float)
+
+    print(f"  [ComBat] Input: {df.shape[0]} genes × {df.shape[1]} samples")
+
+    # ------------------------------------------------------------------
+    # Transfer expression matrix
+    # ------------------------------------------------------------------
+
+    with localconverter(ro.default_converter + numpy2ri.converter):
+        dat_r = ro.conversion.py2rpy(df.values)
+
+    batch_r = ro.StrVector(batch_labels)
+
+    # ------------------------------------------------------------------
+    # Build biological covariate model
+    # ------------------------------------------------------------------
+
+    mod_r = ro.r("NULL")
+
+    if (
+        covar_df is not None
+        and preserve_covariates is not None
+        and len(preserve_covariates) > 0
+    ):
+
+        covar_use = covar_df[preserve_covariates].copy()
+
+        # Convert categorical columns to string/factor-like
+        covar_use = covar_use.astype(str)
+
+        # Remove columns with only one level
+        valid_cols = [
+            c for c in covar_use.columns
+            if covar_use[c].nunique() > 1
+        ]
+
+        if len(valid_cols) > 0:
+
+            print(
+                f"  [ComBat] Preserving biological covariates: {valid_cols}"
+            )
+
+            covar_use = covar_use[valid_cols]
+
+            # Optional but VERY useful diagnostic
+            for c in valid_cols:
+                print(f"\n--- Batch × {c} ---")
+                print(pd.crosstab(covar_use[c], batch_labels))
+
+            with localconverter(ro.default_converter + pandas2ri.converter):
+                covar_r = ro.conversion.py2rpy(covar_use)
+
+            formula = ro.Formula("~ " + " + ".join(valid_cols))
+
+            mod_r = stats.model_matrix(formula, data=covar_r)
+
+        else:
+            print(
+                "  [ComBat] No usable covariates found "
+                "(all single-level)"
+            )
+
+    # ------------------------------------------------------------------
+    # Run ComBat
+    # ------------------------------------------------------------------
+
+    print("  [ComBat] Running sva::ComBat...")
+
+    combat_r = sva.ComBat(
+        dat=dat_r,
+        batch=batch_r,
+        mod=mod_r,
+        par_prior=True,
+        prior_plots=False,
+    )
+
+    combat_np = np.array(combat_r)
+
+    del dat_r, batch_r, combat_r
+    base.gc()
+
+    result = pd.DataFrame(
+        combat_np,
+        index=df.index,
+        columns=df.columns,
+    )
+
+    print("  [ComBat] Done.")
+
+    return result
+
+def run_combat_no_covariate(
     log2_df: pd.DataFrame,
     batch_labels: list[str],
     covar_df: pd.DataFrame | None = None,
@@ -571,7 +836,13 @@ def run_microarray_preprocessing():
         assert df_for_combat.isna().sum().sum() == 0, \
             f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
 
-        combat_df = run_combat(df_for_combat, list(valid_batches))
+        # combat_df = run_combat(df_for_combat, list(valid_batches))
+        combat_df = run_combat(
+            log2_df=df_for_combat,
+            batch_labels=batch_labels,
+            covar_df=sample_metadata_df,
+            preserve_covariates=["tissue", "treatment"],
+        )
         combat_df.to_csv(combat_path)
         print(f"Saved ComBat result → {combat_path}")
     # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
