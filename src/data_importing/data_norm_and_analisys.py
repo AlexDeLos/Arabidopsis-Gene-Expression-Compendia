@@ -159,9 +159,47 @@ def build_combat_covariates(
 
     rows = []
 
-    for sample in sample_names:
+    lookup_names = list(sample_names)
 
-        sample_upper = str(sample).upper()
+    # --------------------------------------------------------------
+    # RNA mode: remap SRR -> GSM for metadata lookup
+    # --------------------------------------------------------------
+
+    if RNA_USED:
+
+        print("[ComBat] RNA mode: remapping SRR IDs to GSM IDs for metadata lookup...")
+
+        original_names = lookup_names.copy()
+
+        lookup_names = [
+            get_gsm_id(x.split('_')[1]) if "_" in x else x
+            for x in lookup_names
+        ]
+
+        print(
+            f"[ComBat] RNA mode: remapped "
+            f"{original_names[:3]} -> {lookup_names[:3]} ..."
+        )
+    # --------------------------------------------------------------
+    # Metadata match diagnostic
+    # --------------------------------------------------------------
+
+    matched = sum(
+        str(name).upper() in raw_metadata
+        for name in lookup_names
+    )
+
+    print(
+        f"[ComBat] Matched metadata for "
+        f"{matched}/{len(lookup_names)} samples"
+    )
+    # --------------------------------------------------------------
+    # Build covariate rows
+    # --------------------------------------------------------------
+
+    for original_sample, lookup_sample in zip(sample_names, lookup_names):
+
+        sample_upper = str(lookup_sample).upper()
 
         meta = raw_metadata.get(sample_upper, {})
 
