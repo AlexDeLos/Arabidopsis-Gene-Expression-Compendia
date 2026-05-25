@@ -840,7 +840,7 @@ def run_microarray_preprocessing():
         combat_df = run_combat(
             log2_df=df_for_combat,
             batch_labels=batch_labels,
-            covar_df=sample_metadata_df,
+            covar_df=None,
             preserve_covariates=["tissue", "treatment"],
         )
         combat_df.to_csv(combat_path)
