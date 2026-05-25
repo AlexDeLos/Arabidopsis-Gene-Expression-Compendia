@@ -379,7 +379,7 @@ def run_combat(
         covar_df = build_combat_covariates(
             sample_names=list(log2_df.columns),
             labels_path=LABELS_PATH,
-            covariates=["tissue", "treatment"] if RNA_USED  else ["tissue"],
+            covariates=["tissue"] if RNA_USED else ["tissue"],
         )
     try:
         sva = importr("sva")
@@ -879,7 +879,7 @@ def run_microarray_preprocessing():
             log2_df=df_for_combat,
             batch_labels=batch_labels,
             covar_df=None,
-            preserve_covariates=["tissue", "treatment"] if RNA_USED  else ["tissue"],
+            preserve_covariates=["tissue"] if RNA_USED else ["tissue"],
         )
         combat_df.to_csv(combat_path)
         print(f"Saved ComBat result → {combat_path}")
