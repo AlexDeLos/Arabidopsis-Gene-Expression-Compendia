@@ -423,6 +423,7 @@ class RNASeq_processor:
             "--skip_dupradar",
             "--skip_qualimap",
             "--skip_rseqc",
+            '--skip_deseq2_qc',
         ]
 
         try:
@@ -770,34 +771,35 @@ def download_experiments_RNA_seq_nf_core(
     print(f"Skipped — ignored ({len(skipped_ignored)}): {skipped_ignored}")
     print(f"Skipped — error ({len(skipped_error)}): {skipped_error}")
 
-    ecotype_groups: dict[str, list[str]] = defaultdict(list)
+    # ecotype_groups: dict[str, list[str]] = defaultdict(list)
 
-    print("Detecting ecotypes for all studies...")
-    for gse_id in todos:
-        ecotype = "col-0"  # safe default always set first
-        try:
-            cached = tracker.get_ecotype(gse_id)
-            if cached is not None:
-                ecotype = cached
-                print(f"  {gse_id} -> {ecotype} (cached)")
-            else:
-                try:
-                    gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
-                    ecotype = get_ecotype_from_gse(gse)
-                except Exception as e:
-                    print(f"  WARNING: ecotype detection failed for {gse_id} ({e}), defaulting to col-0")
-                    ecotype = "col-0"
-                tracker.mark_ecotype(gse_id, ecotype)
-                print(f"  {gse_id} -> {ecotype} (detected)")
-        except Exception as e:
-            print(f"  WARNING: unexpected error for {gse_id} ({e}), defaulting to col-0")
-            ecotype = "col-0"
-        finally:
-            ecotype_groups[ecotype].append(gse_id)  # ALWAYS appended no matter what
+    # print("Detecting ecotypes for all studies...")
+    # for gse_id in todos:
+    #     ecotype = "col-0"  # safe default always set first
+    #     try:
+    #         cached = tracker.get_ecotype(gse_id)
+    #         if cached is not None:
+    #             ecotype = cached
+    #             print(f"  {gse_id} -> {ecotype} (cached)")
+    #         else:
+    #             try:
+    #                 gse = GEOparse.get_GEO(geo=gse_id, destdir=output_dir, silent=True)
+    #                 ecotype = get_ecotype_from_gse(gse)
+    #             except Exception as e:
+    #                 print(f"  WARNING: ecotype detection failed for {gse_id} ({e}), defaulting to col-0")
+    #                 ecotype = "col-0"
+    #             tracker.mark_ecotype(gse_id, ecotype)
+    #             print(f"  {gse_id} -> {ecotype} (detected)")
+    #     except Exception as e:
+    #         print(f"  WARNING: unexpected error for {gse_id} ({e}), defaulting to col-0")
+    #         ecotype = "col-0"
+    #     finally:
+    #         ecotype_groups[ecotype].append(gse_id)  # ALWAYS appended no matter what
 
-    for ecotype, ids in ecotype_groups.items():
-        print(f"  Ecotype '{ecotype}': {len(ids)} studies -> {ids}")
-
+    # for ecotype, ids in ecotype_groups.items():
+    #     print(f"  Ecotype '{ecotype}': {len(ids)} studies -> {ids}")
+    ecotype_groups: dict[str, list[str]] = {"col-0": todos}
+    print(f"  Ecotype 'col-0': {len(todos)} studies -> {todos}")
     for ecotype, gse_ids_for_ecotype in ecotype_groups.items():
         refs = REFERENCE_MAP.get(ecotype, REFERENCE_MAP["col-0"])
         print(f"\n{'=' * 60}")
@@ -934,10 +936,17 @@ def download_experiments_RNA_seq_nf_core(
 
                 split_success = split_merged_counts(batch_dir, effective_study_map, output_dir, batch_id=batch_id)
                 # split_success is a list of saved GSE IDs, or False if merged file not found
-
                 if split_success is not False:
                     for gse_id in split_success:
-                        tracker.mark_processed(gse_id)
+                        missing_samples = [
+                            s for s in batch_study_map.get(gse_id, [])
+                            if s in bad_samples
+                        ]
+                        if missing_samples:
+                            tracker.mark_semicomplete(gse_id, missing_samples)
+                            print(f"  [!] {gse_id} saved but missing samples: {missing_samples} — marked as semicomplete.")
+                        else:
+                            tracker.mark_processed(gse_id)
                         valid_gse_ids.append(gse_id)
 
                         if run_and_delete:

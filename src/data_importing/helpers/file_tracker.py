@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import sys
 
 import matplotlib.pyplot as plt
@@ -9,7 +10,7 @@ import seaborn as sns
 module_dir = "./"
 sys.path.append(module_dir)
 
-from src.constants import STATUS_DOWNLOADED, STATUS_ERROR, STATUS_IGNORE, STATUS_LOCKED, STATUS_PROCESSED,STORAGE_DIR  # noqa: E402
+from src.constants import STATUS_DOWNLOADED, STATUS_ERROR, STATUS_IGNORE, STATUS_LOCKED, STATUS_PROCESSED,STORAGE_DIR,STATUS_SEMI  # noqa: E402
 
 
 # Ensure these match your constants file
@@ -76,6 +77,18 @@ class FileTracker:
         print(f"Marking {gse_id} as error")
         self.set_status(gse_id, STATUS_ERROR)
 
+    def mark_semicomplete(self, gse_id, samples):
+        print(f"Marking {gse_id} as semicomplete with samples missing {samples}")
+        missing_path = self._get_file_path(gse_id, ext="_missing_samples.txt")
+        if os.path.exists(missing_path):
+            ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            archive_path = self._get_file_path(gse_id, ext=f"_missing_samples_{ts}.txt")
+            os.rename(missing_path, archive_path)
+            print(f"  Archived previous missing samples file to {os.path.basename(archive_path)}")
+        with open(missing_path, "w") as f:
+            for sample in samples:
+                f.write(sample + "\n")
+        self.set_status(gse_id, STATUS_SEMI)
     # --- ECOTYPE TRACKING ---
     def mark_ecotype(self, gse_id, ecotype: str):
         """
