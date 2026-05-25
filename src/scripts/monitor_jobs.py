@@ -46,6 +46,42 @@ from datetime import datetime, timezone
 _DATE_FMT = "%a %b %d %H:%M:%S %Y"
 _RE_TZ_NAME = re.compile(r"\s+[A-Z]{2,5}\s+")  # e.g. " CEST " or " UTC "
 
+def read_missing_samples(tracker_dir: str) -> dict:
+    """
+    Read all *_missing_samples.txt files.
+    Returns:
+        {
+            "GSE123": {
+                "count": 4,
+                "samples": ["SRR1", "SRR2"]
+            }
+        }
+    """
+    missing = {}
+
+    if not tracker_dir or not os.path.isdir(tracker_dir):
+        return missing
+
+    for fname in os.listdir(tracker_dir):
+        if not fname.endswith("_missing_samples.txt"):
+            continue
+
+        gse_id = fname.replace("_missing_samples.txt", "")
+        path = os.path.join(tracker_dir, fname)
+
+        try:
+            with open(path) as fh:
+                samples = [line.strip() for line in fh if line.strip()]
+
+            missing[gse_id] = {
+                "count": len(samples),
+                "samples": samples,
+            }
+
+        except OSError:
+            continue
+
+    return missing
 
 def _parse_log_timestamp(ts: str):
     """Parse a bash `date` string into a datetime, or return None."""
@@ -84,6 +120,7 @@ _TRACKER_INT_TO_NAME = {
     2: "processed",
     3: "ignore",
     4: "error",
+    5: "semi_processed",
 }
 
 # Maps tracker state name → (log state name it aligns with, display label, color)
@@ -91,6 +128,7 @@ TRACKER_STATES = {
     "not_tried": ("#475569", "Not tried"),
     "downloaded": ("#a78bfa", "Downloaded"),
     "processed": ("#4ade80", "✓ Processed"),
+    "semi_processed": ("#f59e0b", "⚠ Semi-processed"),
     "ignore": ("#94a3b8", "Ignored"),
     "error": ("#f87171", "Error"),
     "unknown": ("#334155", "Unknown"),
@@ -456,13 +494,18 @@ def _state_counts(studies_dict):
     return counts
 
 
-def generate_html(all_results: list, refresh_s: int, generated_at: str, tracker_states=None) -> str:
+def generate_html(
+    all_results: list,
+    refresh_s: int,
+    generated_at: str,
+    tracker_states=None,
+    missing_samples=None) -> str:
     total_studies_all = sum(len(r["studies"]) for r in all_results)
     total_processed = sum(1 for r in all_results for s in r["studies"].values() if s == "processed")
     total_errors = sum(1 for r in all_results for s in r["studies"].values() if s == "error")
     total_ignored = sum(1 for r in all_results for s in r["studies"].values() if s in ("ignore", "skip_compat", "no_fastq"))
     active_jobs = sum(1 for r in all_results if not r["finished"])
-
+    missing_samples = missing_samples or {}
     # ── TRACKER SIDEBAR ──────────────────────────────────────────────────────
     # Aggregate tracker states globally — this is the ground truth view
     tracker_states = tracker_states or {}
@@ -513,7 +556,18 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str, tracker_
         """Return SVG path segments for a donut chart."""
         if total == 0:
             return '<circle cx="60" cy="60" r="45" fill="none" stroke="#1e2433" stroke-width="18"/>'
-        order = ["processed", "samplesheet", "downloaded", "processing", "no_fastq", "skip_compat", "ignore", "error", "unknown"]
+        order = [
+            "processed",
+            "semi_processed",
+            "samplesheet",
+            "downloaded",
+            "processing",
+            "no_fastq",
+            "skip_compat",
+            "ignore",
+            "error",
+            "unknown",
+        ]
         segs = []
         angle = -90  # start at top
         r, cx, cy, sw = 45, 60, 60, 18
@@ -598,7 +652,28 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str, tracker_
             tk_state = tracker_states.get(gse_id)
             if tk_state:
                 tk_color, tk_label = TRACKER_STATES.get(tk_state, TRACKER_STATES["unknown"])
-                tracker_cell = f'<span class="state-pill" style="--c:{tk_color}">{tk_label}</span>'
+
+                extra = ""
+
+                if tk_state == "semi_processed":
+                    info = missing_samples.get(gse_id, {})
+                    missing_count = info.get("count", 0)
+                    missing_list = info.get("samples", [])
+
+                    tooltip = "\n".join(missing_list)
+
+                    extra = (
+                        f' <span class="missing-chip" '
+                        f'title="{tooltip}">'
+                        f'{missing_count} missing'
+                        f'</span>'
+                    )
+
+                tracker_cell = (
+                    f'<span class="state-pill" style="--c:{tk_color}">{tk_label}</span>'
+                    f'{extra}'
+                )
+
             elif tracker_states:
                 # Tracker dir was given but this GSE has no file yet
                 tracker_cell = '<span class="muted small">no file</span>'
@@ -639,8 +714,17 @@ def generate_html(all_results: list, refresh_s: int, generated_at: str, tracker_
 
         # Mini stacked progress bar
         bar_html = '<div class="mini-bar">'
-        bar_order = ["processed", "samplesheet", "downloaded", "processing", "no_fastq", "skip_compat", "ignore", "error"]
-        for s in bar_order:
+        bar_order = [
+            "processed",
+            "semi_processed",
+            "samplesheet",
+            "downloaded",
+            "processing",
+            "no_fastq",
+            "skip_compat",
+            "ignore",
+            "error",
+        ]        for s in bar_order:
             n = counts.get(s, 0)
             if n and n_total:
                 pct = n / n_total * 100
@@ -750,7 +834,18 @@ header{{padding:28px 40px 22px;border-bottom:1px solid var(--border);display:fle
 .mini-bar>div{{height:100%;transition:width .4s}}
 .counts-row{{display:flex;flex-wrap:wrap;gap:6px}}
 .count-chip{{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:color-mix(in srgb, var(--c) 15%, transparent);color:var(--c);border:1px solid color-mix(in srgb, var(--c) 30%, transparent)}}
-
+.missing-chip{{
+  display:inline-block;
+  margin-left:6px;
+  padding:1px 6px;
+  border-radius:4px;
+  font-size:10px;
+  font-family:var(--mono);
+  background:rgba(245,158,11,.12);
+  border:1px solid rgba(245,158,11,.25);
+  color:#f59e0b;
+  white-space:nowrap;
+}}
 /* ── INNER TABLE ── */
 .section-grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px}}
 @media(max-width:700px){{.section-grid{{grid-template-columns:1fr}}}}
@@ -865,7 +960,7 @@ def main():
     while True:
         log_files = find_log_files(args.job_ids, log_dir)
         tracker_states = read_tracker_dir(tracker_dir) if tracker_dir else {}
-
+        missing_samples = read_missing_samples(tracker_dir) if tracker_dir else {}
         if not log_files:
             print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] No log files found for job IDs {args.job_ids} in {log_dir}")
         else:
@@ -875,8 +970,13 @@ def main():
                 results.append(r)
 
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            html = generate_html(results, args.interval, now_str, tracker_states=tracker_states)
-
+            html = generate_html(
+                results,
+                args.interval,
+                now_str,
+                tracker_states=tracker_states,
+                missing_samples=missing_samples,
+            )
             with open(args.out, "w") as fh:
                 fh.write(html)
 
