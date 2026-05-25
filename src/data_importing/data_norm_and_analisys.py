@@ -341,7 +341,7 @@ def run_combat(
         covar_df = build_combat_covariates(
             sample_names=list(log2_df.columns),
             labels_path=LABELS_PATH,
-            covariates=["tissue", "treatment"],
+            covariates=["tissue", "treatment"] if RNA_USED  else ["tissue"],
         )
     try:
         sva = importr("sva")
