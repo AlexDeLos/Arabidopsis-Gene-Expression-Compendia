@@ -724,7 +724,8 @@ def generate_html(
             "skip_compat",
             "ignore",
             "error",
-        ]        for s in bar_order:
+        ]
+        for s in bar_order:
             n = counts.get(s, 0)
             if n and n_total:
                 pct = n / n_total * 100
