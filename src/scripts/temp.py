@@ -111,7 +111,7 @@ if __name__ == "__main__":
     group_a_files = [
         (os.path.join(FOLDER_A, "rankin.csv"), "Rankin Norm"),
         (os.path.join(FOLDER_A, "filter_norm.csv"), "Filter Norm"),
-        # (os.path.join(FOLDER_A, "combat.csv"), "ComBat"),
+        (os.path.join(FOLDER_B, "combat_norm_cov.csv"), "ComBat Cov"),
         (os.path.join(FOLDER_A, "combat_norm.csv"), "ComBat Norm")
     ]
     
@@ -120,10 +120,10 @@ if __name__ == "__main__":
         (os.path.join(FOLDER_B, "rankin.csv"), "Rankin Norm"),
         (os.path.join(FOLDER_B, "filter.csv"), "Filter Norm"),
         (os.path.join(FOLDER_B, "combat_norm.csv"), "ComBat Norm"),
+        (os.path.join(FOLDER_B, "combat_norm_cov.csv"), "ComBat Cov")
 
         # (os.path.join(FOLDER_B, "rankin_old.csv"), "Rankin OLD"),
         # (os.path.join(FOLDER_B, "filter_old.csv"), "Filter OLD"),
-        # (os.path.join(FOLDER_B, "combat_old.csv"), "ComBat OLD")
     ]
 
     # Process Group A
