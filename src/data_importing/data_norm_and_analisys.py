@@ -82,10 +82,8 @@ def build_combat_covariates(
     ----------
     sample_names
         Expression matrix column names
-
     labels_path
         Path containing GEO metadata JSON files
-
     covariates
         Metadata variables to preserve during ComBat
 
@@ -94,127 +92,98 @@ def build_combat_covariates(
     pd.DataFrame
         Indexed by sample names, suitable for ComBat model matrix
     """
-
     print(f"[ComBat] Loading biological covariates from {labels_path}...")
 
-    raw_metadata = {}
+    raw_metadata: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     # Load all metadata JSON files
     # ------------------------------------------------------------------
-
     for path in sorted(Path(labels_path).glob("*.json")):
-
         if path.name.startswith("map_"):
             continue
-
         try:
             data = json.loads(path.read_text())
-
         except Exception as e:
-            warnings.warn(
-                f"Failed to read metadata file {path.name}: {e}"
-            )
+            warnings.warn(f"Failed to read metadata file {path.name}: {e}")
             continue
 
-        # --------------------------------------------------------------
-        # Dict-style JSON
-        # --------------------------------------------------------------
-
         if isinstance(data, dict):
-
             for sample_id, sample_dict in data.items():
-
                 if isinstance(sample_dict, dict):
-
                     raw_metadata[str(sample_id).upper()] = sample_dict
 
-        # --------------------------------------------------------------
-        # List-style JSON
-        # --------------------------------------------------------------
-
         elif isinstance(data, list):
-
             for item in data:
-
                 if not isinstance(item, dict):
                     continue
-
-                for id_key in [
-                    "sample_id",
-                    "id",
-                    "name",
-                    "run",
-                    "sample",
-                ]:
-
+                for id_key in ["sample_id", "id", "name", "run", "sample"]:
                     if id_key in item:
-
                         raw_metadata[str(item[id_key]).upper()] = item
                         break
 
-    # ------------------------------------------------------------------
-    # Build covariate table aligned to expression matrix
-    # ------------------------------------------------------------------
+    print(f"[ComBat] Loaded metadata for {len(raw_metadata)} unique sample IDs.")
 
-    rows = []
-
+    # ------------------------------------------------------------------
+    # RNA mode: remap SRR -> GSM
+    # ------------------------------------------------------------------
     lookup_names = list(sample_names)
 
-    # --------------------------------------------------------------
-    # RNA mode: remap SRR -> GSM for metadata lookup
-    # --------------------------------------------------------------
-
     if RNA_USED:
-
-        print("[ComBat] RNA mode: remapping SRR IDs to GSM IDs for metadata lookup...")
-
-        original_names = lookup_names.copy()
-
+        print("[ComBat] RNA mode: remapping SRR IDs to GSM IDs...")
         lookup_names = [
             get_gsm_id(x.split('_')[1]) if "_" in x else x
             for x in lookup_names
         ]
+        print(f"[ComBat] Example remap: {list(sample_names)[:3]} -> {lookup_names[:3]}")
 
-        print(
-            f"[ComBat] RNA mode: remapped "
-            f"{original_names[:3]} -> {lookup_names[:3]} ..."
-        )
-    # --------------------------------------------------------------
-    # Metadata match diagnostic
-    # --------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Match diagnostics — show unmatched sample IDs
+    # ------------------------------------------------------------------
+    matched_names   = [n for n in lookup_names if str(n).upper() in raw_metadata]
+    unmatched_names = [n for n in lookup_names if str(n).upper() not in raw_metadata]
 
-    matched = sum(
-        str(name).upper() in raw_metadata
-        for name in lookup_names
-    )
+    print(f"[ComBat] Matched:   {len(matched_names)}/{len(lookup_names)} samples")
+    print(f"[ComBat] Unmatched: {len(unmatched_names)}/{len(lookup_names)} samples")
 
-    print(
-        f"[ComBat] Matched metadata for "
-        f"{matched}/{len(lookup_names)} samples"
-    )
-    # --------------------------------------------------------------
+    if unmatched_names:
+        # Show first 10 unmatched IDs
+        preview = unmatched_names[:10]
+        print(f"[ComBat] Unmatched sample IDs (first {len(preview)}):")
+        for sid in preview:
+            print(f"  - '{sid}'")
+
+        # Show a few keys from raw_metadata for format comparison
+        meta_keys_preview = list(raw_metadata.keys())[:5]
+        print("[ComBat] Example metadata keys for format comparison:")
+        for k in meta_keys_preview:
+            print(f"  - '{k}'")
+
+        # Check if unmatched IDs are present in metadata under a different
+        # format — e.g. with/without GSE prefix, truncated, lowercase
+        print("[ComBat] Fuzzy check on first 5 unmatched:")
+        for sid in unmatched_names[:5]:
+            sid_upper = str(sid).upper()
+            # Check if any metadata key contains this ID as substring
+            partial = [k for k in raw_metadata if sid_upper in k or k in sid_upper]
+            if partial:
+                print(f"  '{sid}' → partial matches: {partial[:3]}")
+            else:
+                print(f"  '{sid}' → no partial match found in metadata keys")
+
+    # ------------------------------------------------------------------
     # Build covariate rows
-    # --------------------------------------------------------------
-
+    # ------------------------------------------------------------------
+    rows = []
     for original_sample, lookup_sample in zip(sample_names, lookup_names):
-
         sample_upper = str(lookup_sample).upper()
-
         meta = raw_metadata.get(sample_upper, {})
-
         row = {}
-
         for cov in covariates:
-
             value = meta.get(cov, "unknown")
-
-            # Flatten lists
             if isinstance(value, list):
-                value = "_".join(map(str, value))
-
-            row[cov] = str(value)
-
+                value = "_".join(str(v) for v in value if v)
+            row[cov] = str(value) if value else "unknown"
         rows.append(row)
 
     covar_df = pd.DataFrame(rows, index=sample_names)
@@ -222,17 +191,15 @@ def build_combat_covariates(
     # ------------------------------------------------------------------
     # Diagnostics
     # ------------------------------------------------------------------
-
-    print(f"[ComBat] Covariate matrix shape: {covar_df.shape}")
-
+    print(f"\n[ComBat] Covariate matrix shape: {covar_df.shape}")
     for cov in covar_df.columns:
-
-        nunique = covar_df[cov].nunique()
-
-        print(f"  - {cov}: {nunique} levels")
-
+        nunique   = covar_df[cov].nunique()
+        n_unknown = (covar_df[cov] == "unknown").sum()
+        print(f"  - {cov}: {nunique} levels, {n_unknown} unknown ({n_unknown/len(covar_df)*100:.1f}%)")
         if nunique <= 1:
-            print(f"    WARNING: '{cov}' has only one level")
+            print(f"    WARNING: '{cov}' has only one level — will be dropped from model")
+        if n_unknown > len(covar_df) * 0.5:
+            print(f"    WARNING: '{cov}' has >50% unknown values — covariate may be unreliable")
 
     return covar_df
 
@@ -352,39 +319,32 @@ def run_filtering(
 def run_combat(
     log2_df: pd.DataFrame,
     batch_labels: list[str],
-    covar_df: pd.DataFrame | None = None,
     preserve_covariates: list[str] | None = None,
 ) -> pd.DataFrame:
     """
-    Run Gaussian ComBat on log2 microarray data.
+    Run Gaussian ComBat on log2 expression data.
 
     Parameters
     ----------
     log2_df
         genes × samples matrix in log2 expression space
-
     batch_labels
-        batch/study label for each sample
-
-    covar_df
-        sample metadata DataFrame indexed by sample IDs
-
+        batch/study label for each sample — must match log2_df columns exactly
     preserve_covariates
-        biological variables to preserve during batch correction
-        e.g. ["tissue", "treatment"]
+        biological variables to preserve during batch correction,
+        e.g. ["tissue", "treatment"]. Pass None or [] to run without covariates.
     """
+    assert len(batch_labels) == log2_df.shape[1], (
+        f"batch_labels length ({len(batch_labels)}) does not match "
+        f"number of samples ({log2_df.shape[1]}). "
+        "Did you pass the full batch list instead of valid_batches?"
+    )
 
     print("  [ComBat] Loading R sva package...")
-    if covar_df is None:
-        covar_df = build_combat_covariates(
-            sample_names=list(log2_df.columns),
-            labels_path=LABELS_PATH,
-            covariates=["tissue"] if RNA_USED else ["tissue"],
-        )
     try:
-        sva = importr("sva")
+        sva   = importr("sva")
         stats = importr("stats")
-        base = importr("base")
+        base  = importr("base")
     except Exception as e:
         raise ImportError(
             "R package 'sva' not found.\n"
@@ -392,78 +352,58 @@ def run_combat(
         ) from e
 
     df = log2_df.copy()
-
     assert not df.isna().values.any(), "DataFrame contains NaN values!"
-
     if not np.issubdtype(df.values.dtype, np.floating):
         df = df.astype(float)
 
     print(f"  [ComBat] Input: {df.shape[0]} genes × {df.shape[1]} samples")
 
     # ------------------------------------------------------------------
-    # Transfer expression matrix
+    # Transfer expression matrix to R
     # ------------------------------------------------------------------
-
     with localconverter(ro.default_converter + numpy2ri.converter):
         dat_r = ro.conversion.py2rpy(df.values)
-
     batch_r = ro.StrVector(batch_labels)
 
     # ------------------------------------------------------------------
-    # Build biological covariate model
+    # Build biological covariate model (optional)
     # ------------------------------------------------------------------
-
     mod_r = ro.r("NULL")
 
-    if (
-        covar_df is not None
-        and preserve_covariates is not None
-        and len(preserve_covariates) > 0
-    ):
+    if preserve_covariates:
+        print(f"  [ComBat] Building covariate model for: {preserve_covariates}")
+        covar_df = build_combat_covariates(
+            sample_names=list(log2_df.columns),
+            labels_path=LABELS_PATH,
+            covariates=preserve_covariates,
+        )
 
-        covar_use = covar_df[preserve_covariates].copy()
+        covar_use = covar_df.astype(str)
 
-        # Convert categorical columns to string/factor-like
-        covar_use = covar_use.astype(str)
+        # Drop columns with only one level — they would break the model matrix
+        valid_cols = [c for c in covar_use.columns if covar_use[c].nunique() > 1]
 
-        # Remove columns with only one level
-        valid_cols = [
-            c for c in covar_use.columns
-            if covar_use[c].nunique() > 1
-        ]
-
-        if len(valid_cols) > 0:
-
-            print(
-                f"  [ComBat] Preserving biological covariates: {valid_cols}"
-            )
-
+        if valid_cols:
             covar_use = covar_use[valid_cols]
+            print(f"  [ComBat] Preserving: {valid_cols}")
 
-            # Optional but VERY useful diagnostic
             for c in valid_cols:
                 print(f"\n--- Batch × {c} ---")
                 print(pd.crosstab(covar_use[c], batch_labels))
 
             with localconverter(ro.default_converter + pandas2ri.converter):
                 covar_r = ro.conversion.py2rpy(covar_use)
-
             formula = ro.Formula("~ " + " + ".join(valid_cols))
-
-            mod_r = stats.model_matrix(formula, data=covar_r)
-
+            mod_r   = stats.model_matrix(formula, data=covar_r)
         else:
-            print(
-                "  [ComBat] No usable covariates found "
-                "(all single-level)"
-            )
+            print("  [ComBat] All covariates have only one level — running without covariates.")
+    else:
+        print("  [ComBat] No covariates requested — running without covariate model.")
 
     # ------------------------------------------------------------------
     # Run ComBat
     # ------------------------------------------------------------------
-
     print("  [ComBat] Running sva::ComBat...")
-
     combat_r = sva.ComBat(
         dat=dat_r,
         batch=batch_r,
@@ -473,18 +413,11 @@ def run_combat(
     )
 
     combat_np = np.array(combat_r)
-
     del dat_r, batch_r, combat_r
     base.gc()
 
-    result = pd.DataFrame(
-        combat_np,
-        index=df.index,
-        columns=df.columns,
-    )
-
+    result = pd.DataFrame(combat_np, index=df.index, columns=df.columns)
     print("  [ComBat] Done.")
-
     return result
 
 def run_combat_no_covariate(
@@ -827,6 +760,7 @@ def run_microarray_preprocessing():
     filter_path      = os.path.join(MICROARRAY_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(MICROARRAY_DATA_DIR, "filter_norm.csv")
     combat_path      = os.path.join(MICROARRAY_DATA_DIR, "combat_norm.csv")
+    combat_path_cov      = os.path.join(MICROARRAY_DATA_DIR, "combat_norm_cov.csv")
     rankin_path      = os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -852,37 +786,45 @@ def run_microarray_preprocessing():
         print(f"Saved norm matrix      → {filter_norm_path}")
 
     # ── Stage 2: ComBat ───────────────────────────────────────────────────────
+    batch_labels  = get_batch_labels(norm_df.columns)
+    study_counts  = Counter(batch_labels)
+    single_batches = {s for s, c in study_counts.items() if c < 2}
+    if single_batches:
+        print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
+
+    col_batch_pairs = [(c, b) for c, b in zip(norm_df.columns, batch_labels)
+                    if b not in single_batches]
+    valid_cols, valid_batches = zip(*col_batch_pairs)
+    df_for_combat = norm_df[list(valid_cols)]
+    assert df_for_combat.isna().sum().sum() == 0, \
+        f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
+
     if os.path.exists(combat_path):
         print("Loading cached combat.csv...")
         combat_df = pd.read_csv(combat_path, index_col=0)
     else:
         print("\nRunning ComBat batch correction (Gaussian, RMA log2 input)...")
-        batch_labels = get_batch_labels(norm_df.columns)
-        study_counts = Counter(batch_labels)
-
-        single_batches = {s for s, c in study_counts.items() if c < 2}
-        if single_batches:
-            print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
-
-        col_batch_pairs = [(c, b) for c, b in zip(norm_df.columns, batch_labels)
-                        if b not in single_batches]
-        valid_cols, valid_batches = zip(*col_batch_pairs)
-
-        # RMA is already log2 — pass filtered_df directly, no norm_df needed
-        df_for_combat = norm_df[list(valid_cols)]
-
-        assert df_for_combat.isna().sum().sum() == 0, \
-            f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
-
-        # combat_df = run_combat(df_for_combat, list(valid_batches))
         combat_df = run_combat(
             log2_df=df_for_combat,
-            batch_labels=batch_labels,
-            covar_df=None,
-            # preserve_covariates=["tissue"] if RNA_USED else ["tissue"],
+            batch_labels=list(valid_batches),   # ← fixed
+            preserve_covariates=None,
         )
         combat_df.to_csv(combat_path)
         print(f"Saved ComBat result → {combat_path}")
+
+    if os.path.exists(combat_path_cov):
+        print("Loading cached combat_cov.csv...")
+        combat_df_cov = pd.read_csv(combat_path_cov, index_col=0)
+    else:
+        print("\nRunning ComBat batch correction with covariates...")
+        combat_df_cov = run_combat(
+            log2_df=df_for_combat,
+            batch_labels=list(valid_batches),   # ← fixed
+            preserve_covariates=["tissue"],
+        )
+        combat_df_cov.to_csv(combat_path_cov)
+        print(f"Saved ComBat cov result → {combat_path_cov}")
+
     # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")

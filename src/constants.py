@@ -14,7 +14,7 @@ def get_matrix_used_for_training_bulk() -> str:
 
     args, _ = parser.parse_known_args()
     return args.train_matrix
-DEBUG       = False
+DEBUG = False
 
 GLOBAL_DIR_PATH = f"{os.getcwd()}/"
 CLUSTER_RUN = GLOBAL_DIR_PATH != "/home/alex/Documents/GitHub/Dataset_fusion_Microarray/"
