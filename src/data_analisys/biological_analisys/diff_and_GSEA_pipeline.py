@@ -329,13 +329,13 @@ def run_diff_exp_and_enrichment(
     if data_types is None:
         data_types = ["combat_norm", "rankin", "filter"]
     if pures is None:
-        pures = [False]
+        pures = [False,True]
     if Fulls is None:
         Fulls = [True, False]
     if filter_low_combination is None:
         filter_low_combination = [0, 15]
     if tissues is None:
-        tissues = [None]
+        tissues = [None, 'leaf']
 
     labels = make_df_from_labels(load_labels_study(LABELS_PATH))
 
@@ -549,4 +549,4 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True,False], filter_low_combination=[0,10,15])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True,False], filter_low_combination=[0])
