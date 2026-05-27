@@ -180,6 +180,7 @@ def run_rnaseq_preprocessing():
     filter_norm_path = os.path.join(RNASEQ_DATA_DIR, "filter_norm.csv")
     combat_path = os.path.join(RNASEQ_DATA_DIR, "combat_norm.csv")
     combat_path_cov = os.path.join(RNASEQ_DATA_DIR, "combat_norm_cov.csv")
+    combat_path_cov_2 = os.path.join(RNASEQ_DATA_DIR, "combat_norm_cov_2.csv")
     rankin_path = os.path.join(RNASEQ_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
@@ -204,27 +205,28 @@ def run_rnaseq_preprocessing():
         print(f"Saved filtered matrix → {filter_path}")
     # return
     # ── Stage 2: ComBat ──────────────────────────────────────────────────
+    print("\nRunning ComBat batch correction (Gaussian, log2 input)...")
+    batch_labels = get_batch_labels(norm_df.columns)
+    study_counts = Counter(batch_labels)
+
+    # ComBat requires ≥ 2 samples per batch
+    single_batches = {s for s, c in study_counts.items() if c < 2}
+    if single_batches:
+        print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
+
+    valid_cols = [c for c, b in zip(norm_df.columns, batch_labels, strict=False)
+                if b not in single_batches]
+    valid_batches = [b for b in batch_labels if b not in single_batches]
+    df_for_combat = norm_df[valid_cols]
+
+    assert df_for_combat.isna().sum().sum() == 0, \
+        f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
+    print(f"using batch_labels = {valid_batches}")
+
     if os.path.exists(combat_path):
         print("Loading cached combat.csv...")
         combat_df = pd.read_csv(combat_path, index_col=0)
     else:
-        print("\nRunning ComBat batch correction (Gaussian, log2 input)...")
-        batch_labels = get_batch_labels(norm_df.columns)
-        study_counts = Counter(batch_labels)
-
-        # ComBat requires ≥ 2 samples per batch
-        single_batches = {s for s, c in study_counts.items() if c < 2}
-        if single_batches:
-            print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
-
-        valid_cols = [c for c, b in zip(norm_df.columns, batch_labels, strict=False)
-                    if b not in single_batches]
-        valid_batches = [b for b in batch_labels if b not in single_batches]
-        df_for_combat = norm_df[valid_cols]
-
-        assert df_for_combat.isna().sum().sum() == 0, \
-            f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
-
         combat_df = run_combat(df_for_combat, valid_batches)
         combat_df.to_csv(combat_path)
         print(f"Saved ComBat result → {combat_path}")
@@ -233,27 +235,19 @@ def run_rnaseq_preprocessing():
         print("Loading cached combat.csv...")
         combat_df = pd.read_csv(combat_path_cov, index_col=0)
     else:
-        print("\nRunning ComBat batch correction (Gaussian, log2 input)...")
-        batch_labels = get_batch_labels(norm_df.columns)
-        study_counts = Counter(batch_labels)
-
-        # ComBat requires ≥ 2 samples per batch
-        single_batches = {s for s, c in study_counts.items() if c < 2}
-        if single_batches:
-            print(f"  Removing {len(single_batches)} single-sample batches: {single_batches}")
-
-        valid_cols = [c for c, b in zip(norm_df.columns, batch_labels, strict=False)
-                    if b not in single_batches]
-        valid_batches = [b for b in batch_labels if b not in single_batches]
-        df_for_combat = norm_df[valid_cols]
-
-        assert df_for_combat.isna().sum().sum() == 0, \
-            f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
 
         combat_df_cov = run_combat(df_for_combat, valid_batches,preserve_covariates=['tissue'])
         combat_df_cov.to_csv(combat_path_cov)
         print(f"Saved ComBat cov result → {combat_path_cov}")
 
+    if os.path.exists(combat_path_cov_2):
+        print("Loading cached combat.csv...")
+        combat_df = pd.read_csv(combat_path_cov, index_col=0)
+    else:
+
+        combat_df_cov_2 = run_combat(df_for_combat, valid_batches,preserve_covariates=['tissue','treatment'])
+        combat_df_cov_2.to_csv(combat_path_cov_2)
+        print(f"Saved ComBat cov result → {combat_path_cov_2}")
 
     # ── Stage 3: Rank-in ─────────────────────────────────────────────────────
     if os.path.exists(rankin_path):

@@ -757,11 +757,12 @@ def run_microarray_preprocessing():
     os.makedirs(MICROARRAY_DATA_DIR, exist_ok=True)
     os.makedirs(MICROARRAY_FIGURES,  exist_ok=True)
 
-    filter_path      = os.path.join(MICROARRAY_DATA_DIR, "filter.csv")
+    filter_path = os.path.join(MICROARRAY_DATA_DIR, "filter.csv")
     filter_norm_path = os.path.join(MICROARRAY_DATA_DIR, "filter_norm.csv")
-    combat_path      = os.path.join(MICROARRAY_DATA_DIR, "combat_norm.csv")
-    combat_path_cov      = os.path.join(MICROARRAY_DATA_DIR, "combat_norm_cov.csv")
-    rankin_path      = os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
+    combat_path = os.path.join(MICROARRAY_DATA_DIR, "combat_norm.csv")
+    combat_path_cov = os.path.join(MICROARRAY_DATA_DIR, "combat_norm_cov.csv")
+    combat_path_cov_2 = os.path.join(MICROARRAY_DATA_DIR, "combat_norm_cov_2.csv")
+    rankin_path = os.path.join(MICROARRAY_DATA_DIR, "rankin.csv")
 
     # ── Stage 1: Filter ──────────────────────────────────────────────────────
     if os.path.exists(filter_path):
@@ -798,7 +799,7 @@ def run_microarray_preprocessing():
     df_for_combat = norm_df[list(valid_cols)]
     assert df_for_combat.isna().sum().sum() == 0, \
         f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
-
+    print(f"using batch_labels = {list(valid_batches)}")
     if os.path.exists(combat_path):
         print("Loading cached combat.csv...")
         combat_df = pd.read_csv(combat_path, index_col=0)
@@ -824,7 +825,14 @@ def run_microarray_preprocessing():
         )
         combat_df_cov.to_csv(combat_path_cov)
         print(f"Saved ComBat cov result → {combat_path_cov}")
+    if os.path.exists(combat_path_cov_2):
+        print("Loading cached combat.csv...")
+        combat_df = pd.read_csv(combat_path_cov, index_col=0)
+    else:
 
+        combat_df_cov_2 = run_combat(df_for_combat, list(valid_batches),preserve_covariates=['tissue','treatment'])
+        combat_df_cov_2.to_csv(combat_path_cov_2)
+        print(f"Saved ComBat cov result → {combat_path_cov_2}")
     # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")
