@@ -136,7 +136,7 @@ def build_combat_covariates(
             for x in lookup_names
         ]
         print(f"[ComBat] Example remap: {list(sample_names)[:3]} -> {lookup_names[:3]}")
-
+    lookup_names = [str(n).split(".")[0] for n in lookup_names]
     # ------------------------------------------------------------------
     # Match diagnostics — show unmatched sample IDs
     # ------------------------------------------------------------------
