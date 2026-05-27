@@ -825,14 +825,14 @@ def run_microarray_preprocessing():
         )
         combat_df_cov.to_csv(combat_path_cov)
         print(f"Saved ComBat cov result → {combat_path_cov}")
-    if os.path.exists(combat_path_cov_2):
-        print("Loading cached combat.csv...")
-        combat_df = pd.read_csv(combat_path_cov, index_col=0)
-    else:
+    # if os.path.exists(combat_path_cov_2):
+    #     print("Loading cached combat.csv...")
+    #     combat_df = pd.read_csv(combat_path_cov, index_col=0)
+    # else:
 
-        combat_df_cov_2 = run_combat(df_for_combat, list(valid_batches),preserve_covariates=['tissue','treatment'])
-        combat_df_cov_2.to_csv(combat_path_cov_2)
-        print(f"Saved ComBat cov result → {combat_path_cov_2}")
+    #     combat_df_cov_2 = run_combat(df_for_combat, list(valid_batches),preserve_covariates=['tissue','treatment'])
+    #     combat_df_cov_2.to_csv(combat_path_cov_2)
+    #     print(f"Saved ComBat cov result → {combat_path_cov_2}")
     # ── Stage 3: Rank-in ──────────────────────────────────────────────────────
     if os.path.exists(rankin_path):
         print("Loading cached rankin.csv...")
