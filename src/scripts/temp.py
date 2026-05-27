@@ -112,6 +112,7 @@ if __name__ == "__main__":
         (os.path.join(FOLDER_A, "rankin.csv"), "Rankin Norm"),
         (os.path.join(FOLDER_A, "filter_norm.csv"), "Filter Norm"),
         (os.path.join(FOLDER_B, "combat_norm_cov.csv"), "ComBat Cov"),
+        (os.path.join(FOLDER_B, "combat_norm_cov_2.csv"), "ComBat Cov 2"),
         (os.path.join(FOLDER_A, "combat_norm.csv"), "ComBat Norm")
     ]
     
@@ -126,12 +127,12 @@ if __name__ == "__main__":
         # (os.path.join(FOLDER_B, "filter_old.csv"), "Filter OLD"),
     ]
 
-    # Process Group A
-    # summaries_a = [load_and_summarize(p, n) for p, n in group_a_files]
-    # summaries_a = [s for s in summaries_a if s is not None]
-    # plot_comparisons(summaries_a, "Folder_RNA_seq")
-
     # Process Group B
     summaries_b = [load_and_summarize(p, n) for p, n in group_b_files]
     summaries_b = [s for s in summaries_b if s is not None]
     plot_comparisons(summaries_b, "Folder_Microarray")
+
+    # Process Group A
+    summaries_a = [load_and_summarize(p, n) for p, n in group_a_files]
+    summaries_a = [s for s in summaries_a if s is not None]
+    plot_comparisons(summaries_a, "Folder_RNA_seq")
