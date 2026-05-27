@@ -127,9 +127,9 @@ if __name__ == "__main__":
     ]
 
     # Process Group A
-    summaries_a = [load_and_summarize(p, n) for p, n in group_a_files]
-    summaries_a = [s for s in summaries_a if s is not None]
-    plot_comparisons(summaries_a, "Folder_RNA_seq")
+    # summaries_a = [load_and_summarize(p, n) for p, n in group_a_files]
+    # summaries_a = [s for s in summaries_a if s is not None]
+    # plot_comparisons(summaries_a, "Folder_RNA_seq")
 
     # Process Group B
     summaries_b = [load_and_summarize(p, n) for p, n in group_b_files]
