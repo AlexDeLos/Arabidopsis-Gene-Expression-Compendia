@@ -310,7 +310,10 @@ def run_distance_evaluation(
     if RNA_USED:
         data_df.columns = [get_gsm_id(col.split('_')[1]) for col in data_df.columns]
     if RNA_USED:
-        sample_study_map.index = [get_gsm_id(ind.split('_')[1]) for ind in sample_study_map.index]
+        try:
+            sample_study_map.index = [get_gsm_id(ind.split('_')[1]) for ind in sample_study_map.index]
+        except IndexError:
+            pass
     results = compute_global_distance_metrics(
         expr_df=data_df,
         labels_map=labels_dict,
