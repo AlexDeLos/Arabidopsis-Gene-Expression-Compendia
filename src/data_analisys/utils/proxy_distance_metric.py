@@ -23,7 +23,8 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.metrics import pairwise_distances
 
-
+from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
+from src.constants import RNA_USED
 # ---------------------------------------------------------------------------
 # Label axis weights  (edit to reflect biological importance)
 # ---------------------------------------------------------------------------
@@ -306,7 +307,10 @@ def run_distance_evaluation(
     """
     if verbose:
         print(f"\n[DistMetrics] Running for stage: '{experiment_name}'")
-
+    if RNA_USED:
+        data_df.columns = [get_gsm_id(col.split('_')[1]) for col in data_df.columns]
+    if RNA_USED:
+        sample_study_map.index = [get_gsm_id(ind.split('_')[1]) for ind in sample_study_map.index]
     results = compute_global_distance_metrics(
         expr_df=data_df,
         labels_map=labels_dict,

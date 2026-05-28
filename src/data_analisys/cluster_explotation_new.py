@@ -967,7 +967,7 @@ if __name__ == "__main__":
                 labels_dict=labels_map,
                 sample_study_map=SAMPLE_STUDY_MAP,
                 experiment_name=file,
-                axis_weights=DEFAULT_AXIS_WEIGHTS
+                axis_weights=None #DEFAULT_AXIS_WEIGHTS
             )
             all_dist_metrics[file] = dist_metrics
             # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
