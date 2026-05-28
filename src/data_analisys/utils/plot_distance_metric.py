@@ -111,7 +111,6 @@ def plot_distance_metrics(
     fig.patch.set_facecolor("white")
 
     # ── Top panel: grouped bar chart ────────────────────────────────── #
-    ax_dist = axes[0]
     ax_dist.set_facecolor("#fafafa")
 
     bars_inter = ax_dist.bar(
