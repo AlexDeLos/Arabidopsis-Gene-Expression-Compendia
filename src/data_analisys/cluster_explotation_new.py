@@ -905,7 +905,15 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 # ==========================================
 # --- MAIN EXECUTION BLOCK ---
 # ==========================================
-
+DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
+    "tissue":              4.0,   # dominant transcriptional identity
+    "developmental_stage": 3.5,   # near-equal to tissue in effect size
+    "treatment":           2.5,   # large but conditional reprogramming
+    "ecotype":             2.0,   # real baseline differences, modest effect
+    "modification":        2.0,   # large when known, rarely annotated
+    "treatment_intensity": 1.5,   # modifier of treatment, not independent
+    "medium":              1.0,   # weak slow-acting confound
+}
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
     # # parser.add_argument("--ma", action="store_true", default=False)
@@ -959,6 +967,7 @@ if __name__ == "__main__":
                 labels_dict=labels_map,
                 sample_study_map=SAMPLE_STUDY_MAP,
                 experiment_name=file,
+                axis_weights=DEFAULT_AXIS_WEIGHTS
             )
             all_dist_metrics[file] = dist_metrics
             # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
