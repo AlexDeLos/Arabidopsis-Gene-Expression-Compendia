@@ -51,9 +51,10 @@ def plot_distance_metrics(
     experiment_name: str = "Distance_Metrics",
     show: bool = False,
     figsize: tuple[float, float] = (10, 8),
+    plot_ratio: bool = False,
 ) -> plt.Figure:
     """
-    Plot G_d_inter, G_d_intra, and Ratio_global for every evaluated stage.
+    Plot G_d_inter, G_d_intra, and optionally Ratio_global for every evaluated stage.
 
     Parameters
     ----------
@@ -68,6 +69,9 @@ def plot_distance_metrics(
         Call plt.show() after plotting.
     figsize : tuple
         Overall figure size in inches.
+    plot_ratio : bool
+        If True (default), include the Ratio_global panel below the distance
+        bars.  If False, only the distance bar chart is shown.
 
     Returns
     -------
@@ -92,13 +96,18 @@ def plot_distance_metrics(
     ratio_colors = [_COL_GOOD if r > 1 else _COL_BAD for r in ratio]
 
     # ------------------------------------------------------------------ #
-    # Layout: 2 rows — (distance bars | ratio bar) stacked vertically
+    # Layout: 1 or 2 rows depending on plot_ratio
     # ------------------------------------------------------------------ #
-    fig, axes = plt.subplots(
-        2, 1,
-        figsize=figsize,
-        gridspec_kw={"height_ratios": [3, 2]},
-    )
+    if plot_ratio:
+        fig, axes = plt.subplots(
+            2, 1,
+            figsize=figsize,
+            gridspec_kw={"height_ratios": [3, 2]},
+        )
+        ax_dist = axes[0]
+        ax_rat  = axes[1]
+    else:
+        fig, ax_dist = plt.subplots(1, 1, figsize=figsize)
     fig.patch.set_facecolor("white")
 
     # ── Top panel: grouped bar chart ────────────────────────────────── #
@@ -139,50 +148,50 @@ def plot_distance_metrics(
     ax_dist.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
 
     # ── Bottom panel: ratio bar chart ───────────────────────────────── #
-    ax_rat = axes[1]
-    ax_rat.set_facecolor("#fafafa")
+    if plot_ratio:
+        ax_rat.set_facecolor("#fafafa")
 
-    bars_ratio = ax_rat.bar(
-        x, ratio, width * 1.6,
-        color=[c + "bb" for c in ratio_colors],   # hex + alpha suffix
-        edgecolor=ratio_colors, linewidth=1.2,
-    )
+        bars_ratio = ax_rat.bar(
+            x, ratio, width * 1.6,
+            color=[c + "bb" for c in ratio_colors],   # hex + alpha suffix
+            edgecolor=ratio_colors, linewidth=1.2,
+        )
 
-    # reference line at 1.0
-    ax_rat.axhline(1.0, color=_COL_REF, linewidth=1.5, linestyle="--", zorder=3)
-    ax_rat.text(
-        len(stages) - 0.5, 1.0,
-        " ratio = 1.0",
-        va="bottom", ha="right", fontsize=8, color=_COL_REF,
-    )
+        # reference line at 1.0
+        ax_rat.axhline(1.0, color=_COL_REF, linewidth=1.5, linestyle="--", zorder=3)
+        ax_rat.text(
+            len(stages) - 0.5, 1.0,
+            " ratio = 1.0",
+            va="bottom", ha="right", fontsize=8, color=_COL_REF,
+        )
 
-    # value labels
-    for bar, r in zip(bars_ratio, ratio):
-        if np.isfinite(r):
-            ax_rat.text(
-                bar.get_x() + bar.get_width() / 2,
-                r + 0.01,
-                f"{r:.3f}",
-                ha="center", va="bottom", fontsize=9, fontweight="bold",
-                color=_COL_GOOD if r > 1 else _COL_BAD,
-            )
+        # value labels
+        for bar, r in zip(bars_ratio, ratio):
+            if np.isfinite(r):
+                ax_rat.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    r + 0.01,
+                    f"{r:.3f}",
+                    ha="center", va="bottom", fontsize=9, fontweight="bold",
+                    color=_COL_GOOD if r > 1 else _COL_BAD,
+                )
 
-    ax_rat.set_xticks(x)
-    ax_rat.set_xticklabels(stages, fontsize=10, rotation=15, ha="right")
-    ax_rat.set_ylabel("$\\mathrm{Ratio_{global}}$ = intra / inter", fontsize=10)
-    ax_rat.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
-    ax_rat.spines[["top", "right"]].set_visible(False)
-    ax_rat.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
+        ax_rat.set_xticks(x)
+        ax_rat.set_xticklabels(stages, fontsize=10, rotation=15, ha="right")
+        ax_rat.set_ylabel("$\\mathrm{Ratio_{global}}$ = intra / inter", fontsize=10)
+        ax_rat.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
+        ax_rat.spines[["top", "right"]].set_visible(False)
+        ax_rat.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
 
-    # coloured legend for pass/fail
-    from matplotlib.patches import Patch
-    ax_rat.legend(
-        handles=[
-            Patch(color=_COL_GOOD, alpha=0.7, label="Ratio > 1  ✓  biology > batch"),
-            Patch(color=_COL_BAD,  alpha=0.7, label="Ratio ≤ 1  ✗  batch dominates"),
-        ],
-        fontsize=8, framealpha=0.6, loc="upper left",
-    )
+        # coloured legend for pass/fail
+        from matplotlib.patches import Patch
+        ax_rat.legend(
+            handles=[
+                Patch(color=_COL_GOOD, alpha=0.7, label="Ratio > 1  ✓  biology > batch"),
+                Patch(color=_COL_BAD,  alpha=0.7, label="Ratio ≤ 1  ✗  batch dominates"),
+            ],
+            fontsize=8, framealpha=0.6, loc="upper left",
+        )
 
     plt.tight_layout(h_pad=2.5)
 
