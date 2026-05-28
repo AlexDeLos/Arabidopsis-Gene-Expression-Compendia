@@ -33,13 +33,16 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-# apptainer exec --nv \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python src/data_analisys/cluster_explotation_new.py
+echo "running MA"
+apptainer exec --nv \
+    --bind "$BIG_STORAGE":"$BIG_STORAGE" \
+    --bind "$REPO_DIR":/repo \
+    --pwd /repo \
+    "$SIF" \
+    python src/data_analisys/cluster_explotation_new.py
 
+
+echo "running RNA"
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
