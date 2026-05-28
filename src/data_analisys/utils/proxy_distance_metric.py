@@ -129,6 +129,32 @@ def _pca_distances(
     dist_matrix = pairwise_distances(coords, metric="euclidean")
     return dist_matrix, samples
 
+def compute_mean_pairwise_distance(dist_matrix: np.ndarray) -> float:
+    """
+    Compute the global mean pairwise distance Dist_bar(S).
+ 
+        Dist_bar(S) = 2 / (|S| * (|S| - 1))  *  sum_{j < k} Dist(x_j, x_k)
+ 
+    This is simply the mean of the upper triangle of the full distance matrix,
+    which is equivalent to the closed-form expression above.
+ 
+    Parameters
+    ----------
+    dist_matrix : np.ndarray
+        Square (n x n) pairwise distance matrix.
+ 
+    Returns
+    -------
+    float — mean pairwise distance across all distinct sample pairs.
+    """
+    n = dist_matrix.shape[0]
+    if n < 2:
+        warnings.warn("Cannot compute mean pairwise distance with fewer than 2 samples.")
+        return float("nan")
+ 
+    upper_tri = dist_matrix[np.triu_indices(n, k=1)]   # j < k pairs only
+    return float(upper_tri.mean())
+
 
 # ---------------------------------------------------------------------------
 # Main metric function
@@ -145,8 +171,12 @@ def compute_global_distance_metrics(
     verbose: bool = True,
 ) -> Dict[str, float]:
     """
-    Compute G_d_inter, G_d_intra, and Ratio_global.
-
+    Compute Dist_bar(S), G_d_inter, G_d_intra, and Ratio_global.
+ 
+    Both G_d_inter and G_d_intra are normalised by Dist_bar(S) — the mean
+    pairwise distance across all distinct sample pairs — making them
+    scale-invariant and comparable across different expression matrices.
+ 
     Parameters
     ----------
     expr_df : pd.DataFrame
@@ -169,68 +199,80 @@ def compute_global_distance_metrics(
         averages.  Default 0.0 keeps all pairs (matches the paper formula).
     verbose : bool
         Print progress info.
-
+ 
     Returns
     -------
     dict with keys:
-        "G_d_inter"      — global inter-study weighted distance
-        "G_d_intra"      — global intra-study weighted distance
+        "Dist_bar"       — global mean pairwise distance (normalisation factor)
+        "G_d_inter"      — global normalised inter-study weighted distance
+        "G_d_intra"      — global normalised intra-study weighted distance
         "Ratio_global"   — G_d_intra / G_d_inter
     """
     if axis_weights is None:
         axis_weights = DEFAULT_AXIS_WEIGHTS
-
+ 
     samples = list(expr_df.columns)
     n = len(samples)
-
+ 
     if verbose:
         print(f"[DistMetrics] {n} samples | PCA dims: {n_pca_components}")
-
+ 
     # --- 1. Distance matrix in PCA space -----------------------------------
     dist_matrix, ordered_samples = _pca_distances(
         expr_df, n_pca_components, precomputed_pca
     )
     idx = {s: i for i, s in enumerate(ordered_samples)}
-
-    # --- 2. Label and study look-ups ----------------------------------------
+ 
+    # --- 2. Global normalisation factor  Dist_bar(S) -----------------------
+    dist_bar = compute_mean_pairwise_distance(dist_matrix)
+    if verbose:
+        print(f"  Dist_bar(S)  = {dist_bar:.6f}  (mean of {n*(n-1)//2} pairwise distances)")
+ 
+    if not np.isfinite(dist_bar) or dist_bar == 0.0:
+        warnings.warn("Dist_bar(S) is zero or undefined — normalisation skipped.")
+        norm = 1.0
+    else:
+        norm = dist_bar
+ 
+    # --- 3. Label and study look-ups ----------------------------------------
     label_lookup = _build_label_lookup(labels_map, ordered_samples)
-
+ 
     def get_study(sample: str) -> str:
         if sample in study_map.index:
             return str(study_map.at[sample, "StudyID"])
         return "Unknown_Study"
-
+ 
     study_lookup = {s: get_study(s) for s in ordered_samples}
-
-    # --- 3. Per-sample accumulation -----------------------------------------
+ 
+    # --- 4. Per-sample accumulation -----------------------------------------
     inter_contributions = []
     intra_contributions = []
-
+ 
     for s in ordered_samples:
         s_idx = idx[s]
         s_study = study_lookup[s]
         s_labels = label_lookup[s]
-
+ 
         inter_weighted_dist = 0.0
         inter_count = 0
         intra_weighted_dist = 0.0
         intra_count = 0
-
+ 
         for xi in ordered_samples:
             if xi == s:
                 continue
-
+ 
             xi_study = study_lookup[xi]
             xi_labels = label_lookup[xi]
-
+ 
             similarity = compute_sim(s_labels, xi_labels, axis_weights)
-
+ 
             if similarity < sim_threshold:
                 continue
-
+ 
             distance = dist_matrix[s_idx, idx[xi]]
             weighted = distance * similarity
-
+ 
             if xi_study != s_study:
                 # Inter-study pool  X_inter(s)
                 inter_weighted_dist += weighted
@@ -239,39 +281,45 @@ def compute_global_distance_metrics(
                 # Intra-study pool  X_intra(s)
                 intra_weighted_dist += weighted
                 intra_count += 1
-
+ 
         if inter_count > 0:
             inter_contributions.append(inter_weighted_dist / inter_count)
-        # else: sample has no inter-study comparisons; skip from global mean
-
+ 
         if intra_count > 0:
             intra_contributions.append(intra_weighted_dist / intra_count)
-
-    # --- 4. Global means ----------------------------------------------------
+ 
+    # --- 5. Global means, divided by Dist_bar(S) ----------------------------
+    #
+    #   The formula divides the outer sum by  |S| * Dist_bar(S).
+    #   np.mean() handles the 1/|S| part; we then divide by norm = Dist_bar(S).
+    #
     if not inter_contributions:
         warnings.warn("No inter-study pairs found — G_d_inter is undefined.")
         G_inter = float("nan")
     else:
-        G_inter = float(np.mean(inter_contributions))
-
+        G_inter = float(np.mean(inter_contributions)) / norm
+ 
     if not intra_contributions:
         warnings.warn("No intra-study pairs found — G_d_intra is undefined.")
         G_intra = float("nan")
     else:
-        G_intra = float(np.mean(intra_contributions))
-
-    ratio = G_intra / G_inter if (G_inter and G_inter > 0) else float("nan")
-
+        G_intra = float(np.mean(intra_contributions)) / norm
+ 
+    ratio = G_intra / G_inter if (np.isfinite(G_inter) and G_inter > 0) else float("nan")
+ 
     if verbose:
         print(f"  G_d_inter    = {G_inter:.6f}  (n_samples contributing: {len(inter_contributions)})")
         print(f"  G_d_intra    = {G_intra:.6f}  (n_samples contributing: {len(intra_contributions)})")
-        print(f"  Ratio_global = {ratio:.4f}  ({'✓ inter < intra → good integration' if ratio > 1 else '✗ intra < inter → batch effect dominates'})")
-
+        print(f"  Ratio_global = {ratio:.4f}  ({'✓ biology > batch' if ratio > 1 else '✗ batch dominates'})")
+ 
     return {
-        "G_d_inter": G_inter,
-        "G_d_intra": G_intra,
+        "Dist_bar":    dist_bar,
+        "G_d_inter":   G_inter,
+        "G_d_intra":   G_intra,
         "Ratio_global": ratio,
     }
+
+
 
 
 # ---------------------------------------------------------------------------
