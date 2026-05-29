@@ -905,14 +905,23 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 # ==========================================
 # --- MAIN EXECUTION BLOCK ---
 # ==========================================
+# DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
+#     "tissue":              4.0,   # dominant transcriptional identity
+#     "developmental_stage": 3.0,   # near-equal to tissue in effect size
+#     "treatment":           2.5,   # large but conditional reprogramming
+#     "ecotype":             1.5,   # real baseline differences, modest effect
+#     "modification":        0.0,   # large when known, rarely annotated
+#     "treatment_intensity": 0.0,   # modifier of treatment, not independent
+#     "medium":              2.5,   # weak slow-acting confound
+# }
 DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
     "tissue":              4.0,   # dominant transcriptional identity
-    "developmental_stage": 3.0,   # near-equal to tissue in effect size
-    "treatment":           2.5,   # large but conditional reprogramming
-    "ecotype":             1.5,   # real baseline differences, modest effect
+    "developmental_stage": 2.0,   # near-equal to tissue in effect size
+    "treatment":           3,   # large but conditional reprogramming
+    "ecotype":             0,   # real baseline differences, modest effect
     "modification":        0.0,   # large when known, rarely annotated
     "treatment_intensity": 0.0,   # modifier of treatment, not independent
-    "medium":              2.5,   # weak slow-acting confound
+    "medium":              0,   # weak slow-acting confound
 }
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
@@ -991,7 +1000,7 @@ if __name__ == "__main__":
         plot_distance_metrics(
             all_dist_metrics=all_dist_metrics,
             output_folder=comparison_output_dir,
-            experiment_name="Distance_Metrics_Comparison_weighted",
+            experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
         )
 
         # print("\nGenerating Metric Comparisons (gene expression space)...")
