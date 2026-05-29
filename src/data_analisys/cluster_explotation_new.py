@@ -907,19 +907,19 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 # ==========================================
 DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
     "tissue":              4.0,   # dominant transcriptional identity
-    "developmental_stage": 3.5,   # near-equal to tissue in effect size
+    "developmental_stage": 3.0,   # near-equal to tissue in effect size
     "treatment":           2.5,   # large but conditional reprogramming
-    "ecotype":             2.0,   # real baseline differences, modest effect
-    "modification":        2.0,   # large when known, rarely annotated
-    "treatment_intensity": 1.5,   # modifier of treatment, not independent
-    "medium":              1.0,   # weak slow-acting confound
+    "ecotype":             1.5,   # real baseline differences, modest effect
+    "modification":        0.0,   # large when known, rarely annotated
+    "treatment_intensity": 0.0,   # modifier of treatment, not independent
+    "medium":              2.5,   # weak slow-acting confound
 }
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
     # # parser.add_argument("--ma", action="store_true", default=False)
     # parser.add_argument("--rna", action="store_true", default=False)
     # args = parser.parse_args()
-    N_SAMPLES = None
+    N_SAMPLES = 100 #None
     all_metrics = {}
     all_bulk_metrics = {}
     all_umaps = {}
@@ -961,13 +961,13 @@ if __name__ == "__main__":
                     count_filled += 1
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
-            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_test_for_weighted_distances/{file}"
+            output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
             dist_metrics = run_distance_evaluation(
                 data_df=df,
                 labels_dict=labels_map,
                 sample_study_map=SAMPLE_STUDY_MAP,
                 experiment_name=file,
-                axis_weights=None #DEFAULT_AXIS_WEIGHTS
+                axis_weights=DEFAULT_AXIS_WEIGHTS
             )
             all_dist_metrics[file] = dist_metrics
             # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
@@ -991,7 +991,7 @@ if __name__ == "__main__":
         plot_distance_metrics(
             all_dist_metrics=all_dist_metrics,
             output_folder=comparison_output_dir,
-            experiment_name="Distance_Metrics_Comparison",
+            experiment_name="Distance_Metrics_Comparison_weighted",
         )
 
         # print("\nGenerating Metric Comparisons (gene expression space)...")
