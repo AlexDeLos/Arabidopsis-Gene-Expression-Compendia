@@ -5,7 +5,7 @@
 #SBATCH --qos=short
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
-#SBATCH --array=113
+#SBATCH --array=1130
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
@@ -132,7 +132,6 @@ apptainer exec \
     --bind /etc/auks:/etc/auks \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
-    --bind /var/run/munge:/var/run/munge \
     $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
