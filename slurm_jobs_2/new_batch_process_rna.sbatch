@@ -136,13 +136,13 @@ apptainer exec \
     $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
-    --bind "$TMP/bin/nextflow":/usr/local/bin/nextflow \
-    --bind "$TMP/java":"$TMP/java" \
+    --bind "$HOME/bin/nextflow":/usr/local/bin/nextflow \
+    --bind "$HOME/java":"$HOME/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
-    --env JAVA_HOME="$TMP/java" \
+    --env JAVA_HOME="$HOME/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
     --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
@@ -152,7 +152,7 @@ apptainer exec \
     --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
-    --env PATH="$TMP/java/bin:/usr/local/bin:/usr/bin:/bin" \
+    --env PATH="$HOME/java/bin:/usr/local/bin:/usr/bin:/bin" \
     --env SLURM_ACCOUNT="ewi-insy-prb" \
     --pwd /repo \
     "$SIF" \
