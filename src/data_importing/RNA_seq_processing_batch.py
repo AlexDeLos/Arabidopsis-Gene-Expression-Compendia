@@ -408,8 +408,8 @@ class RNASeq_processor:
             self.profile,
             "-c",
             config_path,
-            "-with-dag",
-            f"{batch_out_dir}/flow_diagram.svg",
+            # "-with-dag",
+            # f"{batch_out_dir}/flow_diagram.svg",
             "-revision",
             "3.14.0",  # New version might be worth use
             "-ansi-log",
