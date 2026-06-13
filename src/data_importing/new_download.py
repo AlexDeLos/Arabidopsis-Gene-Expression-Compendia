@@ -138,7 +138,7 @@ if __name__ == "__main__":
             # --- PARALLEL BATCH MODE ---
             # Logic: Array Index 0 processes IDs 0-4, Index 1 processes 5-9, etc.
 
-            start_idx: int = int(args.array_index) * BATCH_SIZE
+            start_idx: int = int(args.array_index + 1130) * BATCH_SIZE #TODO cahnge the offset to something automatic
             end_idx: int = start_idx + BATCH_SIZE
 
             # Use rnaseq_ids (from file) or query_ids (from search) depending on your goal
