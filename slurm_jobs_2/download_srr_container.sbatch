@@ -12,8 +12,8 @@ cd /tudelft.net/staff-umbrella/GeneExpressionStorage || exit 1
 # ══════════════════════════════════════════════════
 #  START LOGGING
 # ══════════════════════════════════════════════════
-BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="$BIG_STORAGE/dataset_fusion.sif"
+# BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
+SIF="/tudelft.net/staff-umbrella/GeneExpressionStorage/dataset_fusion.sif"
 
 SRR_LIST=$1
 OUT_DIR=$2
@@ -70,7 +70,7 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
         --env HOME="$FASTQ_TMP" \
         "$SIF" \
     trickle -d 102400 fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
-    
+
     FILE_COUNT=$(ls "$OUT_DIR"/"$SRR"*.gz 2>/dev/null | wc -l)
 
     if [ "$FILE_COUNT" -gt 0 ]; then

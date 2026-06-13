@@ -202,7 +202,7 @@ class RNASeq_processor:
         cmd = [
             "sbatch",
             "--wait",  # Blocks the python script until the downloads finish
-            f"--array=1-{len(srrs_to_download)}%10",
+            f"--array=1-{len(srrs_to_download)}%4",
             f"--output={logs_folder}/fastq_dump_%A_%a.out",
             f"--error={logs_folder}/fastq_dump_%A_%a.err",
             sbatch_script,
