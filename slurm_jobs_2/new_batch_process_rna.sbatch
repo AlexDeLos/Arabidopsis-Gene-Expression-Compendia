@@ -62,7 +62,7 @@ sort -u "$MY_GROUP" -o "$MY_GROUP"
 # ══════════════════════════════════════════════════
 #  CREATE WRAPPER TO BYPASS NFS CHMOD BUG
 # ══════════════════════════════════════════════════
-FAKE_BIN="$BIG_STORAGE/fake_bin_$SLURM_JOB_ID"
+FAKE_BIN="$TMP/fake_bin_$SLURM_JOB_ID"
 mkdir -p "$FAKE_BIN"
 
 cat << 'EOF' > "$FAKE_BIN/singularity"
@@ -136,13 +136,13 @@ apptainer exec \
     $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
-    --bind "$BIG_STORAGE/bin/nextflow":/usr/local/bin/nextflow \
-    --bind "$BIG_STORAGE/java":"$BIG_STORAGE/java" \
+    --bind "$TMP/bin/nextflow":/usr/local/bin/nextflow \
+    --bind "$TMP/java":"$TMP/java" \
     --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
-    --env JAVA_HOME="$BIG_STORAGE/java" \
+    --env JAVA_HOME="$TMP/java" \
     --env NXF_HOME="$NXF_HOME" \
     --env NXF_WORK="$NXF_WORK" \
     --env NXF_SINGULARITY_CACHEDIR="$NXF_SINGULARITY_CACHEDIR" \
@@ -152,7 +152,7 @@ apptainer exec \
     --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
-    --env PATH="$BIG_STORAGE/java/bin:/usr/local/bin:/usr/bin:/bin" \
+    --env PATH="$TMP/java/bin:/usr/local/bin:/usr/bin:/bin" \
     --env SLURM_ACCOUNT="ewi-insy-prb" \
     --pwd /repo \
     "$SIF" \
