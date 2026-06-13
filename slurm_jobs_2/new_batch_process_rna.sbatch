@@ -5,14 +5,16 @@
 #SBATCH --qos=long
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
-#SBATCH --array=113-149%10
+#SBATCH --array=113-149%1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
 #  PATHS
 # ══════════════════════════════════════════════════
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="$BIG_STORAGE/dataset_fusion.sif"
+HOME="/home/nfs/alexdelossanto/"
+TMP="/tmp"
+SIF="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/dataset_fusion.sif"
 
 echo "=================================================="
 echo "Job ID:          $SLURM_JOB_ID"
@@ -25,15 +27,15 @@ echo "=================================================="
 # ══════════════════════════════════════════════════
 #  NEXTFLOW + JAVA CONFIGURATION
 # ══════════════════════════════════════════════════
-export JAVA_HOME="$BIG_STORAGE/java"
-export NXF_HOME="$BIG_STORAGE/.nextflow"
-export NXF_WORK="$BIG_STORAGE/work/${SLURM_ARRAY_TASK_ID}"
+export JAVA_HOME="$HOME/java"
+export NXF_HOME="$HOME/.nextflow"
+export NXF_WORK="$TMP/work/${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
 #  SINGULARITY CACHES (RAM DISK + BIG STORAGE)
 # ══════════════════════════════════════════════════
-export NXF_SINGULARITY_CACHEDIR="$BIG_STORAGE/singularity_cache"
+export NXF_SINGULARITY_CACHEDIR="$TMP/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 export APPTAINER_TMPDIR="/dev/shm/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
@@ -45,8 +47,8 @@ mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
 # ══════════════════════════════════════════════════
-MY_PASSWD="$BIG_STORAGE/tmp_passwd_$SLURM_JOB_ID"
-MY_GROUP="$BIG_STORAGE/tmp_group_$SLURM_JOB_ID"
+MY_PASSWD="$TMP/tmp_passwd_$SLURM_JOB_ID"
+MY_GROUP="$TMP/tmp_group_$SLURM_JOB_ID"
 
 cat /etc/passwd > "$MY_PASSWD"
 getent passwd $(whoami) >> "$MY_PASSWD"
@@ -157,7 +159,7 @@ apptainer exec \
     python3 -u /repo/src/data_importing/new_download.py \
         -o "$BIG_STORAGE/" \
         --array_index "$SLURM_ARRAY_TASK_ID" \
-        --batch_size 10 --rna --container --old
+        --batch_size 1 --rna --container --old
 
 # ══════════════════════════════════════════════════
 #  CLEANUP

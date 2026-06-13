@@ -202,7 +202,7 @@ class RNASeq_processor:
         cmd = [
             "sbatch",
             "--wait",  # Blocks the python script until the downloads finish
-            f"--array=1-{len(srrs_to_download)}",
+            f"--array=1-{len(srrs_to_download)}%10",
             f"--output={logs_folder}/fastq_dump_%A_%a.out",
             f"--error={logs_folder}/fastq_dump_%A_%a.err",
             sbatch_script,
@@ -224,20 +224,38 @@ class RNASeq_processor:
             existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith(".gz")]
 
             valid_gz = []
+
+            SBATCH = "/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/slurm_jobs_2/check_fastq.sbatch"
+            RESULT_DIR = os.path.join(output_folder, ".integrity_checks")
+            os.makedirs(RESULT_DIR, exist_ok=True)
+
+            # Submit one job per gz file
             for gz_file in existing_gz:
                 gz_path = os.path.join(output_folder, gz_file)
+                result_file = os.path.join(RESULT_DIR, gz_file + ".result")
+                # Clean up any previous result
+                if os.path.exists(result_file):
+                    os.remove(result_file)
+                proc = subprocess.run(
+                    ["sbatch", "--wait", SBATCH, gz_path, result_file],
+                    capture_output=True, text=True
+                )
+                if proc.returncode != 0:
+                    print(f"    [!] Failed to submit check job for {gz_file}: {proc.stderr}")
+
+            # Read results
+            for gz_file in existing_gz:
+                gz_path = os.path.join(output_folder, gz_file)
+                result_file = os.path.join(RESULT_DIR, gz_file + ".result")
                 try:
-                    # Two-stage check: header test + partial decompression
-                    subprocess.run(["gzip", "-t", "-q", gz_path], check=True, stderr=subprocess.PIPE)
-                    # Also verify actual content is readable (catches truncated-but-valid-header files)
-                    result = subprocess.run(  # noqa: PLW1510
-                        ["bash", "-c", f'zcat "{gz_path}" | head -4 | wc -l'], capture_output=True, text=True, timeout=60
-                    )
-                    if result.returncode != 0 or int(result.stdout.strip()) < 4:
-                        raise subprocess.CalledProcessError(1, "zcat")
-                    valid_gz.append(gz_file)
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-                    print(f"    [!] CORRUPTION DETECTED: {gz_file} fails decompression check. Deleting.")
+                    result = open(result_file).read().strip()
+                    if result == "OK":
+                        valid_gz.append(gz_file)
+                    else:
+                        print(f"    [!] CORRUPTION DETECTED: {gz_file} fails decompression check. Deleting.")
+                        os.remove(gz_path)
+                except FileNotFoundError:
+                    print(f"    [!] No result file for {gz_file} — treating as corrupt.")
                     os.remove(gz_path)
 
             if not valid_gz:
@@ -328,7 +346,7 @@ class RNASeq_processor:
         if old:
             config_path = os.path.join(project_root, ".new_nextflow.config")
         else:
-            config_path = os.path.join(project_root, ".nextflow.config")
+            config_path = os.path.join(project_root, ".new_nextflow.config")
         print(f"using config: {config_path}")
         # Unique log file inside batch_out_dir — safe across concurrent array jobs
         batch_name = os.path.basename(batch_out_dir)

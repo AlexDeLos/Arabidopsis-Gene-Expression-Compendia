@@ -69,8 +69,8 @@ while [ $ATTEMPT -lt $MAX_RETRIES ]; do
         --env TMPDIR="$FASTQ_TMP" \
         --env HOME="$FASTQ_TMP" \
         "$SIF" \
-        fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
-
+    trickle -d 102400 fastq-dump --gzip --split-files --outdir "$OUT_DIR" "$SRR"
+    
     FILE_COUNT=$(ls "$OUT_DIR"/"$SRR"*.gz 2>/dev/null | wc -l)
 
     if [ "$FILE_COUNT" -gt 0 ]; then
