@@ -5,7 +5,7 @@
 #SBATCH --qos=short
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
-#SBATCH --array=113-149%1
+#SBATCH --array=113
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
