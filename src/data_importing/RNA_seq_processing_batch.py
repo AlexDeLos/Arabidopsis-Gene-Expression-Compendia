@@ -759,18 +759,18 @@ def download_experiments_RNA_seq_nf_core(
         "col-0": {
             "fasta": f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
             "gtf": f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
-            "salmon_index": f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
+            "salmon_index": "/home/nfs/alexdelossanto/salmon_index",
         },
         "ler": {
             "fasta": f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
             "gtf": f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
-            "salmon_index": f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
+            "salmon_index": "/home/nfs/alexdelossanto/salmon_index",
         },
         # Default fallback
         "unknown": {
             "fasta": f"{root_storage_dir}files_for_rna_seq/tair12/tair12.fasta.gz",
             "gtf": f"{root_storage_dir}files_for_rna_seq/tair12/tair12_annotation.gff.gz",
-            "salmon_index": f"{root_storage_dir}files_for_rna_seq/tair12/salmon_index",
+            "salmon_index": "/home/nfs/alexdelossanto/salmon_index",
         },
     }
     processor = RNASeq_processor(threads=4, genome_index=PATH_TO_INDEX, gtf_annotation=PATH_TO_GTF, profile="singularity,slurm")
