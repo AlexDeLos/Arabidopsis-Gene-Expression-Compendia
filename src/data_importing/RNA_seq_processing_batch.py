@@ -149,21 +149,21 @@ class RNASeq_processor:
             print("CRITICAL WARNING: sra_map is empty. get_srr_ids failed to find runs.")
             return
         # Pre-validate any existing files and delete corrupt ones
-        print(f"Pre-validating existing files in {output_folder}...")
-        for fname in list(os.listdir(output_folder)):
-            if not fname.endswith(".gz"):
-                continue
-            gz_path = os.path.join(output_folder, fname)
-            try:
-                subprocess.run(["gzip", "-t", "-q", gz_path], check=True, stderr=subprocess.PIPE)
-                result = subprocess.run(  # noqa: PLW1510
-                    ["bash", "-c", f'zcat "{gz_path}" | head -4 | wc -l'], capture_output=True, text=True, timeout=60
-                )
-                if result.returncode != 0 or int(result.stdout.strip()) < 4:
-                    raise subprocess.CalledProcessError(1, "zcat")
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-                print(f"    [!] PRE-SCAN: {fname} is corrupt. Deleting.")
-                os.remove(gz_path)
+        # print(f"Pre-validating existing files in {output_folder}...")
+        # for fname in list(os.listdir(output_folder)):
+        #     if not fname.endswith(".gz"):
+        #         continue
+        #     gz_path = os.path.join(output_folder, fname)
+        #     try:
+        #         subprocess.run(["gzip", "-t", "-q", gz_path], check=True, stderr=subprocess.PIPE)
+        #         result = subprocess.run(  # noqa: PLW1510
+        #             ["bash", "-c", f'zcat "{gz_path}" | head -4 | wc -l'], capture_output=True, text=True, timeout=60
+        #         )
+        #         if result.returncode != 0 or int(result.stdout.strip()) < 4:
+        #             raise subprocess.CalledProcessError(1, "zcat")
+        #     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
+        #         print(f"    [!] PRE-SCAN: {fname} is corrupt. Deleting.")
+        #         os.remove(gz_path)
 
         # 1. Collect all SRRs that need downloading
         srrs_to_download = []
@@ -279,30 +279,30 @@ class RNASeq_processor:
     # ------------------------------------------------------------------
 
 
-    def _get_missing_or_corrupt_srrs(self, srrs: list, output_folder: str) -> list:
-        """
-        For each SRR, verify that at least one valid (non-corrupt) gz file
-        exists.  Corrupt files are deleted so they can be re-downloaded.
-        Returns the list of SRRs that still need downloading.
-        """
-        still_needed = []
-        for srr in srrs:
-            existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith(".gz")]
+    # def _get_missing_or_corrupt_srrs(self, srrs: list, output_folder: str) -> list:
+    #     """
+    #     For each SRR, verify that at least one valid (non-corrupt) gz file
+    #     exists.  Corrupt files are deleted so they can be re-downloaded.
+    #     Returns the list of SRRs that still need downloading.
+    #     """
+    #     still_needed = []
+    #     for srr in srrs:
+    #         existing_gz = [f for f in os.listdir(output_folder) if f.startswith(srr) and f.endswith(".gz")]
 
-            valid_gz = []
-            for gz_file in existing_gz:
-                gz_path = os.path.join(output_folder, gz_file)
-                try:
-                    subprocess.run(["gzip", "-t", "-q", gz_path], check=True, stderr=subprocess.PIPE)
-                    valid_gz.append(gz_file)
-                except subprocess.CalledProcessError:
-                    print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting.")
-                    os.remove(gz_path)
+    #         valid_gz = []
+    #         for gz_file in existing_gz:
+    #             gz_path = os.path.join(output_folder, gz_file)
+    #             try:
+    #                 subprocess.run(["gzip", "-t", "-q", gz_path], check=True, stderr=subprocess.PIPE)
+    #                 valid_gz.append(gz_file)
+    #             except subprocess.CalledProcessError:
+    #                 print(f"    [!] CORRUPTION DETECTED: {gz_file} is incomplete/corrupted. Deleting.")
+    #                 os.remove(gz_path)
 
-            if not valid_gz:
-                still_needed.append(srr)
+    #         if not valid_gz:
+    #             still_needed.append(srr)
 
-        return still_needed
+    #     return still_needed
 
     def get_samplesheet_rows(self, gse_id, fastq_folder):
         """
