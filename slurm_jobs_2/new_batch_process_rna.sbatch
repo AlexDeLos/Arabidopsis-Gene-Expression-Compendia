@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
-#SBATCH --time=4:00:00
-#SBATCH --qos=short
+#SBATCH --time=10:00:00
+#SBATCH --qos=medium
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
 #SBATCH --nodelist=cor1
-#SBATCH --array=1-5%1
+#SBATCH --array=2,4%1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ══════════════════════════════════════════════════
@@ -36,7 +36,7 @@ mkdir -p "$NXF_WORK"
 # ══════════════════════════════════════════════════
 #  SINGULARITY CACHES (RAM DISK + BIG STORAGE)
 # ══════════════════════════════════════════════════
-export NXF_SINGULARITY_CACHEDIR="$TMP/singularity_cache"
+export NXF_SINGULARITY_CACHEDIR="$HOME/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 export APPTAINER_TMPDIR="/dev/shm/apptainer_tmp_${USER}_${SLURM_JOB_ID}"

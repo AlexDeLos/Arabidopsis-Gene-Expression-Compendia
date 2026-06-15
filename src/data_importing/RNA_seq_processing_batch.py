@@ -403,7 +403,7 @@ class RNASeq_processor:
             log_path,  # <-- explicit log file, isolated per batch
             "run",
             "nf-core/rnaseq",
-            "-resume",
+            # "-resume",
             "-profile",
             self.profile,
             "-c",

@@ -56,7 +56,8 @@ unset SINGULARITY_CACHEDIR
 #  Avoids /tmp exhaustion on compute nodes for
 #  large SRR files
 # ══════════════════════════════════════════════════
-FASTQ_TMP="$OUT_DIR/tmp_${SRR}"
+# FASTQ_TMP="$OUT_DIR/tmp_${SRR}"
+FASTQ_TMP="/tmp/fastqdump_${SRR}_${SLURM_JOB_ID}"
 mkdir -p "$FASTQ_TMP"
 
 while [ $ATTEMPT -lt $MAX_RETRIES ]; do
