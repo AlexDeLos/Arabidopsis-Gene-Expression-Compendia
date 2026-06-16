@@ -32,9 +32,9 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 _COL_INTER  = "#378ADD"   # blue  — inter-study
 _COL_INTRA  = "#1D9E75"   # teal  — intra-study
-_COL_GOOD   = "#1D9E75"   # green — ratio > 1
-_COL_BAD    = "#E24B4A"   # red   — ratio ≤ 1
-_COL_REF    = "#BA7517"   # amber — ratio = 1 reference line
+_COL_GOOD   = "#1D9E75"   # green — positive separation
+_COL_BAD    = "#E24B4A"   # red   — negative separation
+_COL_REF    = "#BA7517"   # amber — zero reference
 _ALPHA      = 0.75
 
 
@@ -50,7 +50,7 @@ def plot_distance_metrics(
     output_folder: str | None = None,
     experiment_name: str = "Distance_Metrics",
     show: bool = False,
-    figsize: tuple[float, float] = (10, 8),
+    figsize: tuple[float, float] = (12, 10),
     plot_ratio: bool = False,
 ) -> plt.Figure:
     """
@@ -77,6 +77,14 @@ def plot_distance_metrics(
     -------
     matplotlib.figure.Figure
     """
+    plt.rcParams.update({
+    "font.size": 14,
+    "axes.titlesize": 18,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 13,
+    })
     if not all_dist_metrics:
         raise ValueError("all_dist_metrics is empty.")
 
@@ -88,12 +96,11 @@ def plot_distance_metrics(
 
     inter  = np.array([r["G_d_inter"]    for r in rows], dtype=float)
     intra  = np.array([r["G_d_intra"]    for r in rows], dtype=float)
-    ratio  = np.array([r["Ratio_global"] for r in rows], dtype=float)
-
+    sep = np.array([r["SeparationScore"] for r in rows], dtype=float)
     x      = np.arange(len(stages))
     width  = 0.35
 
-    ratio_colors = [_COL_GOOD if r > 1 else _COL_BAD for r in ratio]
+    sep_colors = [_COL_GOOD if s > 0 else _COL_BAD for s in sep]
 
     # ------------------------------------------------------------------ #
     # Layout: 1 or 2 rows depending on plot_ratio
@@ -149,35 +156,41 @@ def plot_distance_metrics(
     # ── Bottom panel: ratio bar chart ───────────────────────────────── #
     if plot_ratio:
         ax_rat.set_facecolor("#fafafa")
-
+        ax_rat.set_ylim(-1.1, 1.1)
         bars_ratio = ax_rat.bar(
-            x, ratio, width * 1.6,
-            color=[c + "bb" for c in ratio_colors],   # hex + alpha suffix
-            edgecolor=ratio_colors, linewidth=1.2,
+            x, sep, width * 1.6,
+            color=[c + "bb" for c in sep_colors],
+            edgecolor=sep_colors, linewidth=1.2,
         )
 
         # reference line at 1.0
-        ax_rat.axhline(1.0, color=_COL_REF, linewidth=1.5, linestyle="--", zorder=3)
+        ax_rat.axhline(
+            0.0,
+            color=_COL_REF,
+            linewidth=1.5,
+            linestyle="--",
+            zorder=3,
+        )
         ax_rat.text(
-            len(stages) - 0.5, 1.0,
-            " ratio = 1.0",
+            len(stages) - 0.5, 0.0,
+            " separation = 0",
             va="bottom", ha="right", fontsize=8, color=_COL_REF,
         )
 
         # value labels
-        for bar, r in zip(bars_ratio, ratio):
-            if np.isfinite(r):
+        for bar, s in zip(bars_ratio, sep):
+            if np.isfinite(s):
                 ax_rat.text(
                     bar.get_x() + bar.get_width() / 2,
-                    r + 0.01,
-                    f"{r:.3f}",
+                    s + 0.01 * np.sign(s if s != 0 else 1),
+                    f"{s:.3f}",
+                    color=_COL_GOOD if s > 0 else _COL_BAD,
                     ha="center", va="bottom", fontsize=9, fontweight="bold",
-                    color=_COL_GOOD if r > 1 else _COL_BAD,
                 )
 
         ax_rat.set_xticks(x)
         ax_rat.set_xticklabels(stages, fontsize=10, rotation=15, ha="right")
-        ax_rat.set_ylabel("$\\mathrm{Ratio_{global}}$ = intra / inter", fontsize=10)
+        ax_rat.set_ylabel("Separation score", fontsize=16)
         ax_rat.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
         ax_rat.spines[["top", "right"]].set_visible(False)
         ax_rat.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
@@ -186,8 +199,11 @@ def plot_distance_metrics(
         from matplotlib.patches import Patch
         ax_rat.legend(
             handles=[
-                Patch(color=_COL_GOOD, alpha=0.7, label="Ratio > 1  ✓  biology > batch"),
-                Patch(color=_COL_BAD,  alpha=0.7, label="Ratio ≤ 1  ✗  batch dominates"),
+                Patch(color=_COL_GOOD, alpha=0.7,
+                    label="Positive separation (desired)"),
+
+                Patch(color=_COL_BAD, alpha=0.7,
+                    label="Negative separation"),
             ],
             fontsize=8, framealpha=0.6, loc="upper left",
         )
@@ -198,7 +214,7 @@ def plot_distance_metrics(
     if output_folder is not None:
         os.makedirs(output_folder, exist_ok=True)
         out_path = os.path.join(output_folder, f"{experiment_name}.png")
-        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+        fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"[DistMetrics] Figure saved → {out_path}")
 
     if show:

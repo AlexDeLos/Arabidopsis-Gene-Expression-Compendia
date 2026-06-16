@@ -30,7 +30,7 @@ echo "=================================================="
 # ══════════════════════════════════════════════════
 export JAVA_HOME="$HOME/java"
 export NXF_HOME="$HOME/.nextflow"
-export NXF_WORK="$TMP/work/${SLURM_ARRAY_TASK_ID}"
+export NXF_WORK="$TMP/work_alexdelossatos_nextflow/${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════

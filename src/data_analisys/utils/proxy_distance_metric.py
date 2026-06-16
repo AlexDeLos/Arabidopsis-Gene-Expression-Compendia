@@ -305,18 +305,27 @@ def compute_global_distance_metrics(
     else:
         G_intra = float(np.mean(intra_contributions)) / norm
  
-    ratio = G_intra / G_inter if (np.isfinite(G_inter) and G_inter > 0) else float("nan")
+    # ratio = G_intra / G_inter if (np.isfinite(G_inter) and G_inter > 0) else float("nan")
+
+    separation_score = (
+        (G_inter - G_intra) / (G_inter + G_intra)
+        if (
+            np.isfinite(G_inter)
+            and np.isfinite(G_intra)
+            and (G_inter + G_intra) > 0
+        )
+        else float("nan")
+    )
  
     if verbose:
         print(f"  G_d_inter    = {G_inter:.6f}  (n_samples contributing: {len(inter_contributions)})")
         print(f"  G_d_intra    = {G_intra:.6f}  (n_samples contributing: {len(intra_contributions)})")
-        print(f"  Ratio_global = {ratio:.4f}  ({'✓ biology > batch' if ratio > 1 else '✗ batch dominates'})")
- 
+        print(f"  SeparationScore  = {separation_score:.4f}") 
     return {
         "Dist_bar":    dist_bar,
         "G_d_inter":   G_inter,
         "G_d_intra":   G_intra,
-        "Ratio_global": ratio,
+        "SeparationScore":  separation_score,
     }
 
 
