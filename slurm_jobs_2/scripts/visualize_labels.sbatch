@@ -5,7 +5,7 @@
 #SBATCH --time=0:05:00
 #SBATCH --mem=5G
 #SBATCH --cpus-per-task=1
-#SBATCH --output=/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray/logs_slurm/stdout-%x-%A_%a.txt
+#SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 # ── User configuration ─────────────────────────────────────────────────────────
 # Set this to the actual location of your .sif file on the shared storage.
 # It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
