@@ -228,7 +228,7 @@ def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
     frequencies = [t[1] for t in top_counts][::-1]
 
     fig_height = max(5, len(terms) * 0.45 + 1.5)
-    fig, ax = plt.subplots(figsize=(11, fig_height))
+    fig, ax = plt.subplots(figsize=(14, fig_height))
 
     colors = [
         "#cccccc" if any(w in t.lower() for w in ("unspecified", "unknown")) else "#4C72B0"
@@ -239,20 +239,28 @@ def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
 
     x_pad = max(frequencies) * 0.012
     for i, freq in enumerate(frequencies):
-        ax.text(freq + x_pad, i, str(freq), va="center", ha="left", fontsize=9, color="#444444")
-
+        ax.text(
+            freq + x_pad,
+            i,
+            str(freq),
+            va="center",
+            ha="left",
+            fontsize=12,
+            color="#444444",
+        )
     prefix_str = f"{prefix} -- " if prefix else ""
     ax.set_title(f"{prefix_str}Distribution of {label.replace('_', ' ').capitalize()} labels",
-                 fontsize=13, pad=12)
+                 fontsize=18, pad=15)
     ax.set_xlabel("Number of samples", fontsize=11)
     ax.set_ylabel(f"{label.replace('_', ' ').capitalize()} term", fontsize=11)
     ax.set_xlim(right=max(frequencies) * 1.12)
+    
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.tick_params(axis="both", labelsize=9)
-
+    
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved -> {output_path}")
 
@@ -276,7 +284,7 @@ def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
 
     max_total = max(totals[n] for n in sorted_names)
     fig_height = max(5, len(sorted_names) * 0.45 + 1.5)
-    fig, ax = plt.subplots(figsize=(11, fig_height))
+    fig, ax = plt.subplots(figsize=(14, fig_height))
 
     lefts = [0] * len(sorted_names)
     legend_patches = []
@@ -296,7 +304,7 @@ def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_y() + bar.get_height() / 2,
                     str(val), va="center", ha="center",
-                    fontsize=8, color="white", fontweight="bold",
+                    fontsize=11, color="white", fontweight="bold",
                 )
 
         lefts = [left + val for left, val in zip(lefts, values)]
@@ -306,21 +314,21 @@ def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
     x_pad = max_total * 0.012
     for i, name in enumerate(sorted_names):
         ax.text(totals[name] + x_pad, i, str(totals[name]),
-                va="center", ha="left", fontsize=9, color="#444444")
+                va="center", ha="left", fontsize=12, color="#444444")
 
     prefix_str = f"{prefix} -- " if prefix else ""
-    ax.set_title(f"{prefix_str}Treatment distribution by intensity", fontsize=13, pad=12)
-    ax.set_xlabel("Number of samples", fontsize=11)
-    ax.set_ylabel("Treatment", fontsize=11)
+    ax.set_title(f"{prefix_str}Treatment distribution by intensity", fontsize=18, pad=15)
+    ax.set_xlabel("Number of samples", fontsize=16)
+    ax.set_ylabel("Treatment", fontsize=16)
     ax.set_xlim(right=max_total * 1.14)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=9)
-    ax.legend(handles=legend_patches, loc="lower right", fontsize=9,
-              title="Intensity", title_fontsize=9, framealpha=0.7)
+    ax.tick_params(axis="both", labelsize=13)
+    ax.legend(handles=legend_patches, loc="lower right", fontsize=12,
+              title="Intensity", title_fontsize=12, framealpha=0.7)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved -> {output_path}")
 
@@ -392,7 +400,7 @@ if __name__ == "__main__":
     print(f"Saving plots to: {output_dir}\n")
 
     for label in LABELS:
-        save_path = os.path.join(output_dir, f"{prefix}_{label}_distribution.png")
+        save_path = os.path.join(output_dir, f"{prefix}_{label}_distribution.pdf")
 
         if label == "treatment":
             # Treatment gets a stacked-intensity chart instead of a plain bar chart

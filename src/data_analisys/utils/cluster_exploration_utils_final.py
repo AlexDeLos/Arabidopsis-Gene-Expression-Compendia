@@ -924,7 +924,7 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
         plt.savefig(output_path, format="svg")
         plt.savefig(output_path, format="svg", dpi=300)
 
-    print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.png')}")
+    print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.pdf')}")
     plt.close()
 
 
