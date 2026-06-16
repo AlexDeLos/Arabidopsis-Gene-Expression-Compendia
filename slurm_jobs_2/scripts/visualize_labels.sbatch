@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=testusers
+#SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
 #SBATCH --qos=medium
 #SBATCH --time=0:05:00
