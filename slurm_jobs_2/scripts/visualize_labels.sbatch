@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --account=testusers
-#SBATCH --partition=all
+#SBATCH --partition=general
+#SBATCH --qos=medium
 #SBATCH --time=0:05:00
 #SBATCH --mem=5G
 #SBATCH --cpus-per-task=1
