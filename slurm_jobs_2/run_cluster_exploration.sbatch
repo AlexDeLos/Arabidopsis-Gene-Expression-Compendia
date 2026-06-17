@@ -11,7 +11,7 @@
 # It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
 REPO_DIR="/home/nfs/alexdelossanto/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="/home/nfs/alexdelossanto//fused.sif"
+SIF="/home/nfs/alexdelossanto/fused.sif"
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Make sure the log directory exists before the job starts writing to it
