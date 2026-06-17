@@ -4,7 +4,7 @@
 #SBATCH --partition=insy
 #SBATCH --qos=short
 #SBATCH --time=4:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=240G
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
