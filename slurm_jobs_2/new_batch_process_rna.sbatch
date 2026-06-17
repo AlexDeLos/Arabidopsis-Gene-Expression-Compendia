@@ -4,7 +4,6 @@
 #SBATCH --time=10:00:00
 #SBATCH --qos=medium
 #SBATCH --mem=4G
-#SBATCH --nodelist=influ4
 #SBATCH --cpus-per-task=1
 #SBATCH --array=2%1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
@@ -14,14 +13,14 @@
 # ══════════════════════════════════════════════════
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 HOME="/home/nfs/alexdelossanto/"
-TMP="/tmp"
+TMP="/tmp/${USER}/${SLURM_JOBID}"
 SIF="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/dataset_fusion.sif"
 
 echo "=================================================="
 echo "Job ID:          $SLURM_JOB_ID"
 echo "Array Task ID:   $SLURM_ARRAY_TASK_ID"
 echo "Node:            $(hostname)"
-echo "Date: $(date)"
+echo "Date:            $(date)"
 echo "SIF:             ${SIF}"
 echo "=================================================="
 
@@ -30,7 +29,7 @@ echo "=================================================="
 # ══════════════════════════════════════════════════
 export JAVA_HOME="$HOME/java"
 export NXF_HOME="$HOME/.nextflow"
-export NXF_WORK="$TMP/work_alexdelossatos_nextflow/${SLURM_ARRAY_TASK_ID}"
+export NXF_WORK="$BIG_STORAGE/work_alexdelossatos_nextflow/${SLURM_ARRAY_TASK_ID}"
 mkdir -p "$NXF_WORK"
 
 # ══════════════════════════════════════════════════
@@ -113,6 +112,21 @@ else
     DYNAMIC_LD_LIB="/usr/lib64/slurm"
 fi
 
+function clean_up {
+# ══════════════════════════════════════════════════
+#  CLEANUP
+# ══════════════════════════════════════════════════
+echo "Cleaning up all temporary directories..."
+    rm -f "$MY_PASSWD" "$MY_GROUP"
+    rm -rf "$NXF_WORK"
+    rm -rf "$FAKE_BIN"
+    rm -rf "$APPTAINER_TMPDIR"
+    rm -rf "$APPTAINER_CACHEDIR"
+    rm --recursive --force "$TMP" && echo "Clean up of $TMP completed successfully."
+    exit
+}
+trap 'clean_up' EXIT # Setup clean_up to run on exit
+
 # ══════════════════════════════════════════════════
 #  RUN THE PIPELINE INSIDE THE CONTAINER
 # ══════════════════════════════════════════════════
@@ -161,15 +175,7 @@ apptainer exec \
         --array_index "$SLURM_ARRAY_TASK_ID" \
         --batch_size 1 --rna --container --old
 
-# ══════════════════════════════════════════════════
-#  CLEANUP
-# ══════════════════════════════════════════════════
-echo "Cleaning up all temporary directories..."
-rm -f "$MY_PASSWD" "$MY_GROUP"
-rm -rf "$NXF_WORK"
-rm -rf "$FAKE_BIN"
-rm -rf "$APPTAINER_TMPDIR"
-rm -rf "$APPTAINER_CACHEDIR"
+
 
 echo "=================================================="
 echo "Job Completed"
