@@ -2,8 +2,8 @@
 #SBATCH --job-name=rna_processing
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=insy
-#SBATCH --qos=short
-#SBATCH --time=4:00:00
+#SBATCH --qos=medium
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=240G
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
