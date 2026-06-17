@@ -28,14 +28,24 @@ from src.constants import RNA_USED
 # ---------------------------------------------------------------------------
 # Label axis weights  (edit to reflect biological importance)
 # ---------------------------------------------------------------------------
-DEFAULT_AXIS_WEIGHTS: Dict[str, float] = {
-    "tissue":              3.0,
-    "developmental_stage": 2.0,
-    "treatment":           1.5,
+# DEFAULT_AXIS_WEIGHTS: Dict[str, float] = {
+#     "tissue":              3.0,
+#     "developmental_stage": 2.0,
+#     "treatment":           1.5,
+#     "treatment_intensity": 1.0,
+#     "ecotype":             1.0,
+#     "medium":              0.5,
+#     "modification":        0.5,
+# }
+
+DEFAULT_AXIS_WEIGHTS = {
+    "tissue":              4.0,
+    "developmental_stage": 3.0,
+    "modification":        2.5,
+    "ecotype":             2.0,
+    "treatment":           2.0,
     "treatment_intensity": 1.0,
-    "ecotype":             1.0,
     "medium":              0.5,
-    "modification":        0.5,
 }
 
 # Values treated as "unknown / not annotated" — excluded from similarity

@@ -1013,3 +1013,114 @@ def run_bulkformer(df_aligned: pd.DataFrame,matrix:str, batch_size=4):
     reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
 
     return reducer.fit_transform(sample_emb)
+def estimate_axis_weights(
+    metrics_df: pd.DataFrame,
+    alpha: float = 0.5,
+    pseudocount: float = 0.05,
+) -> dict[str, float]:
+    """
+    Estimate biological axis weights from exploration metrics.
+
+    Combines:
+        - Variance_Explained
+        - KNN_Purity
+        - Silhouette
+
+    using a geometric mean.
+
+    Then shrinks the estimate toward a biologically-informed prior.
+
+    Parameters
+    ----------
+    metrics_df
+        Output of run_exploration_on_dataframe()
+
+    alpha
+        Weight given to data-derived estimates.
+        1.0 = purely data-driven
+        0.0 = purely prior-driven
+
+    pseudocount
+        Prevents near-zero weights for weakly represented labels.
+
+    Returns
+    -------
+    dict[str, float]
+        Mean-normalized weights.
+    """
+
+    pivot = metrics_df.pivot(
+        index="Label_Axis",
+        columns="Metric",
+        values="Value",
+    )
+
+    required = [
+        "Variance_Explained",
+        "KNN_Purity",
+        "Silhouette",
+    ]
+
+    missing = [c for c in required if c not in pivot.columns]
+    if missing:
+        raise ValueError(f"Missing metrics: {missing}")
+
+    # -------------------------------
+    # Data-derived signal
+    # -------------------------------
+
+    variance = pivot["Variance_Explained"].fillna(0)
+    knn = pivot["KNN_Purity"].fillna(0)
+
+    # Silhouette can be negative
+    silhouette = np.maximum(
+        pivot["Silhouette"].fillna(0),
+        0,
+    )
+
+    signal = (
+        variance
+        * knn
+        * silhouette
+    ) ** (1 / 3)
+
+    signal += pseudocount
+
+    data_weights = signal / signal.mean()
+
+    # -------------------------------
+    # Biological prior
+    # -------------------------------
+
+    prior = {
+        "tissue": 4.0,
+        "developmental_stage": 3.0,
+        "treatment": 2.5,
+        "ecotype": 1.5,
+        "modification": 1.5,
+        "medium": 0.5,
+        "treatment_intensity": 0.5,
+    }
+
+    prior_series = pd.Series(prior)
+
+    # Keep only axes present in both
+    common = data_weights.index.intersection(prior_series.index)
+
+    data_weights = data_weights.loc[common]
+    prior_series = prior_series.loc[common]
+
+    prior_weights = prior_series / prior_series.mean()
+
+    # -------------------------------
+    # Shrinkage estimator
+    # -------------------------------
+
+    final_weights = (
+        alpha * data_weights
+        + (1 - alpha) * prior_weights
+    )
+
+    final_weights /= final_weights.mean()
+
+    return final_weights.to_dict()

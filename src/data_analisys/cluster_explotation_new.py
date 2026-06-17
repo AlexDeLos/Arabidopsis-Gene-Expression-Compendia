@@ -22,6 +22,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E
     load_labels_study,
     make_df_from_labels,
     plot_metrics_comparison,
+    estimate_axis_weights,
     prepare_data_structure,
     run_bulkformer,
     run_pca,
@@ -971,16 +972,35 @@ if __name__ == "__main__":
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
             output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
+            # dist_metrics = run_distance_evaluation(
+            #     data_df=df,
+            #     labels_dict=labels_map,
+            #     sample_study_map=SAMPLE_STUDY_MAP,
+            #     experiment_name=file,
+            #     axis_weights=DEFAULT_AXIS_WEIGHTS
+            # )
+            
+            # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+            if file == "filter_norm":
+              metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+              DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
+              print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
+              print("\nEstimated biological axis weights:")
+              for k, v in sorted(
+                  DATA_DRIVEN_WEIGHTS.items(),
+                  key=lambda x: x[1],
+                  reverse=True,
+              ):
+                  print(f"{k:25s} {v:.3f}")
+
             dist_metrics = run_distance_evaluation(
                 data_df=df,
                 labels_dict=labels_map,
                 sample_study_map=SAMPLE_STUDY_MAP,
                 experiment_name=file,
-                axis_weights=DEFAULT_AXIS_WEIGHTS
+                axis_weights=DATA_DRIVEN_WEIGHTS
             )
             all_dist_metrics[file] = dist_metrics
-            # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
-
             # all_metrics[file] = metrics_df
             # all_bulk_metrics[file] = bulk_metrics_df
             # all_umaps[file] = embeddings["UMAP"]
