@@ -33,7 +33,7 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
-srun --ntasks=1 --cpus-per-task=4 --exact apptainer exec \
+apptainer exec \
     --bind "${STORAGE}:${STORAGE}" \
     --bind "${REPO}:/repo" \
     --pwd "/repo" \
