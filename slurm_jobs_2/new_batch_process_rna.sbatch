@@ -14,6 +14,7 @@
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 HOME="/home/nfs/alexdelossanto/"
 TMP="/tmp/${USER}/${SLURM_JOBID}"
+mkdir -p "$TMP"
 SIF="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/dataset_fusion.sif"
 
 echo "=================================================="
