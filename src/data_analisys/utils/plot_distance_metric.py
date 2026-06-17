@@ -78,12 +78,12 @@ def plot_distance_metrics(
     matplotlib.figure.Figure
     """
     plt.rcParams.update({
-    "font.size": 14,
-    "axes.titlesize": 18,
-    "axes.labelsize": 16,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
-    "legend.fontsize": 13,
+    "font.size": 24,
+    "axes.titlesize": 28,
+    "axes.labelsize": 26,
+    "xtick.labelsize": 24,
+    "ytick.labelsize": 24,
+    "legend.fontsize": 23,
     })
     if not all_dist_metrics:
         raise ValueError("all_dist_metrics is empty.")
@@ -145,11 +145,11 @@ def plot_distance_metrics(
                 )
 
     ax_dist.set_xticks(x)
-    ax_dist.set_xticklabels(stages, fontsize=10, rotation=15, ha="right")
-    ax_dist.set_ylabel("Weighted distance (PCA space)", fontsize=10)
+    ax_dist.set_xticklabels(stages, fontsize=20, rotation=15, ha="right")
+    ax_dist.set_ylabel("Weighted distance (PCA space)", fontsize=20)
     ax_dist.set_title("Normalization stage evaluation — distance metrics", fontsize=12, pad=10)
     ax_dist.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
-    ax_dist.legend(fontsize=9, framealpha=0.6)
+    ax_dist.legend(fontsize=18, framealpha=0.6)
     ax_dist.spines[["top", "right"]].set_visible(False)
     ax_dist.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
 
@@ -174,7 +174,7 @@ def plot_distance_metrics(
         ax_rat.text(
             len(stages) - 0.5, 0.0,
             " separation = 0",
-            va="bottom", ha="right", fontsize=8, color=_COL_REF,
+            va="bottom", ha="right", fontsize=18, color=_COL_REF,
         )
 
         # value labels
@@ -185,12 +185,12 @@ def plot_distance_metrics(
                     s + 0.01 * np.sign(s if s != 0 else 1),
                     f"{s:.3f}",
                     color=_COL_GOOD if s > 0 else _COL_BAD,
-                    ha="center", va="bottom", fontsize=9, fontweight="bold",
+                    ha="center", va="bottom", fontsize=19, fontweight="bold",
                 )
 
         ax_rat.set_xticks(x)
-        ax_rat.set_xticklabels(stages, fontsize=10, rotation=15, ha="right")
-        ax_rat.set_ylabel("Separation score", fontsize=16)
+        ax_rat.set_xticklabels(stages, fontsize=20, rotation=15, ha="right")
+        ax_rat.set_ylabel("Separation score", fontsize=26)
         ax_rat.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
         ax_rat.spines[["top", "right"]].set_visible(False)
         ax_rat.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
@@ -213,7 +213,7 @@ def plot_distance_metrics(
     # ── Save ───────────────────────────────────────────────────────── #
     if output_folder is not None:
         os.makedirs(output_folder, exist_ok=True)
-        out_path = os.path.join(output_folder, f"{experiment_name}.png")
+        out_path = os.path.join(output_folder, f"{experiment_name}.pdf")
         fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"[DistMetrics] Figure saved → {out_path}")
 

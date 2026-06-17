@@ -1001,6 +1001,7 @@ if __name__ == "__main__":
             all_dist_metrics=all_dist_metrics,
             output_folder=comparison_output_dir,
             experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
+            plot_ratio=True
         )
 
         # print("\nGenerating Metric Comparisons (gene expression space)...")
