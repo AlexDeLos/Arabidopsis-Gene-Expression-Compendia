@@ -18,9 +18,9 @@ echo "=================================================="
 echo ""
 
 # Define your directories
-REPO_DIR="/home/alexdelossanto/linuxhome/Dataset_fusion_Microarray"
+REPO_DIR="/home/nfs/alexdelossanto/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
-SIF="$BIG_STORAGE/fused.sif"
+SIF=/home/nfs/alexdelossanto/fused.sif
 
 echo "running biological pipeline Microarray"
 apptainer exec \
