@@ -4,8 +4,6 @@
 #SBATCH --partition=general
 #SBATCH --qos=medium
 #SBATCH --time=26:00:00
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
 #SBATCH --mem=200G
 #SBATCH --job-name=biological_pipeline
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
