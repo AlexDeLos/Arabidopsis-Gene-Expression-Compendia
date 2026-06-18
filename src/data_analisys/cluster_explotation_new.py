@@ -1022,15 +1022,14 @@ if __name__ == "__main__":
     # Generate the Comparison Plots
     # if len(all_metrics) > 1:
     if True:
-      
-        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
-        os.makedirs(comparison_output_dir, exist_ok=True)
-        plot_distance_metrics(
-            all_dist_metrics=all_dist_metrics,
-            output_folder=comparison_output_dir,
-            experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
-            plot_ratio=True
-        )
+      comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
+      os.makedirs(comparison_output_dir, exist_ok=True)
+      plot_distance_metrics(
+          all_dist_metrics=all_dist_metrics,
+          output_folder=comparison_output_dir,
+          experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
+          plot_ratio=True
+      )
 
         # print("\nGenerating Metric Comparisons (gene expression space)...")
         # combined_meta = pd.concat(all_metas.values())
