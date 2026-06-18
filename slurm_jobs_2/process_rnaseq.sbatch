@@ -3,9 +3,9 @@
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=24:00:00
+#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=240G
+#SBATCH --mem=140G
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
 # ── User configuration ─────────────────────────────────────────────────────────
