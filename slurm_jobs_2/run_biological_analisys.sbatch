@@ -1,6 +1,8 @@
 #!/bin/sh
-#SBATCH --account=testusers
-#SBATCH --partition=all
+#SBATCH --job-name=rna_processing
+#SBATCH --account=ewi-insy-prb
+#SBATCH --partition=general
+#SBATCH --qos=medium
 #SBATCH --time=26:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1

@@ -129,9 +129,21 @@ def diff_exp_combine_tissues(
                 if tissue
                 else design["tissue"].str.contains("", na=False)
             )
-            is_treatment = design["treatment"].str.contains(treatment, na=False)
-            is_only_treatment = design["treatment"].apply(
-                lambda x: len(x) == len(treatment) and treatment in x  # noqa: B023
+            target = treatment.strip()
+
+            is_treatment = design["treatment"].apply(
+                lambda x: (
+                    False
+                    if pd.isna(x)
+                    else target in {t.strip() for t in str(x).split("+")}
+                )
+            )
+
+            is_only_treatment = (
+                design["treatment"]
+                .fillna("")
+                .str.strip()
+                .eq(target)
             )
             if pure:
                 is_treatment = is_only_treatment
