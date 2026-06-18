@@ -769,7 +769,7 @@ def _build_enhancement_script(js_data, categories):
 # ==========================================
 
 
-def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, experiment_name: str, output_folder: str):
+def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, experiment_name: str, output_folder: str, light_weight: bool = False):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -780,7 +780,6 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
     X_base = df_aligned.values
 
     # Dynamically grab all axes available in the parsed labels_dict
-    # (this now automatically includes 'treatment_intensity'!)
     available_axes = list(labels_dict.keys())
     if "study_id" not in available_axes:
         available_axes.append("study_id")
@@ -788,7 +787,6 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
     # Build meta_df simply and cleanly
     raw_meta = {}
     for axis in available_axes:
-        # No more [1] index, the function returns the list directly
         raw_meta[axis] = align_labels_to_data(df_aligned, labels_dict, axis)
 
     meta_df = pd.DataFrame(raw_meta, index=df_aligned.index)
@@ -798,8 +796,8 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
     # Valid-value exclusions — applies to any label axis
     INVALID_VALUES = {"unknown", "unspecified", "none", "nan", "Unknown", "Unspecified", "None", ""}
 
-    # Calculate metrics for every axis (excluding study_id for general scores)
-    metric_categories = available_axes  # [c for c in available_axes if c != 'study_id']
+    # Calculate metrics for every axis
+    metric_categories = available_axes
 
     for cat in metric_categories:
         print(f"\n[Metrics: {cat.upper()}]")
@@ -833,7 +831,7 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
             print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
-        # Format strictly for the plot_metrics_comparison (long-format DataFrame)
+        # Format strictly for the plot_metrics_comparison
         for metric_name, val in [("Silhouette", sil_score), ("ARI", ari_score), ("KNN_Purity", knn_purity), ("Variance_Explained", var_explained), ("Batch_ASW_within_Bio", batch_asw)]:
             results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
 
@@ -842,56 +840,61 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
     # Run PCA first to feed into UMAP/TSNE
     pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0] - 1, df_aligned.shape[1] - 1))
 
+    # --- CONDITIONAL EMBEDDING GENERATION ---
     embeddings_out = {}
-    for method, run_func in [("UMAP", run_umap), ("TSNE", run_tsne), ("bulk", run_bulkformer)]:
-        emb = run_func(df_aligned,experiment_name) if method == "bulk" else run_func(pca_embedding)
+    embedding_methods = [("UMAP", run_umap), ("TSNE", run_tsne)]
+    if not light_weight:
+        embedding_methods.append(("bulk", run_bulkformer))
+
+    for method, run_func in embedding_methods:
+        emb = run_func(df_aligned, experiment_name) if method == "bulk" else run_func(pca_embedding)
         embeddings_out[method] = emb
 
-    # ---- Bulk latent space metrics (separate summary list)
-    print("Generating metric values for Bulk latent space data... SKIPPED")
+    # ---- CONDITIONAL BULK LATENT SPACE METRICS ---
     bulk_results_summary = []
-    for cat in metric_categories:
-        print(f"\n[Bulk Metrics: {cat.upper()}]")
-        text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
-        valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
+    if not light_weight:
+        print("Generating metric values for Bulk latent space data...")
+        for cat in metric_categories:
+            print(f"\n[Bulk Metrics: {cat.upper()}]")
+            text_labels_np = np.array(meta_df[cat].tolist(), dtype=str)
+            valid_mask = ~np.isin(text_labels_np, list(INVALID_VALUES))
 
-        X_metric = embeddings_out["bulk"][valid_mask]
-        text_labels_metric = text_labels_np[valid_mask]
-        batch_text_labels_metric = np.array(meta_df["study_id"].tolist(), dtype=str)[valid_mask]
+            X_metric = embeddings_out["bulk"][valid_mask]
+            text_labels_metric = text_labels_np[valid_mask]
+            batch_text_labels_metric = np.array(meta_df["study_id"].tolist(), dtype=str)[valid_mask]
 
-        unique_classes = np.unique(text_labels_metric)
+            unique_classes = np.unique(text_labels_metric)
 
-        # Convert text labels to numeric codes for sklearn metrics
-        num_labels_metric = pd.Series(text_labels_metric).astype("category").cat.codes.values if len(unique_classes) > 0 else []
+            num_labels_metric = pd.Series(text_labels_metric).astype("category").cat.codes.values if len(unique_classes) > 0 else []
 
-        if X_metric.shape[0] < 5 or len(unique_classes) < 2:
-            print(f"  Not enough valid samples/classes for {cat}.")
-            sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
-        else:
-            X_rep_metric = X_metric
-            sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))  # pyright: ignore[reportArgumentType]
+            if X_metric.shape[0] < 5 or len(unique_classes) < 2:
+                print(f"  Not enough valid samples/classes for {cat}.")
+                sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
+            else:
+                X_rep_metric = X_metric
+                sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
 
-            kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
-            ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)  # pyright: ignore[reportArgumentType]
+                kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
+                ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
 
-            knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
-            knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()  # pyright: ignore[reportArgumentType]
+                knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
+                knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
 
-            var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
-            batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
+                var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
+                batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
 
-            print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
+                print(f"  Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
 
-        # Use the same canonical metric names as the gene-space df so
-        # plot_metrics_comparison can pivot and plot both identically.
-        for metric_name, val in [
-            ("Silhouette", sil_score),
-            ("ARI", ari_score),
-            ("KNN_Purity", knn_purity),
-            ("Variance_Explained", var_explained),
-            ("Batch_ASW_within_Bio", batch_asw),
-        ]:
-            bulk_results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
+            for metric_name, val in [
+                ("Silhouette", sil_score),
+                ("ARI", ari_score),
+                ("KNN_Purity", knn_purity),
+                ("Variance_Explained", var_explained),
+                ("Batch_ASW_within_Bio", batch_asw),
+            ]:
+                bulk_results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
+    else:
+        print("Skipping BulkFormer embedding and metrics generation (light_weight=True).")
 
     # --- Build and persist both DataFrames separately
     res_df = pd.DataFrame(results_summary)
@@ -902,34 +905,18 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
     return res_df, bulk_res_df, embeddings_out, meta_df
 
-
 # ==========================================
 # --- MAIN EXECUTION BLOCK ---
 # ==========================================
-# DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
-#     "tissue":              4.0,   # dominant transcriptional identity
-#     "developmental_stage": 3.0,   # near-equal to tissue in effect size
-#     "treatment":           2.5,   # large but conditional reprogramming
-#     "ecotype":             1.5,   # real baseline differences, modest effect
-#     "modification":        0.0,   # large when known, rarely annotated
-#     "treatment_intensity": 0.0,   # modifier of treatment, not independent
-#     "medium":              2.5,   # weak slow-acting confound
-# }
-DEFAULT_AXIS_WEIGHTS: dict[str, float] = {
-    "tissue":              4.0,   # dominant transcriptional identity
-    "developmental_stage": 2.0,   # near-equal to tissue in effect size
-    "treatment":           3,   # large but conditional reprogramming
-    "ecotype":             0,   # real baseline differences, modest effect
-    "modification":        0.0,   # large when known, rarely annotated
-    "treatment_intensity": 0.0,   # modifier of treatment, not independent
-    "medium":              0,   # weak slow-acting confound
-}
+
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
     # # parser.add_argument("--ma", action="store_true", default=False)
     # parser.add_argument("--rna", action="store_true", default=False)
     # args = parser.parse_args()
     N_SAMPLES = None
+    LIGHT_WEIGHT = True
+    DATA_DRIVEN_WEIGHTS = None
     all_metrics = {}
     all_bulk_metrics = {}
     all_umaps = {}
@@ -980,9 +967,9 @@ if __name__ == "__main__":
             #     axis_weights=DEFAULT_AXIS_WEIGHTS
             # )
             
-            metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+            metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
             if file == "filter_norm":
-              metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+              # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
               DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
               print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
               print("\nEstimated biological axis weights:")
@@ -1001,6 +988,8 @@ if __name__ == "__main__":
             #     "medium": 0.217,
             #     "treatment_intensity": 0.217,
             # }
+            assert DATA_DRIVEN_WEIGHTS is not None
+
             dist_metrics = run_distance_evaluation(
                 data_df=df,
                 labels_dict=labels_map,
@@ -1009,12 +998,13 @@ if __name__ == "__main__":
                 axis_weights=DATA_DRIVEN_WEIGHTS
             )
             all_dist_metrics[file] = dist_metrics
-            # all_metrics[file] = metrics_df
-            # all_bulk_metrics[file] = bulk_metrics_df
-            # all_umaps[file] = embeddings["UMAP"]
-            # all_tsnes[file] = embeddings["TSNE"]
-            # all_bulk[file] = embeddings["bulk"]
-            # all_metas[file] = meta_df
+            all_metrics[file] = metrics_df
+            if not LIGHT_WEIGHT:
+              all_bulk_metrics[file] = bulk_metrics_df
+            all_umaps[file] = embeddings["UMAP"]
+            all_tsnes[file] = embeddings["TSNE"]
+            all_bulk[file] = embeddings["bulk"]
+            all_metas[file] = meta_df
 
         else:
             print(f"Error: Data file not found at {data_path}")
@@ -1031,22 +1021,23 @@ if __name__ == "__main__":
           plot_ratio=True
       )
 
-        # print("\nGenerating Metric Comparisons (gene expression space)...")
-        # combined_meta = pd.concat(all_metas.values())
-        # # Only deduplicate if all columns are hashable
-        # try:
-        #     combined_meta = combined_meta.drop_duplicates()
-        # except TypeError:
-        #     combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
-        # plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+      print("\nGenerating Metric Comparisons (gene expression space)...")
+      combined_meta = pd.concat(all_metas.values())
+      # Only deduplicate if all columns are hashable
+      try:
+          combined_meta = combined_meta.drop_duplicates()
+      except TypeError:
+          combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
+      plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
 
-        # print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
-        # plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
+      if not LIGHT_WEIGHT:
+        print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
+        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
-        # print("Generating linked multi-stage UMAP comparison...")
-        # plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
+      print("Generating linked multi-stage UMAP comparison...")
+      plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
 
-        # print("Generating linked multi-stage t-SNE comparison...")
-        # plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
-        # print("Generating Bulk comparison...")
-        # plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
+      print("Generating linked multi-stage t-SNE comparison...")
+      plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
+      print("Generating Bulk comparison...")
+      plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")

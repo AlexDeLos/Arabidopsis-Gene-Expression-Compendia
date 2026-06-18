@@ -169,8 +169,82 @@ def compute_mean_pairwise_distance(dist_matrix: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 # Main metric function
 # ---------------------------------------------------------------------------
-
 def compute_global_distance_metrics(
+    expr_df: pd.DataFrame,
+    labels_map: Dict[str, Dict[str, str]],
+    study_map: pd.DataFrame,
+    axis_weights: Optional[Dict[str, float]] = None,
+    n_pca_components: int = 50,
+    precomputed_pca: Optional[np.ndarray] = None,
+    verbose: bool = True,
+) -> Dict[str, float]:
+
+    if axis_weights is None:
+        axis_weights = DEFAULT_AXIS_WEIGHTS
+
+    # samples = list(expr_df.columns)
+
+    # PCA distance matrix
+    dist_matrix, ordered_samples = _pca_distances(
+        expr_df,
+        n_pca_components,
+        precomputed_pca,
+    )
+
+    label_lookup = _build_label_lookup(
+        labels_map,
+        ordered_samples,
+    )
+
+    dist_bar = compute_mean_pairwise_distance(dist_matrix)
+
+    similar_sum = 0.0
+    dissimilar_sum = 0.0
+
+    n_pairs = 0
+
+    for i in range(len(ordered_samples)):
+        sample_i = ordered_samples[i]
+        labels_i = label_lookup[sample_i]
+
+        for j in range(i + 1, len(ordered_samples)):
+            sample_j = ordered_samples[j]
+            labels_j = label_lookup[sample_j]
+
+            similarity = compute_sim(
+                labels_i,
+                labels_j,
+                axis_weights,
+            )
+
+            distance = dist_matrix[i, j]
+
+            similar_sum += distance * similarity
+            dissimilar_sum += distance * (1.0 - similarity)
+
+            n_pairs += 1
+
+    separation_score = (
+        similar_sum / dissimilar_sum
+        if dissimilar_sum > 0
+        else float("nan")
+    )
+
+    if verbose:
+        print(
+            f"[DistMetrics] Dist_bar(S) = {dist_bar:.6f}"
+        )
+        print(
+            f"[DistMetrics] BiologicalSeparation = "
+            f"{separation_score:.6f}"
+        )
+
+    return {
+        "Dist_bar": dist_bar,
+        "BiologicalSeparation": separation_score,
+    }
+
+def compute_global_distance_metrics_ratio(
     expr_df: pd.DataFrame,
     labels_map: Dict[str, Dict[str, str]],
     study_map: pd.DataFrame,

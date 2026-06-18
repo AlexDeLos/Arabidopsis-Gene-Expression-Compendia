@@ -1069,8 +1069,12 @@ def estimate_axis_weights(
     # Data-derived signal
     # -------------------------------
 
-    variance = pivot["Variance_Explained"].fillna(0)
-    knn = pivot["KNN_Purity"].fillna(0)
+    if pivot[required].isna().any().any():
+        raise ValueError(
+            "Missing metric values encountered."
+        )
+    variance = pivot["Variance_Explained"]
+    knn = pivot["KNN_Purity"]
 
     # Silhouette can be negative
     silhouette = np.maximum(
@@ -1104,6 +1108,10 @@ def estimate_axis_weights(
     prior_series = pd.Series(prior)
 
     # Keep only axes present in both
+    if set(data_weights.index) != set(prior_series.index):
+        raise ValueError(
+            "Mismatch between empirical axes and prior axes."
+        )
     common = data_weights.index.intersection(prior_series.index)
 
     data_weights = data_weights.loc[common]
