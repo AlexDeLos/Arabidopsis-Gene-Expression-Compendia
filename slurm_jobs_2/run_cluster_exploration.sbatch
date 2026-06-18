@@ -6,9 +6,7 @@
 #SBATCH --mem=50G
 #SBATCH --cpus-per-task=1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
-# ── User configuration ─────────────────────────────────────────────────────────
-# Set this to the actual location of your .sif file on the shared storage.
-# It MUST be on /tudelft.net/... — paths under /home/ are not visible on compute nodes.
+
 REPO_DIR="/home/nfs/alexdelossanto/Dataset_fusion_Microarray"
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="/home/nfs/alexdelossanto/fused.sif"

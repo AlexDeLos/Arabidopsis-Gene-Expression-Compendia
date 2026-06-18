@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=rna_processing
 #SBATCH --account=ewi-insy-prb
-#SBATCH --partition=insy
+#SBATCH --partition=general
 #SBATCH --qos=medium
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=4
