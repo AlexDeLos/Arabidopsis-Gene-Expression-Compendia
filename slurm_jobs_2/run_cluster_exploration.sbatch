@@ -38,6 +38,7 @@ apptainer exec --nv \
     "$SIF" \
     python src/data_analisys/cluster_explotation_new.py
 
+echo "+++++++++++++++++ NOW RUNNING RNA DATA +++++++++++++++++"
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \

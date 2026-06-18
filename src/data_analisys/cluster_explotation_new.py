@@ -929,7 +929,7 @@ if __name__ == "__main__":
     # # parser.add_argument("--ma", action="store_true", default=False)
     # parser.add_argument("--rna", action="store_true", default=False)
     # args = parser.parse_args()
-    N_SAMPLES = 100 #None
+    N_SAMPLES = None
     all_metrics = {}
     all_bulk_metrics = {}
     all_umaps = {}
@@ -980,27 +980,27 @@ if __name__ == "__main__":
             #     axis_weights=DEFAULT_AXIS_WEIGHTS
             # )
             
-            # metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
-            # if file == "filter_norm":
-            #   metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
-            #   DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
-            #   print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
-            #   print("\nEstimated biological axis weights:")
-            #   for k, v in sorted(
-            #       DATA_DRIVEN_WEIGHTS.items(),
-            #       key=lambda x: x[1],
-            #       reverse=True,
-            #   ):
-            #       print(f"{k:25s} {v:.3f}")
-            DATA_DRIVEN_WEIGHTS = {
-                "tissue": 2.307,
-                "developmental_stage": 1.900,
-                "treatment": 0.790,
-                "ecotype": 1.066,
-                "modification": 0.503,
-                "medium": 0.217,
-                "treatment_intensity": 0.217,
-            }
+            metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+            if file == "filter_norm":
+              metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+              DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
+              print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
+              print("\nEstimated biological axis weights:")
+              for k, v in sorted(
+                  DATA_DRIVEN_WEIGHTS.items(),
+                  key=lambda x: x[1],
+                  reverse=True,
+              ):
+                  print(f"{k:25s} {v:.3f}")
+            # DATA_DRIVEN_WEIGHTS = {
+            #     "tissue": 2.307,
+            #     "developmental_stage": 1.900,
+            #     "treatment": 0.790,
+            #     "ecotype": 1.066,
+            #     "modification": 0.503,
+            #     "medium": 0.217,
+            #     "treatment_intensity": 0.217,
+            # }
             dist_metrics = run_distance_evaluation(
                 data_df=df,
                 labels_dict=labels_map,
