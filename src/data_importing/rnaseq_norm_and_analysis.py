@@ -221,10 +221,10 @@ def run_rnaseq_preprocessing():
 
     assert df_for_combat.isna().sum().sum() == 0, \
         f"Unexpected NaNs in ComBat input: {df_for_combat.isna().sum().sum()}"
-    print(f"using batch_labels = {valid_batches}")
+    # print(f"using batch_labels = {valid_batches}")
 
     if os.path.exists(combat_path):
-        print("Loading cached combat.csv...")
+        print(f"Loading cached {combat_path}...")
         combat_df = pd.read_csv(combat_path, index_col=0)
     else:
         combat_df = run_combat(df_for_combat, valid_batches)
@@ -232,17 +232,16 @@ def run_rnaseq_preprocessing():
         print(f"Saved ComBat result → {combat_path}")
 
     if os.path.exists(combat_path_cov):
-        print("Loading cached combat.csv...")
-        combat_df = pd.read_csv(combat_path_cov, index_col=0)
+        print(f"Loading cached {combat_path_cov}...")
+        combat_df_cov = pd.read_csv(combat_path_cov, index_col=0)
     else:
-
         combat_df_cov = run_combat(df_for_combat, valid_batches,preserve_covariates=['tissue'])
         combat_df_cov.to_csv(combat_path_cov)
         print(f"Saved ComBat cov result → {combat_path_cov}")
 
     if os.path.exists(combat_path_cov_2):
-        print("Loading cached combat.csv...")
-        combat_df = pd.read_csv(combat_path_cov, index_col=0)
+        print(f"Loading cached {combat_path_cov_2}...")
+        combat_df_cov_2 = pd.read_csv(combat_path_cov, index_col=0)
     else:
 
         combat_df_cov_2 = run_combat(df_for_combat, valid_batches,preserve_covariates=['tissue','treatment'])
@@ -270,9 +269,11 @@ def run_rnaseq_preprocessing():
 
     print("\n=== Pipeline Complete ===")
     print(f"  filter.csv    : {filtered_df.shape}")
-    print(f"  combat.csv: {combat_df.shape}")
+    print(f"  combat.csv:   {combat_df.shape}")
+    print(f"  combat_norm_cov.csv:   {combat_df_cov.shape}")
+    print(f"  combat_norm_cov_.csv:   {combat_df_cov_2.shape}")
     print(f"  rankin.csv    : {rankin_df.shape}")
-    return filtered_df, combat_df, rankin_df
+    return filtered_df, combat_df_cov, rankin_df
 
 
 if __name__ == "__main__":

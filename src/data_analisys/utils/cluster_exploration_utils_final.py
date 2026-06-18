@@ -1101,15 +1101,6 @@ def estimate_axis_weights(
         "medium": 0.217,
         "treatment_intensity": 0.217,
     }
-# Estimated biological axis weights:
-# tissue                    2.307
-# developmental_stage       1.900
-# ecotype                   1.066
-# treatment                 0.790
-# modification              0.503
-# medium                    0.217
-# treatment_intensity       0.217
-
     prior_series = pd.Series(prior)
 
     # Keep only axes present in both
