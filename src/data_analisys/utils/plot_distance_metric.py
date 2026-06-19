@@ -404,7 +404,7 @@ def plot_distance_metrics(
 
         out_path = os.path.join(
             output_folder,
-            f"{experiment_name}.png",
+            f"{experiment_name}.pdf",
         )
 
         fig.savefig(
@@ -486,7 +486,7 @@ def plot_similarity_distance_scatter(
 
         path = os.path.join(
             output_folder,
-            f"{experiment_name}.png",
+            f"{experiment_name}.pdf",
         )
 
         fig.savefig(
