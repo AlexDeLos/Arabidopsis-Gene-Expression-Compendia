@@ -22,7 +22,6 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	load_labels_study,
 	make_df_from_labels,
 	plot_metrics_comparison,
-	estimate_axis_weights,
 	prepare_data_structure,
 	run_bulkformer,
 	run_pca,
@@ -31,7 +30,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	multinomial_logistic_accuracy_fun,
 )
 from src.data_analisys.utils.proxy_distance_metric import run_distance_evaluation	# noqa: E402
-from src.data_analisys.utils.plot_distance_metric import plot_distance_metrics	# noqa: E402
+from src.data_analisys.utils.plot_distance_metric import plot_distance_metrics, plot_similarity_distance_scatter	# noqa: E402
 # ==========================================
 # --- VISUALIZATION FUNCTIONS ---
 # ==========================================
@@ -970,23 +969,31 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun19/{file}"
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun19_2/{file}"
 			
-			metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
-			if file == "filter_norm":
-				# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
-				DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
-				print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
-				print("\nEstimated biological axis weights:")
-				for k, v in sorted(
-					DATA_DRIVEN_WEIGHTS.items(),
-					key=lambda x: x[1],
-					reverse=True,
-				):
-					print(f"{k:25s} {v:.3f}")
+			# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+			# if file == "filter_norm":
+			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
+			# 	DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
+			# 	print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
+			# 	print("\nEstimated biological axis weights:")
+			# 	for k, v in sorted(
+			# 		DATA_DRIVEN_WEIGHTS.items(),
+			# 		key=lambda x: x[1],
+			# 		reverse=True,
+			# 	):
+			# 		print(f"{k:25s} {v:.3f}")
 
-			assert DATA_DRIVEN_WEIGHTS is not None
-
+			# assert DATA_DRIVEN_WEIGHTS is not None
+			DATA_DRIVEN_WEIGHTS ={
+				"tissue": 1,
+				"developmental_stage": 1,
+				"treatment": 0,
+				"ecotype": 0,
+				"modification": 0,
+				"medium": 0,
+				"treatment_intensity": 0,
+			}
 			dist_metrics = run_distance_evaluation(
 				data_df=df,
 				labels_dict=labels_map,
@@ -995,13 +1002,13 @@ if __name__ == "__main__":
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics
-			all_metrics[file] = metrics_df
-			if not LIGHT_WEIGHT:
-				all_bulk_metrics[file] = bulk_metrics_df
-				all_umaps[file] = embeddings["UMAP"]
-				all_tsnes[file] = embeddings["TSNE"]
-				all_bulk[file] = embeddings["bulk"]
-			all_metas[file] = meta_df
+			# all_metrics[file] = metrics_df
+			# if not LIGHT_WEIGHT:
+			# 	all_bulk_metrics[file] = bulk_metrics_df
+			# 	all_umaps[file] = embeddings["UMAP"]
+			# 	all_tsnes[file] = embeddings["TSNE"]
+			# 	all_bulk[file] = embeddings["bulk"]
+			# all_metas[file] = meta_df
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
@@ -1009,8 +1016,10 @@ if __name__ == "__main__":
 	# Generate the Comparison Plots
 	# if len(all_metrics) > 1:
 	if True:
-		comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun19"
+		comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun19_2"
 		os.makedirs(comparison_output_dir, exist_ok=True)
+		for el in all_dist_metrics:
+			plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
 		plot_distance_metrics(
 			all_dist_metrics=all_dist_metrics,
 			output_folder=comparison_output_dir,

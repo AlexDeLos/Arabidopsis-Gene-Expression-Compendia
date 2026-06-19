@@ -169,6 +169,9 @@ def compute_mean_pairwise_distance(dist_matrix: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 # Main metric function
 # ---------------------------------------------------------------------------
+from scipy.stats import spearmanr, pearsonr
+
+
 def compute_global_distance_metrics(
     expr_df: pd.DataFrame,
     labels_map: Dict[str, Dict[str, str]],
@@ -177,7 +180,7 @@ def compute_global_distance_metrics(
     n_pca_components: int = 50,
     precomputed_pca: Optional[np.ndarray] = None,
     verbose: bool = True,
-) -> Dict[str, float]:
+) -> Dict[str, object]:
 
     if axis_weights is None:
         axis_weights = DEFAULT_AXIS_WEIGHTS
@@ -226,6 +229,12 @@ def compute_global_distance_metrics(
     intra_pairs = 0
 
     # --------------------------------------------------
+    # Similarity-distance correlation data
+    # --------------------------------------------------
+
+    pairwise_records = []
+
+    # --------------------------------------------------
     # Pairwise loop
     # --------------------------------------------------
 
@@ -247,31 +256,96 @@ def compute_global_distance_metrics(
                 axis_weights,
             )
 
-            distance = dist_matrix[i, j]
+            distance = float(dist_matrix[i, j])
 
-            # --------------------------
-            # Biological separation
-            # --------------------------
+            # ------------------------------------------
+            # Store pair for plotting/correlation
+            # ------------------------------------------
 
-            similar_sum += distance * similarity
-            dissimilar_sum += distance * (
-                1.0 - similarity
+            pairwise_records.append(
+                {
+                    "Sample_A": sample_i,
+                    "Sample_B": sample_j,
+                    "Study_A": study_i,
+                    "Study_B": study_j,
+                    "Distance": distance,
+                    "Similarity": float(similarity),
+                    "SameStudy": study_i == study_j,
+                }
             )
 
-            # --------------------------
-            # Inter / intra study
-            # --------------------------
+            # ------------------------------------------
+            # Biological separation
+            # ------------------------------------------
+
+            similar_sum += distance * similarity
+
+            dissimilar_sum += (
+                distance
+                * (1.0 - similarity)
+            )
+
+            # ------------------------------------------
+            # Inter / intra study metrics
+            # ------------------------------------------
 
             weighted_distance = (
                 distance * similarity
             )
 
             if study_i == study_j:
-                intra_weighted_sum += weighted_distance
+
+                intra_weighted_sum += (
+                    weighted_distance
+                )
                 intra_pairs += 1
+
             else:
-                inter_weighted_sum += weighted_distance
+
+                inter_weighted_sum += (
+                    weighted_distance
+                )
                 inter_pairs += 1
+
+    # --------------------------------------------------
+    # Pairwise dataframe
+    # --------------------------------------------------
+
+    pairwise_df = pd.DataFrame(
+        pairwise_records
+    )
+
+    # --------------------------------------------------
+    # Similarity-distance correlations
+    # --------------------------------------------------
+
+    if len(pairwise_df) > 1:
+
+        try:
+            spearman_corr, spearman_p = spearmanr(
+                pairwise_df["Distance"],
+                pairwise_df["Similarity"],
+            )
+        except Exception:
+            spearman_corr = np.nan
+            spearman_p = np.nan
+
+        try:
+            pearson_corr, pearson_p = pearsonr(
+                pairwise_df["Distance"],
+                pairwise_df["Similarity"],
+            )
+        except Exception:
+            pearson_corr = np.nan
+            pearson_p = np.nan
+
+    else:
+
+        spearman_corr = np.nan
+        spearman_p = np.nan
+
+        pearson_corr = np.nan
+        pearson_p = np.nan
 
     # --------------------------------------------------
     # Biological separation
@@ -288,7 +362,8 @@ def compute_global_distance_metrics(
     # --------------------------------------------------
 
     G_d_inter = (
-        (inter_weighted_sum / inter_pairs) / dist_bar
+        (inter_weighted_sum / inter_pairs)
+        / dist_bar
         if inter_pairs > 0 and dist_bar > 0
         else float("nan")
     )
@@ -298,24 +373,46 @@ def compute_global_distance_metrics(
     # --------------------------------------------------
 
     G_d_intra = (
-        (intra_weighted_sum / intra_pairs) / dist_bar
+        (intra_weighted_sum / intra_pairs)
+        / dist_bar
         if intra_pairs > 0 and dist_bar > 0
         else float("nan")
     )
 
+    # --------------------------------------------------
+    # Logging
+    # --------------------------------------------------
+
     if verbose:
+
         print(
-            f"[DistMetrics] Dist_bar(S) = {dist_bar:.6f}"
+            f"[DistMetrics] Dist_bar(S) = "
+            f"{dist_bar:.6f}"
         )
+
         print(
-            f"[DistMetrics] G_d_inter = {G_d_inter:.6f}"
+            f"[DistMetrics] G_d_inter = "
+            f"{G_d_inter:.6f}"
         )
+
         print(
-            f"[DistMetrics] G_d_intra = {G_d_intra:.6f}"
+            f"[DistMetrics] G_d_intra = "
+            f"{G_d_intra:.6f}"
         )
+
         print(
             f"[DistMetrics] BiologicalSeparation = "
             f"{biological_separation:.6f}"
+        )
+
+        print(
+            f"[DistMetrics] Spearman(sim,dist) = "
+            f"{spearman_corr:.6f}"
+        )
+
+        print(
+            f"[DistMetrics] Pearson(sim,dist) = "
+            f"{pearson_corr:.6f}"
         )
 
     return {
@@ -323,6 +420,19 @@ def compute_global_distance_metrics(
         "G_d_inter": G_d_inter,
         "G_d_intra": G_d_intra,
         "BiologicalSeparation": biological_separation,
+        "SimilarityDistanceSpearman": float(
+            spearman_corr
+        ),
+        "SimilarityDistanceSpearmanP": float(
+            spearman_p
+        ),
+        "SimilarityDistancePearson": float(
+            pearson_corr
+        ),
+        "SimilarityDistancePearsonP": float(
+            pearson_p
+        ),
+        "PairwiseSimilarityDistanceDF": pairwise_df,
     }
 
 def compute_global_distance_metrics_ratio(

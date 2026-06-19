@@ -50,172 +50,454 @@ def plot_distance_metrics(
     output_folder: str | None = None,
     experiment_name: str = "Distance_Metrics",
     show: bool = False,
-    figsize: tuple[float, float] = (12, 10),
-    plot_ratio: bool = False,
+    figsize: tuple[float, float] = (16, 14),
+    plot_ratio: bool = True,
 ) -> plt.Figure:
-    """
-    Plot G_d_inter, G_d_intra, and optionally Ratio_global for every evaluated stage.
 
-    Parameters
-    ----------
-    all_dist_metrics : dict
-        {stage_name: single-row DataFrame or dict} as produced by
-        run_distance_evaluation() collected in a loop.
-    output_folder : str, optional
-        Directory to save the figure.  Skipped if None.
-    experiment_name : str
-        Base filename (no extension) for the saved figure.
-    show : bool
-        Call plt.show() after plotting.
-    figsize : tuple
-        Overall figure size in inches.
-    plot_ratio : bool
-        If True (default), include the Ratio_global panel below the distance
-        bars.  If False, only the distance bar chart is shown.
+    plt.rcParams.update(
+        {
+            "font.size": 28,
+            "axes.titlesize": 30,
+            "axes.labelsize": 28,
+            "xtick.labelsize": 24,
+            "ytick.labelsize": 24,
+            "legend.fontsize": 22,
+        }
+    )
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    plt.rcParams.update({
-    "font.size": 24,
-    "axes.titlesize": 28,
-    "axes.labelsize": 26,
-    "xtick.labelsize": 24,
-    "ytick.labelsize": 24,
-    "legend.fontsize": 23,
-    })
     if not all_dist_metrics:
         raise ValueError("all_dist_metrics is empty.")
 
-    # ------------------------------------------------------------------ #
-    # Unpack data
-    # ------------------------------------------------------------------ #
+    # --------------------------------------------------
+    # Extract data
+    # --------------------------------------------------
+
     stages = list(all_dist_metrics.keys())
-    rows   = [_extract_row(all_dist_metrics[s]) for s in stages]
+    rows = [_extract_row(all_dist_metrics[s]) for s in stages]
 
-    inter  = np.array([r["G_d_inter"]    for r in rows], dtype=float)
-    intra  = np.array([r["G_d_intra"]    for r in rows], dtype=float)
-    sep = np.array([r["BiologicalSeparation"] for r in rows], dtype=float)
-    x      = np.arange(len(stages))
-    width  = 0.35
+    inter = np.array(
+        [r["G_d_inter"] for r in rows],
+        dtype=float,
+    )
 
-    sep_colors = [_COL_GOOD if s > 0 else _COL_BAD for s in sep]
+    intra = np.array(
+        [r["G_d_intra"] for r in rows],
+        dtype=float,
+    )
 
-    # ------------------------------------------------------------------ #
-    # Layout: 1 or 2 rows depending on plot_ratio
-    # ------------------------------------------------------------------ #
+    sep = np.array(
+        [r["BiologicalSeparation"] for r in rows],
+        dtype=float,
+    )
+
+    spearman = np.array(
+        [
+            r.get(
+                "SimilarityDistanceSpearman",
+                np.nan,
+            )
+            for r in rows
+        ],
+        dtype=float,
+    )
+
+    spearman_p = np.array(
+        [
+            r.get(
+                "SimilarityDistanceSpearmanP",
+                np.nan,
+            )
+            for r in rows
+        ],
+        dtype=float,
+    )
+
+    x = np.arange(len(stages))
+    width = 0.35
+
+    sep_colors = [
+        _COL_GOOD if s > 0 else _COL_BAD
+        for s in sep
+    ]
+
+    # --------------------------------------------------
+    # Layout
+    # --------------------------------------------------
+
     if plot_ratio:
+
         fig, axes = plt.subplots(
-            2, 1,
-            figsize=figsize,
-            gridspec_kw={"height_ratios": [3, 2]},
+            3,
+            1,
+            figsize=(figsize[0], figsize[1] * 1.5),
+            gridspec_kw={
+                "height_ratios": [3, 2, 2]
+            },
         )
+
         ax_dist = axes[0]
-        ax_rat  = axes[1]
+        ax_sep = axes[1]
+        ax_corr = axes[2]
+
     else:
-        fig, ax_dist = plt.subplots(1, 1, figsize=figsize)
+
+        fig, axes = plt.subplots(
+            2,
+            1,
+            figsize=(figsize[0], figsize[1]),
+            gridspec_kw={
+                "height_ratios": [3, 2]
+            },
+        )
+
+        ax_dist = axes[0]
+        ax_corr = axes[1]
+
     fig.patch.set_facecolor("white")
 
-    # ── Top panel: grouped bar chart ────────────────────────────────── #
+    # ==================================================
+    # DISTANCE METRICS
+    # ==================================================
+
     ax_dist.set_facecolor("#fafafa")
 
     bars_inter = ax_dist.bar(
-        x - width / 2, inter, width,
-        label="$G_{d,\\mathrm{inter}}$  (inter-study)",
-        color=_COL_INTER, alpha=_ALPHA, edgecolor=_COL_INTER, linewidth=1,
+        x - width / 2,
+        inter,
+        width,
+        label=r"$G_{d,\mathrm{inter}}$",
+        color=_COL_INTER,
+        alpha=_ALPHA,
+        edgecolor=_COL_INTER,
+        linewidth=1.5,
     )
+
     bars_intra = ax_dist.bar(
-        x + width / 2, intra, width,
-        label="$G_{d,\\mathrm{intra}}$  (intra-study)",
-        color=_COL_INTRA, alpha=_ALPHA, edgecolor=_COL_INTRA, linewidth=1,
+        x + width / 2,
+        intra,
+        width,
+        label=r"$G_{d,\mathrm{intra}}$",
+        color=_COL_INTRA,
+        alpha=_ALPHA,
+        edgecolor=_COL_INTRA,
+        linewidth=1.5,
         hatch="//",
     )
 
-    # value labels on bars
+    ymax = np.nanmax(
+        np.concatenate([inter, intra])
+    )
+
     for bars in (bars_inter, bars_intra):
+
         for bar in bars:
+
             h = bar.get_height()
+
             if np.isfinite(h):
+
                 ax_dist.text(
                     bar.get_x() + bar.get_width() / 2,
-                    h + 0.005 * max(inter.max(), intra.max()),
+                    h + ymax * 0.02,
                     f"{h:.3f}",
-                    ha="center", va="bottom", fontsize=8, color="#444",
+                    ha="center",
+                    va="bottom",
+                    fontsize=18,
                 )
 
     ax_dist.set_xticks(x)
-    ax_dist.set_xticklabels(stages, fontsize=20, rotation=15, ha="right")
-    ax_dist.set_ylabel("Weighted distance (PCA space)", fontsize=20)
-    ax_dist.set_title("Normalization stage evaluation — distance metrics", fontsize=12, pad=10)
-    ax_dist.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
-    ax_dist.legend(fontsize=18, framealpha=0.6)
-    ax_dist.spines[["top", "right"]].set_visible(False)
-    ax_dist.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
 
-    # ── Bottom panel: ratio bar chart ───────────────────────────────── #
+    ax_dist.set_xticklabels(
+        stages,
+        rotation=15,
+        ha="right",
+    )
+
+    ax_dist.set_ylabel(
+        "Normalized weighted distance"
+    )
+
+    ax_dist.set_title(
+        "Inter-study and intra-study biological distances",
+        pad=20,
+    )
+
+    ax_dist.grid(
+        axis="y",
+        linestyle=":",
+        linewidth=1,
+        color="#cccccc",
+    )
+
+    ax_dist.spines[
+        ["top", "right"]
+    ].set_visible(False)
+
+    ax_dist.legend(
+        framealpha=0.8,
+    )
+
+    # ==================================================
+    # SEPARATION SCORE
+    # ==================================================
+
     if plot_ratio:
-        ax_rat.set_facecolor("#fafafa")
-        ax_rat.set_ylim(-1.1, 1.1)
-        bars_ratio = ax_rat.bar(
-            x, sep, width * 1.6,
+
+        ax_sep.set_facecolor("#fafafa")
+
+        bars_sep = ax_sep.bar(
+            x,
+            sep,
+            width=0.7,
             color=[c + "bb" for c in sep_colors],
-            edgecolor=sep_colors, linewidth=1.2,
-        )
-
-        # reference line at 1.0
-        ax_rat.axhline(
-            0.0,
-            color=_COL_REF,
+            edgecolor=sep_colors,
             linewidth=1.5,
-            linestyle="--",
-            zorder=3,
-        )
-        ax_rat.text(
-            len(stages) - 0.5, 0.0,
-            " separation = 0",
-            va="bottom", ha="right", fontsize=18, color=_COL_REF,
         )
 
-        # value labels
-        for bar, s in zip(bars_ratio, sep):
-            if np.isfinite(s):
-                ax_rat.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    s + 0.01 * np.sign(s if s != 0 else 1),
-                    f"{s:.3f}",
-                    color=_COL_GOOD if s > 0 else _COL_BAD,
-                    ha="center", va="bottom", fontsize=19, fontweight="bold",
+        ax_sep.axhline(
+            0,
+            color=_COL_REF,
+            linestyle="--",
+            linewidth=2,
+        )
+
+        for bar, value in zip(
+            bars_sep,
+            sep,
+        ):
+
+            if np.isfinite(value):
+
+                ax_sep.text(
+                    bar.get_x()
+                    + bar.get_width() / 2,
+                    value,
+                    f"{value:.3f}",
+                    ha="center",
+                    va="bottom"
+                    if value >= 0
+                    else "top",
+                    fontsize=20,
+                    fontweight="bold",
                 )
 
-        ax_rat.set_xticks(x)
-        ax_rat.set_xticklabels(stages, fontsize=20, rotation=15, ha="right")
-        ax_rat.set_ylabel("Separation score", fontsize=26)
-        ax_rat.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
-        ax_rat.spines[["top", "right"]].set_visible(False)
-        ax_rat.grid(axis="y", linestyle=":", linewidth=0.6, color="#ccc")
+        ax_sep.set_xticks(x)
 
-        # coloured legend for pass/fail
-        from matplotlib.patches import Patch
-        ax_rat.legend(
-            handles=[
-                Patch(color=_COL_GOOD, alpha=0.7,
-                    label="Positive separation (desired)"),
-
-                Patch(color=_COL_BAD, alpha=0.7,
-                    label="Negative separation"),
-            ],
-            fontsize=8, framealpha=0.6, loc="upper left",
+        ax_sep.set_xticklabels(
+            stages,
+            rotation=15,
+            ha="right",
         )
 
-    plt.tight_layout(h_pad=2.5)
+        ax_sep.set_ylabel(
+            "Separation score"
+        )
 
-    # ── Save ───────────────────────────────────────────────────────── #
+        ax_sep.set_title(
+            "Biological separation metric"
+        )
+
+        ax_sep.grid(
+            axis="y",
+            linestyle=":",
+            linewidth=1,
+            color="#cccccc",
+        )
+
+        ax_sep.spines[
+            ["top", "right"]
+        ].set_visible(False)
+
+    # ==================================================
+    # SIMILARITY-DISTANCE CORRELATION
+    # ==================================================
+
+    ax_corr.set_facecolor("#fafafa")
+
+    corr_colors = [
+        _COL_GOOD if c < 0 else _COL_BAD
+        for c in spearman
+    ]
+
+    bars_corr = ax_corr.bar(
+        x,
+        spearman,
+        width=0.7,
+        color=[c + "bb" for c in corr_colors],
+        edgecolor=corr_colors,
+        linewidth=1.5,
+    )
+
+    ax_corr.axhline(
+        0,
+        color=_COL_REF,
+        linestyle="--",
+        linewidth=2,
+    )
+
+    for bar, corr, pval in zip(
+        bars_corr,
+        spearman,
+        spearman_p,
+    ):
+
+        if np.isfinite(corr):
+
+            label = (
+                f"ρ={corr:.3f}\n"
+                f"p={pval:.1e}"
+            )
+
+            ax_corr.text(
+                bar.get_x()
+                + bar.get_width() / 2,
+                corr,
+                label,
+                ha="center",
+                va="bottom"
+                if corr >= 0
+                else "top",
+                fontsize=18,
+            )
+
+    ax_corr.set_xticks(x)
+
+    ax_corr.set_xticklabels(
+        stages,
+        rotation=15,
+        ha="right",
+    )
+
+    ax_corr.set_ylabel(
+        "Spearman correlation"
+    )
+
+    ax_corr.set_title(
+        "Similarity vs distance relationship"
+    )
+
+    ax_corr.grid(
+        axis="y",
+        linestyle=":",
+        linewidth=1,
+        color="#cccccc",
+    )
+
+    ax_corr.spines[
+        ["top", "right"]
+    ].set_visible(False)
+
+    # ==================================================
+    # FINALIZE
+    # ==================================================
+
+    plt.tight_layout(
+        h_pad=3.0
+    )
+
     if output_folder is not None:
-        os.makedirs(output_folder, exist_ok=True)
-        out_path = os.path.join(output_folder, f"{experiment_name}.pdf")
-        fig.savefig(out_path, dpi=300, bbox_inches="tight")
-        print(f"[DistMetrics] Figure saved → {out_path}")
+
+        os.makedirs(
+            output_folder,
+            exist_ok=True,
+        )
+
+        out_path = os.path.join(
+            output_folder,
+            f"{experiment_name}.png",
+        )
+
+        fig.savefig(
+            out_path,
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+        print(
+            f"[DistMetrics] Figure saved → {out_path}"
+        )
+
+    if show:
+        plt.show()
+
+    return fig
+
+def plot_similarity_distance_scatter(
+    pairwise_df: pd.DataFrame,
+    output_folder: str | None = None,
+    experiment_name: str = "SimilarityDistance",
+    show: bool = False,
+    max_points: int = 100_000,
+) -> plt.Figure:
+
+    from scipy.stats import spearmanr
+
+    df = pairwise_df.copy()
+
+    if len(df) > max_points:
+        df = df.sample(
+            max_points,
+            random_state=42,
+        )
+
+    corr, pval = spearmanr(
+        df["Distance"],
+        df["Similarity"],
+    )
+
+    fig, ax = plt.subplots(
+        figsize=(10, 8)
+    )
+
+    ax.scatter(
+        df["Distance"],
+        df["Similarity"],
+        alpha=0.05,
+        s=4,
+    )
+
+    ax.set_xlabel(
+        "PCA distance"
+    )
+
+    ax.set_ylabel(
+        "Biological similarity"
+    )
+
+    ax.set_title(
+        (
+            "Similarity vs Distance\n"
+            f"Spearman = {corr:.3f} "
+            f"(p={pval:.2e})"
+        )
+    )
+
+    ax.grid(
+        linestyle=":",
+        alpha=0.5,
+    )
+
+    if output_folder is not None:
+
+        os.makedirs(
+            output_folder,
+            exist_ok=True,
+        )
+
+        path = os.path.join(
+            output_folder,
+            f"{experiment_name}.png",
+        )
+
+        fig.savefig(
+            path,
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+        print(
+            f"[DistMetrics] Scatter saved → {path}"
+        )
 
     if show:
         plt.show()
