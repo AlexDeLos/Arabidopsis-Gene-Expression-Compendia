@@ -969,9 +969,9 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun19_2/{file}"
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun19_Full_all1s/{file}"
 			
-			# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+			metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			# if file == "filter_norm":
 			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
 			# 	DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
@@ -988,11 +988,11 @@ if __name__ == "__main__":
 			DATA_DRIVEN_WEIGHTS ={
 				"tissue": 1,
 				"developmental_stage": 1,
-				"treatment": 0,
-				"ecotype": 0,
-				"modification": 0,
-				"medium": 0,
-				"treatment_intensity": 0,
+				"treatment": 1,
+				"ecotype": 1,
+				"modification": 1,
+				"medium": 1,
+				"treatment_intensity": 1,
 			}
 			dist_metrics = run_distance_evaluation(
 				data_df=df,
@@ -1002,19 +1002,19 @@ if __name__ == "__main__":
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics
-			# all_metrics[file] = metrics_df
-			# if not LIGHT_WEIGHT:
-			# 	all_bulk_metrics[file] = bulk_metrics_df
-			# 	all_umaps[file] = embeddings["UMAP"]
-			# 	all_tsnes[file] = embeddings["TSNE"]
-			# 	all_bulk[file] = embeddings["bulk"]
-			# all_metas[file] = meta_df
+			all_metrics[file] = metrics_df
+			if not LIGHT_WEIGHT:
+				all_bulk_metrics[file] = bulk_metrics_df
+				all_umaps[file] = embeddings["UMAP"]
+				all_tsnes[file] = embeddings["TSNE"]
+				all_bulk[file] = embeddings["bulk"]
+			all_metas[file] = meta_df
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
 
 	# Generate the Comparison Plots
-	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun19_2"
+	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun19_Full_all1s"
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
