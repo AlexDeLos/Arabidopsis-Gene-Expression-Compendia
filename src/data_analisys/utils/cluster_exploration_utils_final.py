@@ -1108,12 +1108,20 @@ def estimate_axis_weights(
     prior_series = pd.Series(prior)
 
     # Keep only axes present in both
-    if set(data_weights.index) != set(prior_series.index):
-        raise ValueError(
-            "Mismatch between empirical axes and prior axes."
-        )
+    # available_axes = set(metrics_df["LabelType"].str.lower())
+
+    # missing = required_axes - available_axes
+
+    # if missing:
+    #     raise ValueError(
+    #         f"Missing required axes: {sorted(missing)}"
+    #     )
     common = data_weights.index.intersection(prior_series.index)
 
+    if len(common) == 0:
+        raise ValueError(
+            "No overlap between empirical axes and prior axes."
+        )
     data_weights = data_weights.loc[common]
     prior_series = prior_series.loc[common]
 

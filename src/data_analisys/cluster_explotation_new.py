@@ -834,22 +834,34 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
         # Format strictly for the plot_metrics_comparison
         for metric_name, val in [("Silhouette", sil_score), ("ARI", ari_score), ("KNN_Purity", knn_purity), ("Variance_Explained", var_explained), ("Batch_ASW_within_Bio", batch_asw)]:
             results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
-
-    print(f"\nGenerating standard UMAP & TSNE for {experiment_name}...")
-
-    # Run PCA first to feed into UMAP/TSNE
-    pca_embedding, _ = run_pca(df_aligned, n_components=min(50, df_aligned.shape[0] - 1, df_aligned.shape[1] - 1))
-
-    # --- CONDITIONAL EMBEDDING GENERATION ---
     embeddings_out = {}
-    embedding_methods = [("UMAP", run_umap), ("TSNE", run_tsne)]
     if not light_weight:
-        embedding_methods.append(("bulk", run_bulkformer))
+        print(f"\nGenerating standard UMAP & TSNE for {experiment_name}...")
 
-    for method, run_func in embedding_methods:
-        emb = run_func(df_aligned, experiment_name) if method == "bulk" else run_func(pca_embedding)
-        embeddings_out[method] = emb
+		# Run PCA first to feed into UMAP/TSNE
+        pca_embedding, _ = run_pca(
+			df_aligned,
+			n_components=min(
+				50,
+				df_aligned.shape[0] - 1,
+				df_aligned.shape[1] - 1
+			)
+		)
 
+        embeddings_out["UMAP"] = run_umap(pca_embedding)
+        embeddings_out["TSNE"] = run_tsne(pca_embedding)
+
+        print("Generating BulkFormer embedding...")
+        embeddings_out["bulk"] = run_bulkformer(
+			df_aligned,
+			experiment_name
+		)
+    else:
+        print(
+			"Skipping UMAP, TSNE and BulkFormer embedding generation "
+			"(light_weight=True)."
+		)
+	
     # ---- CONDITIONAL BULK LATENT SPACE METRICS ---
     bulk_results_summary = []
     if not light_weight:
@@ -959,13 +971,6 @@ if __name__ == "__main__":
             print(f"  -> Added study_id labels for {count_filled} samples.")
 
             output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
-            # dist_metrics = run_distance_evaluation(
-            #     data_df=df,
-            #     labels_dict=labels_map,
-            #     sample_study_map=SAMPLE_STUDY_MAP,
-            #     experiment_name=file,
-            #     axis_weights=DEFAULT_AXIS_WEIGHTS
-            # )
             
             metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
             if file == "filter_norm":
@@ -979,15 +984,7 @@ if __name__ == "__main__":
                   reverse=True,
               ):
                   print(f"{k:25s} {v:.3f}")
-            # DATA_DRIVEN_WEIGHTS = {
-            #     "tissue": 2.307,
-            #     "developmental_stage": 1.900,
-            #     "treatment": 0.790,
-            #     "ecotype": 1.066,
-            #     "modification": 0.503,
-            #     "medium": 0.217,
-            #     "treatment_intensity": 0.217,
-            # }
+
             assert DATA_DRIVEN_WEIGHTS is not None
 
             dist_metrics = run_distance_evaluation(
@@ -1000,11 +997,11 @@ if __name__ == "__main__":
             all_dist_metrics[file] = dist_metrics
             all_metrics[file] = metrics_df
             if not LIGHT_WEIGHT:
-              all_bulk_metrics[file] = bulk_metrics_df
-            all_umaps[file] = embeddings["UMAP"]
-            all_tsnes[file] = embeddings["TSNE"]
-            all_bulk[file] = embeddings["bulk"]
-            all_metas[file] = meta_df
+                all_bulk_metrics[file] = bulk_metrics_df
+                all_umaps[file] = embeddings["UMAP"]
+                all_tsnes[file] = embeddings["TSNE"]
+                all_bulk[file] = embeddings["bulk"]
+                all_metas[file] = meta_df
 
         else:
             print(f"Error: Data file not found at {data_path}")
@@ -1012,32 +1009,32 @@ if __name__ == "__main__":
     # Generate the Comparison Plots
     # if len(all_metrics) > 1:
     if True:
-      comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
-      os.makedirs(comparison_output_dir, exist_ok=True)
-      plot_distance_metrics(
-          all_dist_metrics=all_dist_metrics,
-          output_folder=comparison_output_dir,
-          experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
-          plot_ratio=True
-      )
+        comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/Comparisons"
+        os.makedirs(comparison_output_dir, exist_ok=True)
+        plot_distance_metrics(
+            all_dist_metrics=all_dist_metrics,
+            output_folder=comparison_output_dir,
+            experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
+            plot_ratio=True
+        )
 
-      print("\nGenerating Metric Comparisons (gene expression space)...")
-      combined_meta = pd.concat(all_metas.values())
-      # Only deduplicate if all columns are hashable
-      try:
-          combined_meta = combined_meta.drop_duplicates()
-      except TypeError:
-          combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
-      plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+        print("\nGenerating Metric Comparisons (gene expression space)...")
+        combined_meta = pd.concat(all_metas.values())
+        # Only deduplicate if all columns are hashable
+        try:
+            combined_meta = combined_meta.drop_duplicates()
+        except TypeError:
+            combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
+        plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
 
-      if not LIGHT_WEIGHT:
-        print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
-        plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
+        if not LIGHT_WEIGHT:
+          print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
+          plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
-      print("Generating linked multi-stage UMAP comparison...")
-      plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
+          print("Generating linked multi-stage UMAP comparison...")
+          plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
 
-      print("Generating linked multi-stage t-SNE comparison...")
-      plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
-      print("Generating Bulk comparison...")
-      plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
+          print("Generating linked multi-stage t-SNE comparison...")
+          plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
+          print("Generating Bulk comparison...")
+          plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
