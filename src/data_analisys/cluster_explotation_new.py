@@ -28,7 +28,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	run_pca,
 	run_tsne,
 	run_umap,
-	variance_explained_by_label,
+	multinomial_logistic_accuracy,
 )
 from src.data_analisys.utils.proxy_distance_metric import run_distance_evaluation	# noqa: E402
 from src.data_analisys.utils.plot_distance_metric import plot_distance_metrics	# noqa: E402
@@ -815,7 +815,7 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
 		if X_metric.shape[0] < 5 or len(unique_classes) < 2:
 			print(f"	Not enough valid samples/classes for {cat}.")
-			sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
+			sil_score = ari_score = knn_purity = multinomial_logistic_accuracy = batch_asw = np.nan
 		else:
 			X_rep_metric = X_metric
 			sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
@@ -826,13 +826,13 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 			knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
 			knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
 
-			var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
+			multinomial_logistic_accuracy = multinomial_logistic_accuracy(X_rep_metric, text_labels_metric)
 			batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
 
-			print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
+			print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, multinomial_logistic_accuracy: {multinomial_logistic_accuracy:.3f}, Batch ASW: {batch_asw:.3f}")
 
 		# Format strictly for the plot_metrics_comparison
-		for metric_name, val in [("Silhouette", sil_score), ("ARI", ari_score), ("KNN_Purity", knn_purity), ("Variance_Explained", var_explained), ("Batch_ASW_within_Bio", batch_asw)]:
+		for metric_name, val in [("Silhouette", sil_score), ("ARI", ari_score), ("KNN_Purity", knn_purity), ("multinomial_logistic_accuracy", multinomial_logistic_accuracy), ("Batch_ASW_within_Bio", batch_asw)]:
 			results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})
 	embeddings_out = {}
 	if not light_weight:
@@ -881,7 +881,7 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
 			if X_metric.shape[0] < 5 or len(unique_classes) < 2:
 				print(f"	Not enough valid samples/classes for {cat}.")
-				sil_score = ari_score = knn_purity = var_explained = batch_asw = np.nan
+				sil_score = ari_score = knn_purity = multinomial_logistic_accuracy = batch_asw = np.nan
 			else:
 				X_rep_metric = X_metric
 				sil_score = silhouette_score(X_rep_metric, num_labels_metric, sample_size=min(5000, X_rep_metric.shape[0]))
@@ -892,16 +892,16 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 				knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
 				knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
 
-				var_explained = variance_explained_by_label(X_rep_metric, text_labels_metric)
+				multinomial_logistic_accuracy = multinomial_logistic_accuracy(X_rep_metric, text_labels_metric)
 				batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
 
-				print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {var_explained:.3f}, Batch ASW: {batch_asw:.3f}")
+				print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {multinomial_logistic_accuracy:.3f}, Batch ASW: {batch_asw:.3f}")
 
 			for metric_name, val in [
 				("Silhouette", sil_score),
 				("ARI", ari_score),
 				("KNN_Purity", knn_purity),
-				("Variance_Explained", var_explained),
+				("multinomial_logistic_accuracy", multinomial_logistic_accuracy),
 				("Batch_ASW_within_Bio", batch_asw),
 			]:
 				bulk_results_summary.append({"Label_Axis": cat, "Metric": metric_name, "Value": val})

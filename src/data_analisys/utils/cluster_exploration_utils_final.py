@@ -725,31 +725,74 @@ def calculate_asw_batch_within_biology(X_pca, batch_labels, bio_labels) -> float
     return 0.0
 
 
-def variance_explained_by_label(data, labels) -> float:
+def multinomial_logistic_accuracy(data, labels) -> float:
     """
-    Calculates the variance in the dataset explained by the provided labels.
-    Approximated using a Linear Regression R^2 score across principal components.
+    Cross-validated multinomial logistic regression accuracy.
+
+    Parameters
+    ----------
+    data
+        PCA coordinates or expression features
+        (n_samples × n_features)
+
+    labels
+        Biological labels corresponding to samples.
+
+    Returns
+    -------
+    float
+        Mean cross-validated classification accuracy.
     """
-    valid_mask = ~pd.Series(labels).isin(["unspecified", "unknown", "nan", "None"])
+
+    valid_mask = ~pd.Series(labels).isin(
+        ["unspecified", "unknown", "nan", "None"]
+    )
+
     if valid_mask.sum() < 2:
         return 0.0
 
-    data_sub = data[valid_mask]
-    labels_sub = np.array(labels)[valid_mask]
+    X = np.asarray(data)[valid_mask]
+    y = np.asarray(labels)[valid_mask]
 
-    le = LabelEncoder()
-    y_enc = le.fit_transform(labels_sub)
+    unique_classes, counts = np.unique(y, return_counts=True)
 
-    if len(np.unique(y_enc)) < 2:
+    if len(unique_classes) < 2:
         return 0.0
+
+    min_class_size = counts.min()
+
+    # Need at least 2 samples per class for CV
+    if min_class_size < 2:
+        return 0.0
+
+    n_splits = min(5, min_class_size)
 
     try:
-        model = LinearRegression()
-        model.fit(data_sub, y_enc)
-        return model.score(data_sub, y_enc)  # pyright: ignore[reportReturnType]
+        clf = LogisticRegression(
+            multi_class="multinomial",
+            max_iter=1000,
+            random_state=42,
+        )
+
+        cv = StratifiedKFold(
+            n_splits=n_splits,
+            shuffle=True,
+            random_state=42,
+        )
+
+        scores = cross_val_score(
+            clf,
+            X,
+            y,
+            cv=cv,
+            scoring="accuracy",
+            n_jobs=-1,
+        )
+
+        return float(scores.mean())
+
     except Exception:
         return 0.0
-
 
 def calculate_cramers_v(series1: pd.Series, series2: pd.Series) -> float:
     contingency_table = pd.crosstab(series1, series2)
@@ -843,8 +886,8 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
     fig.suptitle("Batch Correction Evaluation & Confounding Check\n(Calculated exclusively on valid known labels)", fontsize=20, fontweight="bold", y=0.98)
 
     # Set zorder=3 for barplots so they appear ON TOP of the background bands
-    sns.barplot(data=plot_df, x="Category", y="Variance_Explained", hue="Stage", ax=axes[0, 0], palette="Set2", zorder=3)
-    axes[0, 0].set_title("A. Variance Explained (Higher = More Influence)")
+    sns.barplot(data=plot_df, x="Category", y="multinomial_logistic_accuracy", hue="Stage", ax=axes[0, 0], palette="Set2", zorder=3)
+    axes[0, 0].set_title("A. multinomial logistic accuracy (Higher = More Influence)")
     axes[0, 0].set_ylabel("R² Score")
 
     sns.barplot(data=plot_df, x="Category", y="KNN_Purity", hue="Stage", ax=axes[0, 1], palette="Set2", zorder=3)
@@ -1022,7 +1065,7 @@ def estimate_axis_weights(
     Estimate biological axis weights from exploration metrics.
 
     Combines:
-        - Variance_Explained
+        - multinomial_logistic_accuracy
         - KNN_Purity
         - Silhouette
 
@@ -1056,7 +1099,7 @@ def estimate_axis_weights(
     )
 
     required = [
-        "Variance_Explained",
+        "multinomial_logistic_accuracy",
         "KNN_Purity",
         "Silhouette",
     ]
@@ -1073,7 +1116,7 @@ def estimate_axis_weights(
         raise ValueError(
             "Missing metric values encountered."
         )
-    variance = pivot["Variance_Explained"]
+    variance = pivot["multinomial_logistic_accuracy"]
     knn = pivot["KNN_Purity"]
 
     # Silhouette can be negative
