@@ -96,7 +96,7 @@ def plot_distance_metrics(
 
     inter  = np.array([r["G_d_inter"]    for r in rows], dtype=float)
     intra  = np.array([r["G_d_intra"]    for r in rows], dtype=float)
-    sep = np.array([r["SeparationScore"] for r in rows], dtype=float)
+    sep = np.array([r["BiologicalSeparation"] for r in rows], dtype=float)
     x      = np.arange(len(stages))
     width  = 0.35
 

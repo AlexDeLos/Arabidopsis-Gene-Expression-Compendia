@@ -182,9 +182,10 @@ def compute_global_distance_metrics(
     if axis_weights is None:
         axis_weights = DEFAULT_AXIS_WEIGHTS
 
-    # samples = list(expr_df.columns)
-
+    # --------------------------------------------------
     # PCA distance matrix
+    # --------------------------------------------------
+
     dist_matrix, ordered_samples = _pca_distances(
         expr_df,
         n_pca_components,
@@ -196,20 +197,49 @@ def compute_global_distance_metrics(
         ordered_samples,
     )
 
-    dist_bar = compute_mean_pairwise_distance(dist_matrix)
+    study_lookup = {
+        sample: str(study_map.at[sample, "StudyID"])
+        if sample in study_map.index
+        else "Unknown_Study"
+        for sample in ordered_samples
+    }
+
+    dist_bar = compute_mean_pairwise_distance(
+        dist_matrix
+    )
+
+    # --------------------------------------------------
+    # Biological separation metric
+    # --------------------------------------------------
 
     similar_sum = 0.0
     dissimilar_sum = 0.0
 
-    n_pairs = 0
+    # --------------------------------------------------
+    # Inter / intra study metrics
+    # --------------------------------------------------
+
+    inter_weighted_sum = 0.0
+    intra_weighted_sum = 0.0
+
+    inter_pairs = 0
+    intra_pairs = 0
+
+    # --------------------------------------------------
+    # Pairwise loop
+    # --------------------------------------------------
 
     for i in range(len(ordered_samples)):
+
         sample_i = ordered_samples[i]
         labels_i = label_lookup[sample_i]
+        study_i = study_lookup[sample_i]
 
         for j in range(i + 1, len(ordered_samples)):
+
             sample_j = ordered_samples[j]
             labels_j = label_lookup[sample_j]
+            study_j = study_lookup[sample_j]
 
             similarity = compute_sim(
                 labels_i,
@@ -219,14 +249,57 @@ def compute_global_distance_metrics(
 
             distance = dist_matrix[i, j]
 
+            # --------------------------
+            # Biological separation
+            # --------------------------
+
             similar_sum += distance * similarity
-            dissimilar_sum += distance * (1.0 - similarity)
+            dissimilar_sum += distance * (
+                1.0 - similarity
+            )
 
-            n_pairs += 1
+            # --------------------------
+            # Inter / intra study
+            # --------------------------
 
-    separation_score = (
+            weighted_distance = (
+                distance * similarity
+            )
+
+            if study_i == study_j:
+                intra_weighted_sum += weighted_distance
+                intra_pairs += 1
+            else:
+                inter_weighted_sum += weighted_distance
+                inter_pairs += 1
+
+    # --------------------------------------------------
+    # Biological separation
+    # --------------------------------------------------
+
+    biological_separation = (
         similar_sum / dissimilar_sum
         if dissimilar_sum > 0
+        else float("nan")
+    )
+
+    # --------------------------------------------------
+    # G_d_inter
+    # --------------------------------------------------
+
+    G_d_inter = (
+        (inter_weighted_sum / inter_pairs) / dist_bar
+        if inter_pairs > 0 and dist_bar > 0
+        else float("nan")
+    )
+
+    # --------------------------------------------------
+    # G_d_intra
+    # --------------------------------------------------
+
+    G_d_intra = (
+        (intra_weighted_sum / intra_pairs) / dist_bar
+        if intra_pairs > 0 and dist_bar > 0
         else float("nan")
     )
 
@@ -235,13 +308,21 @@ def compute_global_distance_metrics(
             f"[DistMetrics] Dist_bar(S) = {dist_bar:.6f}"
         )
         print(
+            f"[DistMetrics] G_d_inter = {G_d_inter:.6f}"
+        )
+        print(
+            f"[DistMetrics] G_d_intra = {G_d_intra:.6f}"
+        )
+        print(
             f"[DistMetrics] BiologicalSeparation = "
-            f"{separation_score:.6f}"
+            f"{biological_separation:.6f}"
         )
 
     return {
         "Dist_bar": dist_bar,
-        "BiologicalSeparation": separation_score,
+        "G_d_inter": G_d_inter,
+        "G_d_intra": G_d_intra,
+        "BiologicalSeparation": biological_separation,
     }
 
 def compute_global_distance_metrics_ratio(

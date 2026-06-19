@@ -7,6 +7,7 @@ import sys
 import time
 import urllib.error
 from collections import OrderedDict
+import warnings
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -18,7 +19,9 @@ import umap
 from Bio import Entrez
 from scipy.stats import chi2_contingency
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression
+# from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
@@ -725,23 +728,22 @@ def calculate_asw_batch_within_biology(X_pca, batch_labels, bio_labels) -> float
     return 0.0
 
 
-def multinomial_logistic_accuracy(data, labels) -> float:
+def multinomial_logistic_accuracy_fun(data, labels) -> float:
     """
     Cross-validated multinomial logistic regression accuracy.
 
     Parameters
     ----------
     data
-        PCA coordinates or expression features
-        (n_samples × n_features)
+        PCA coordinates (n_samples × n_features)
 
     labels
-        Biological labels corresponding to samples.
+        Class labels for a biological axis.
 
     Returns
     -------
     float
-        Mean cross-validated classification accuracy.
+        Mean cross-validated accuracy.
     """
 
     valid_mask = ~pd.Series(labels).isin(
@@ -761,35 +763,41 @@ def multinomial_logistic_accuracy(data, labels) -> float:
 
     min_class_size = counts.min()
 
-    # Need at least 2 samples per class for CV
+    # Stratified CV requires at least one sample
+    # from every class in every fold.
     if min_class_size < 2:
         return 0.0
 
     n_splits = min(5, min_class_size)
 
+    clf = LogisticRegression(
+        solver="lbfgs",
+        C=np.inf,          # effectively unregularized
+        max_iter=2000,
+    )
+
+    cv = StratifiedKFold(
+        n_splits=n_splits,
+        shuffle=True,
+        random_state=42,
+    )
+
     try:
-        clf = LogisticRegression(
-            multi_class="multinomial",
-            max_iter=1000,
-            random_state=42,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                # category=ConvergenceWarning,
+            )
 
-        cv = StratifiedKFold(
-            n_splits=n_splits,
-            shuffle=True,
-            random_state=42,
-        )
+            scores = cross_val_score(
+                clf,
+                X,
+                y,
+                cv=cv,
+                scoring="accuracy",
+            )
 
-        scores = cross_val_score(
-            clf,
-            X,
-            y,
-            cv=cv,
-            scoring="accuracy",
-            n_jobs=-1,
-        )
-
-        return float(scores.mean())
+        return float(np.mean(scores))
 
     except Exception:
         return 0.0

@@ -28,7 +28,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	run_pca,
 	run_tsne,
 	run_umap,
-	multinomial_logistic_accuracy,
+	multinomial_logistic_accuracy_fun,
 )
 from src.data_analisys.utils.proxy_distance_metric import run_distance_evaluation	# noqa: E402
 from src.data_analisys.utils.plot_distance_metric import plot_distance_metrics	# noqa: E402
@@ -826,7 +826,7 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 			knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
 			knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
 
-			multinomial_logistic_accuracy = multinomial_logistic_accuracy(X_rep_metric, text_labels_metric)
+			multinomial_logistic_accuracy = multinomial_logistic_accuracy_fun(X_rep_metric, text_labels_metric)
 			batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
 
 			print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, multinomial_logistic_accuracy: {multinomial_logistic_accuracy:.3f}, Batch ASW: {batch_asw:.3f}")
@@ -892,7 +892,7 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 				knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
 				knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
 
-				multinomial_logistic_accuracy = multinomial_logistic_accuracy(X_rep_metric, text_labels_metric)
+				multinomial_logistic_accuracy = multinomial_logistic_accuracy_fun(X_rep_metric, text_labels_metric)
 				batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
 
 				print(f"	Silhouette: {sil_score:.3f}, ARI: {ari_score:.3f}, KNN Purity: {knn_purity:.3f}, Var Exp: {multinomial_logistic_accuracy:.3f}, Batch ASW: {batch_asw:.3f}")
@@ -1001,7 +1001,7 @@ if __name__ == "__main__":
 				all_umaps[file] = embeddings["UMAP"]
 				all_tsnes[file] = embeddings["TSNE"]
 				all_bulk[file] = embeddings["bulk"]
-				all_metas[file] = meta_df
+			all_metas[file] = meta_df
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
