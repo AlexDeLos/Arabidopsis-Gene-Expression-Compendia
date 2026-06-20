@@ -761,13 +761,23 @@ def multinomial_logistic_accuracy_fun(data, labels) -> float:
     if len(unique_classes) < 2:
         return 0.0
 
-    min_class_size = counts.min()
+    # Stratified CV requires at least one sample from every class in every
+    # fold, so a class can't be split at all unless it has >= 2 samples.
+    # Rather than zeroing out the whole metric because of one rare/singleton
+    # category, drop just those samples and proceed with the rest.
+    singleton_classes = unique_classes[counts < 2]
+    if len(singleton_classes) > 0:
+        keep_mask = ~np.isin(y, singleton_classes)
+        X = X[keep_mask]
+        y = y[keep_mask]
+        unique_classes, counts = np.unique(y, return_counts=True)
 
-    # Stratified CV requires at least one sample
-    # from every class in every fold.
-    if min_class_size < 2:
+    # After dropping singletons we may no longer have enough classes/samples
+    # left to do anything meaningful.
+    if len(unique_classes) < 2 or len(y) < 2:
         return 0.0
 
+    min_class_size = counts.min()
     n_splits = min(5, min_class_size)
 
     clf = LogisticRegression(

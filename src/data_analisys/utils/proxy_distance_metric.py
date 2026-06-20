@@ -55,41 +55,175 @@ _UNKNOWN_VALUES = {"unspecified", "unknown", "na", "nan", "none", ""}
 # ---------------------------------------------------------------------------
 # Core similarity function
 # ---------------------------------------------------------------------------
+def _parse_treatments(value: str) -> set[str]:
+    return {
+        t.strip().lower()
+        for t in str(value).split("+")
+        if t.strip()
+    }
 
+def _treatment_similarity(
+    t1: str,
+    t2: str,
+) -> float:
+
+    s1 = _parse_treatments(t1)
+    s2 = _parse_treatments(t2)
+
+    if not s1 or not s2:
+        return 0.0
+
+    return len(s1 & s2) / len(s1 | s2)
+
+def _intensity_similarity(
+    treatment1: str,
+    treatment2: str,
+    intensity1: str,
+    intensity2: str,
+) -> float:
+
+    overlap = _treatment_similarity(
+        treatment1,
+        treatment2,
+    )
+
+    if overlap == 0:
+        return 0.0
+
+    try:
+        i1 = float(intensity1)
+        i2 = float(intensity2)
+
+        max_i = max(i1, i2)
+
+        if max_i == 0:
+            return overlap
+
+        intensity_sim = 1.0 - abs(i1 - i2) / max_i
+
+        return overlap * intensity_sim
+
+    except Exception:
+        return overlap
+    
 def compute_sim(
     labels_s: Dict[str, Optional[str]],
     labels_i: Dict[str, Optional[str]],
     weights: Dict[str, float],
 ) -> float:
     """
-    Compute the multi-axial metadata similarity score sim(L_s, L_i).
+    Compute the weighted metadata similarity score sim(L_s, L_i).
 
-    For each label axis i with weight w_i, both samples must have a known
-    (non-unspecified) annotation for the axis to contribute.  The score is
-    the fraction of valid shared axes on which the two labels agree,
-    weighted by w_i.
+    Each metadata axis contributes according to its biological importance
+    (weight). An axis only contributes when both samples have valid
+    (non-unknown) annotations.
 
-        sim = sum_i  w_i * 1[ L1^i == L2^i  AND  v1^i  AND  v2^i ]
-              --------------------------------------------------------
-              sum_i  w_i * 1[                      v1^i  AND  v2^i ]
+    For most axes, similarity is binary:
 
-    Returns 0.0 when no axis has valid annotations for both samples.
+        similarity_axis =
+            1.0  if L_s^i == L_i^i
+            0.0  otherwise
+
+    Two special cases are handled:
+
+    1. Treatment
+    Treatment labels may contain multiple treatments separated by "+".
+    Similarity is computed using the Jaccard overlap between treatment sets:
+
+        sim_treatment =
+            |T_s ∩ T_i| / |T_s ∪ T_i|
+
+    Examples:
+        Heat vs Heat               -> 1.0
+        Heat vs Salt               -> 0.0
+        Heat+Salt vs Heat          -> 0.5
+        Heat+Salt vs Heat+Salt     -> 1.0
+
+    2. Treatment Intensity
+    Treatment intensity is only considered similar when the corresponding
+    treatment labels share at least one treatment. Intensity similarity is
+    computed from the relative difference between intensity values and
+    contributes a fractional score between 0 and 1.
+
+    The final similarity score is the weighted average across all valid axes:
+
+                    Σ_i w_i · sim_i
+        sim(L_s,L_i)= ----------------
+                        Σ_i w_i
+
+    where sim_i is either a binary match (standard labels) or a fractional
+    similarity (treatment-related labels).
+
+    Returns
+    -------
+    float
+        Similarity score in the range [0, 1].
+
+        1.0 indicates identical metadata across all valid axes.
+        0.0 indicates no metadata similarity across valid axes.
+
+        Returns 0.0 when no axis has valid annotations for both samples.
     """
     numerator = 0.0
     denominator = 0.0
 
     for axis, w in weights.items():
+
         v1 = labels_s.get(axis)
         v2 = labels_i.get(axis)
 
-        # validity flags: annotation exists and is not an "unknown" placeholder
-        valid1 = (v1 is not None) and (str(v1).strip().lower() not in _UNKNOWN_VALUES)
-        valid2 = (v2 is not None) and (str(v2).strip().lower() not in _UNKNOWN_VALUES)
+        valid1 = (
+            v1 is not None
+            and str(v1).strip().lower() not in _UNKNOWN_VALUES
+        )
 
-        if valid1 and valid2:
-            denominator += w
-            if str(v1).strip() == str(v2).strip():
-                numerator += w
+        valid2 = (
+            v2 is not None
+            and str(v2).strip().lower() not in _UNKNOWN_VALUES
+        )
+
+        if not (valid1 and valid2):
+            continue
+
+        denominator += w
+
+        # -----------------------------
+        # treatment
+        # -----------------------------
+
+        if axis == "treatment":
+
+            numerator += (
+                w *
+                _treatment_similarity(
+                    str(v1),
+                    str(v2),
+                )
+            )
+
+        # -----------------------------
+        # treatment intensity
+        # -----------------------------
+
+        elif axis == "treatment_intensity":
+
+            numerator += (
+                w *
+                _intensity_similarity(
+                    labels_s.get("treatment", ""),
+                    labels_i.get("treatment", ""),
+                    str(v1),
+                    str(v2),
+                )
+            )
+
+        # -----------------------------
+        # standard labels
+        # -----------------------------
+
+        elif str(v1).strip() == str(v2).strip():
+
+            numerator += w
 
     return numerator / denominator if denominator > 0.0 else 0.0
 
