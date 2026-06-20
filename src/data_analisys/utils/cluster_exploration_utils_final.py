@@ -1216,7 +1216,7 @@ def find_n_components_for_variance(
     Parameters
     ----------
     df
-        Samples x Features data matrix.
+        Features x Samples data matrix.
     variance_threshold
         Target cumulative explained variance fraction (e.g. 0.90 for 90%).
     max_components
@@ -1243,7 +1243,7 @@ def find_n_components_for_variance(
         The fitted sklearn PCA object (full fit, not truncated to
         n_components_needed), in case you want to inspect loadings, etc.
     """
- 
+    df = df.T
     X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
  
     n_samples, n_features = X.shape
