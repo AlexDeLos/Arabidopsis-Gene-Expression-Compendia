@@ -19,6 +19,7 @@ from src.constants_labeling import LABELS as LABEL_AXES	# noqa: E402
 from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E402
 	align_labels_to_data,
 	calculate_asw_batch_within_biology,
+	drop_singleton_classes,
 	load_labels_study,
 	make_df_from_labels,
 	plot_metrics_comparison,
@@ -823,8 +824,20 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 			kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
 			ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
 
-			knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
-			knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
+			# n_neighbors must fit within the *training fold*, not the full
+			# dataset: with cv=2 each fold only trains on ~half the samples.
+			# Singleton classes are dropped first so StratifiedKFold doesn't
+			# warn and arbitrarily assign them to one fold.
+			X_knn, y_knn = drop_singleton_classes(X_rep_metric, num_labels_metric)
+			knn_cv_splits = 2
+			min_train_fold_size = X_knn.shape[0] - (X_knn.shape[0] // knn_cv_splits)
+			knn_n_neighbors = max(1, min(5, min_train_fold_size - 1))
+			knn = KNeighborsClassifier(n_neighbors=knn_n_neighbors)
+			knn_purity = (
+				np.nanmean(cross_val_score(knn, X_knn, y_knn, cv=knn_cv_splits))
+				if len(np.unique(y_knn)) >= 2
+				else np.nan
+			)
 
 			multinomial_logistic_accuracy = multinomial_logistic_accuracy_fun(X_rep_metric, text_labels_metric)
 			batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
@@ -889,8 +902,16 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 				kmeans = MiniBatchKMeans(n_clusters=len(unique_classes), random_state=42, n_init="auto").fit(X_rep_metric)
 				ari_score = adjusted_rand_score(num_labels_metric, kmeans.labels_)
 
-				knn = KNeighborsClassifier(n_neighbors=min(5, X_rep_metric.shape[0] - 1))
-				knn_purity = cross_val_score(knn, X_rep_metric, num_labels_metric, cv=2).mean()
+				X_knn, y_knn = drop_singleton_classes(X_rep_metric, num_labels_metric)
+				knn_cv_splits = 2
+				min_train_fold_size = X_knn.shape[0] - (X_knn.shape[0] // knn_cv_splits)
+				knn_n_neighbors = max(1, min(5, min_train_fold_size - 1))
+				knn = KNeighborsClassifier(n_neighbors=knn_n_neighbors)
+				knn_purity = (
+					np.nanmean(cross_val_score(knn, X_knn, y_knn, cv=knn_cv_splits))
+					if len(np.unique(y_knn)) >= 2
+					else np.nan
+				)
 
 				multinomial_logistic_accuracy = multinomial_logistic_accuracy_fun(X_rep_metric, text_labels_metric)
 				batch_asw = calculate_asw_batch_within_biology(X_rep_metric, batch_text_labels_metric, text_labels_metric)
@@ -970,7 +991,7 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun20_PCA_1.0/{file}"
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_1.1/{file}"
 			os.makedirs(output_dir, exist_ok=True)
 			n_components, cumulative_variance, pca = find_n_components_for_variance(
 				df,           # Samples x Genes
@@ -1029,9 +1050,9 @@ if __name__ == "__main__":
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
-	# raise ValueError("This is the temporary end of the file")
+
 	# Generate the Comparison Plots
-	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun20_all1s_1.0"
+	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_1.1"
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")

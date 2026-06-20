@@ -667,6 +667,123 @@ def run_pca(df: pd.DataFrame, n_components=50):
     return embedding, pca
 
 
+def find_n_components_for_variance(
+    df: pd.DataFrame,
+    variance_threshold: float = 0.90,
+    max_components: int | None = 500,
+    random_state: int = 42,
+    plot: bool = True,
+    save_path: str | None = None,
+) -> tuple[int, np.ndarray, PCA]:
+    """
+    Fit PCA on a data matrix and determine how many principal components
+    are needed to explain a target fraction of variance.
+
+    Parameters
+    ----------
+    df
+        Samples x Features data matrix.
+    variance_threshold
+        Target cumulative explained variance fraction (e.g. 0.90 for 90%).
+    max_components
+        Upper cap on the number of components to fit, for speed on wide
+        matrices (e.g. genes-as-columns expression data). Set to None to
+        fit the full min(n_samples, n_features) components.
+    random_state
+        Random state used by PCA's randomized SVD solver.
+    plot
+        Whether to render the components-vs-variance-explained plot.
+    save_path
+        If provided, saves the plot to this path instead of/in addition to
+        showing it.
+
+    Returns
+    -------
+    n_components_needed
+        Smallest number of components whose cumulative explained variance
+        is >= variance_threshold.
+    cumulative_variance
+        Array of cumulative explained variance ratios, one entry per
+        component fit (length == n_components fit).
+    pca
+        The fitted sklearn PCA object (full fit, not truncated to
+        n_components_needed), in case you want to inspect loadings, etc.
+    """
+
+    X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
+
+    n_samples, n_features = X.shape
+    upper_bound = min(n_samples, n_features)
+    n_fit = upper_bound if max_components is None else min(upper_bound, max_components)
+
+    print(f"  Fitting PCA with {n_fit} components (of {upper_bound} possible) on a {X.shape} matrix...")
+    pca = PCA(n_components=n_fit, random_state=random_state)
+    pca.fit(X)
+
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+
+    # Smallest n_components hitting the threshold. If even the full fit
+    # doesn't reach it (e.g. max_components capped too low), fall back to
+    # the max we actually fit and warn.
+    above_threshold = np.where(cumulative_variance >= variance_threshold)[0]
+    if len(above_threshold) > 0:
+        n_components_needed = int(above_threshold[0] + 1)
+    else:
+        n_components_needed = n_fit
+        print(
+            f"  ! Warning: {variance_threshold:.0%} variance not reached within "
+            f"{n_fit} components fit (reached {cumulative_variance[-1]:.1%}). "
+            "Consider raising max_components."
+        )
+
+    print(f"  -> {n_components_needed} components needed to explain {variance_threshold:.0%} of variance "
+          f"(actual: {cumulative_variance[n_components_needed - 1]:.1%}).")
+
+    if plot or save_path:
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        x_axis = np.arange(1, len(cumulative_variance) + 1)
+        ax.plot(x_axis, cumulative_variance, color="#2b6cb0", linewidth=2, zorder=3)
+        ax.scatter(
+            [n_components_needed],
+            [cumulative_variance[n_components_needed - 1]],
+            color="#e53e3e",
+            zorder=4,
+            s=50,
+        )
+
+        ax.axhline(variance_threshold, color="gray", linestyle="--", linewidth=1, zorder=2)
+        ax.axvline(n_components_needed, color="gray", linestyle="--", linewidth=1, zorder=2)
+
+        ax.annotate(
+            f"{n_components_needed} PCs\n({cumulative_variance[n_components_needed - 1]:.1%})",
+            xy=(n_components_needed, cumulative_variance[n_components_needed - 1]),
+            xytext=(10, -25),
+            textcoords="offset points",
+            fontsize=9,
+            color="#e53e3e",
+        )
+
+        ax.set_xlabel("Number of Principal Components")
+        ax.set_ylabel("Cumulative Variance Explained")
+        ax.set_title(f"PCA: Components Needed for {variance_threshold:.0%} Variance Explained")
+        ax.set_ylim(0, 1.02)
+        ax.set_xlim(1, len(cumulative_variance))
+        ax.grid(alpha=0.3, zorder=1)
+
+        fig.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=150)
+            print(f"  Saved plot to {save_path}")
+        if plot:
+            plt.show()
+        else:
+            plt.close(fig)
+
+    return n_components_needed, cumulative_variance, pca
+
+
 def run_umap(pca_embedding, n_components=2):
     print(f"  Running UMAP (n_components={n_components})...")
     reducer = umap.UMAP(n_components=n_components, random_state=42)
@@ -725,7 +842,33 @@ def calculate_asw_batch_within_biology(X_pca, batch_labels, bio_labels) -> float
 
     if len(scores) > 0:
         return np.mean(scores)  # pyright: ignore[reportReturnType]
-    return 0.0
+    # No biological class had >=2 batches to compare -- the metric is
+    # undefined here, not "zero batch effect". Returning NaN keeps that
+    # distinct from a genuinely poor (but computed) ASW score.
+    return np.nan
+
+
+def drop_singleton_classes(X, y):
+    """
+    Remove samples belonging to classes with fewer than 2 members.
+
+    Stratified k-fold CV (k>=2) can't place a singleton class's lone sample
+    into more than one fold, which triggers sklearn's "least populated
+    class" warning and an arbitrary fold assignment. Dropping those samples
+    up front avoids the warning and lets the remaining, well-populated
+    classes be evaluated cleanly.
+
+    Returns
+    -------
+    X_kept, y_kept : filtered arrays (copies, not views into the originals)
+    """
+    y = np.asarray(y)
+    unique_classes, counts = np.unique(y, return_counts=True)
+    singleton_classes = unique_classes[counts < 2]
+    if len(singleton_classes) == 0:
+        return np.asarray(X), y
+    keep_mask = ~np.isin(y, singleton_classes)
+    return np.asarray(X)[keep_mask], y[keep_mask]
 
 
 def multinomial_logistic_accuracy_fun(data, labels) -> float:
@@ -743,7 +886,9 @@ def multinomial_logistic_accuracy_fun(data, labels) -> float:
     Returns
     -------
     float
-        Mean cross-validated accuracy.
+        Mean cross-validated accuracy, or NaN if there wasn't enough class
+        diversity to fit/evaluate a model at all (this is distinct from a
+        model being fit and genuinely scoring near zero).
     """
 
     valid_mask = ~pd.Series(labels).isin(
@@ -751,7 +896,7 @@ def multinomial_logistic_accuracy_fun(data, labels) -> float:
     )
 
     if valid_mask.sum() < 2:
-        return 0.0
+        return np.nan
 
     X = np.asarray(data)[valid_mask]
     y = np.asarray(labels)[valid_mask]
@@ -759,23 +904,21 @@ def multinomial_logistic_accuracy_fun(data, labels) -> float:
     unique_classes, counts = np.unique(y, return_counts=True)
 
     if len(unique_classes) < 2:
-        return 0.0
+        return np.nan
 
     # Stratified CV requires at least one sample from every class in every
     # fold, so a class can't be split at all unless it has >= 2 samples.
     # Rather than zeroing out the whole metric because of one rare/singleton
     # category, drop just those samples and proceed with the rest.
-    singleton_classes = unique_classes[counts < 2]
-    if len(singleton_classes) > 0:
-        keep_mask = ~np.isin(y, singleton_classes)
-        X = X[keep_mask]
-        y = y[keep_mask]
-        unique_classes, counts = np.unique(y, return_counts=True)
+    X, y = drop_singleton_classes(X, y)
+    unique_classes, counts = np.unique(y, return_counts=True)
 
     # After dropping singletons we may no longer have enough classes/samples
-    # left to do anything meaningful.
+    # left to do anything meaningful -- this means the label has no usable
+    # diversity (e.g. one dominant class + only rare/singleton others), not
+    # that a fitted model found zero signal.
     if len(unique_classes) < 2 or len(y) < 2:
-        return 0.0
+        return np.nan
 
     min_class_size = counts.min()
     n_splits = min(5, min_class_size)
@@ -809,8 +952,9 @@ def multinomial_logistic_accuracy_fun(data, labels) -> float:
 
         return float(np.mean(scores))
 
-    except Exception:
-        return 0.0
+    except Exception as e:
+        print(f"    ! multinomial_logistic_accuracy_fun failed unexpectedly: {e}")
+        return np.nan
 
 def calculate_cramers_v(series1: pd.Series, series2: pd.Series) -> float:
     contingency_table = pd.crosstab(series1, series2)
@@ -1200,119 +1344,3 @@ def estimate_axis_weights(
     final_weights /= final_weights.mean()
 
     return final_weights.to_dict()
-
-def find_n_components_for_variance(
-    df: pd.DataFrame,
-    variance_threshold: float = 0.90,
-    max_components: int | None = 5000,
-    random_state: int = 42,
-    plot: bool = True,
-    save_path: str | None = None,
-) -> tuple[int, np.ndarray, PCA]:
-    """
-    Fit PCA on a data matrix and determine how many principal components
-    are needed to explain a target fraction of variance.
- 
-    Parameters
-    ----------
-    df
-        Features x Samples data matrix.
-    variance_threshold
-        Target cumulative explained variance fraction (e.g. 0.90 for 90%).
-    max_components
-        Upper cap on the number of components to fit, for speed on wide
-        matrices (e.g. genes-as-columns expression data). Set to None to
-        fit the full min(n_samples, n_features) components.
-    random_state
-        Random state used by PCA's randomized SVD solver.
-    plot
-        Whether to render the components-vs-variance-explained plot.
-    save_path
-        If provided, saves the plot to this path instead of/in addition to
-        showing it.
- 
-    Returns
-    -------
-    n_components_needed
-        Smallest number of components whose cumulative explained variance
-        is >= variance_threshold.
-    cumulative_variance
-        Array of cumulative explained variance ratios, one entry per
-        component fit (length == n_components fit).
-    pca
-        The fitted sklearn PCA object (full fit, not truncated to
-        n_components_needed), in case you want to inspect loadings, etc.
-    """
-    df = df.T
-    X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
- 
-    n_samples, n_features = X.shape
-    upper_bound = min(n_samples, n_features)
-    n_fit = upper_bound if max_components is None else min(upper_bound, max_components)
- 
-    print(f"  Fitting PCA with {n_fit} components (of {upper_bound} possible) on a {X.shape} matrix...")
-    pca = PCA(n_components=n_fit, random_state=random_state)
-    pca.fit(X)
- 
-    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
- 
-    # Smallest n_components hitting the threshold. If even the full fit
-    # doesn't reach it (e.g. max_components capped too low), fall back to
-    # the max we actually fit and warn.
-    above_threshold = np.where(cumulative_variance >= variance_threshold)[0]
-    if len(above_threshold) > 0:
-        n_components_needed = int(above_threshold[0] + 1)
-    else:
-        n_components_needed = n_fit
-        print(
-            f"  ! Warning: {variance_threshold:.0%} variance not reached within "
-            f"{n_fit} components fit (reached {cumulative_variance[-1]:.1%}). "
-            "Consider raising max_components."
-        )
- 
-    print(f"  -> {n_components_needed} components needed to explain {variance_threshold:.0%} of variance "
-          f"(actual: {cumulative_variance[n_components_needed - 1]:.1%}).")
- 
-    if plot or save_path:
-        fig, ax = plt.subplots(figsize=(8, 5))
- 
-        x_axis = np.arange(1, len(cumulative_variance) + 1)
-        ax.plot(x_axis, cumulative_variance, color="#2b6cb0", linewidth=2, zorder=3)
-        ax.scatter(
-            [n_components_needed],
-            [cumulative_variance[n_components_needed - 1]],
-            color="#e53e3e",
-            zorder=4,
-            s=50,
-        )
- 
-        ax.axhline(variance_threshold, color="gray", linestyle="--", linewidth=1, zorder=2)
-        ax.axvline(n_components_needed, color="gray", linestyle="--", linewidth=1, zorder=2)
- 
-        ax.annotate(
-            f"{n_components_needed} PCs\n({cumulative_variance[n_components_needed - 1]:.1%})",
-            xy=(n_components_needed, cumulative_variance[n_components_needed - 1]),
-            xytext=(10, -25),
-            textcoords="offset points",
-            fontsize=9,
-            color="#e53e3e",
-        )
- 
-        ax.set_xlabel("Number of Principal Components")
-        ax.set_ylabel("Cumulative Variance Explained")
-        ax.set_title(f"PCA: Components Needed for {variance_threshold:.0%} Variance Explained")
-        ax.set_ylim(0, 1.02)
-        ax.set_xlim(1, len(cumulative_variance))
-        ax.grid(alpha=0.3, zorder=1)
- 
-        fig.tight_layout()
- 
-        if save_path:
-            fig.savefig(save_path, dpi=150)
-            print(f"  Saved plot to {save_path}")
-        if plot:
-            plt.show()
-        else:
-            plt.close(fig)
- 
-    return n_components_needed, cumulative_variance, pca
