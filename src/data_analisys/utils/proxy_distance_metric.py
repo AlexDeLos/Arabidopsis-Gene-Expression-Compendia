@@ -541,12 +541,12 @@ def compute_global_distance_metrics(
 
         print(
             f"[DistMetrics] Spearman(sim,dist) = "
-            f"{spearman_corr:.6f}"
+            f"{spearman_corr:.6f}, p of {spearman_p:.6f}"
         )
 
         print(
             f"[DistMetrics] Pearson(sim,dist) = "
-            f"{pearson_corr:.6f}"
+            f"{pearson_corr:.6f} p of {pearson_p:.6f}"
         )
 
     return {
