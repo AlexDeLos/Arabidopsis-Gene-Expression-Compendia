@@ -977,7 +977,7 @@ if __name__ == "__main__":
 				variance_threshold=0.90,
 				save_path = output_dir
 			)
-			continue
+			# continue
 			metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			
 			# if file == "filter_norm":
@@ -1029,9 +1029,9 @@ if __name__ == "__main__":
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
-	raise ValueError("This is the temporary end of the file")
+	# raise ValueError("This is the temporary end of the file")
 	# Generate the Comparison Plots
-	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun20_1s_new_sim_func_PCA"
+	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun20_all_1+PCA"
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
