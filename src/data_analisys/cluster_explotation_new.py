@@ -971,6 +971,7 @@ if __name__ == "__main__":
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
 			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun20_1s_new_sim_func_PCA/{file}"
+			os.makedirs(output_dir, exist_ok=True)
 			n_components, cumulative_variance, pca = find_n_components_for_variance(
 				df,           # Samples x Genes
 				variance_threshold=0.90,
