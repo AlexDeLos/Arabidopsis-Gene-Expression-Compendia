@@ -994,6 +994,15 @@ if __name__ == "__main__":
 				"medium": 1,
 				"treatment_intensity": 1,
 			}
+			# Estimated biological axis weights for full run on microarray:
+			# tissue                    1.934
+			# developmental_stage       1.643
+			# ecotype                   1.047
+			# treatment                 0.850
+			# modification              0.645
+			# medium                    0.441
+			# treatment_intensity       0.441
+
 			dist_metrics = run_distance_evaluation(
 				data_df=df,
 				labels_dict=labels_map,
