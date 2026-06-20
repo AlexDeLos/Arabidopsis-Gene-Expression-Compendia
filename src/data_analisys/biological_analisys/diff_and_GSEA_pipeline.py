@@ -24,7 +24,8 @@ from src.constants import (  # noqa: E402
     FIGURES_DIR,
     LABELS_PATH,
     PROCESSED_DATA_FOLDER,
-    DEBUG
+    DEBUG,
+    RNA_USED
 )
 from src.constants_labeling import ( # noqa: E402
     TreatmentEnum
@@ -56,16 +57,15 @@ ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
 # Pass 1: load obodag unfiltered, just to discover GO root IDs
 # ------------------------------------------------------------------
 GO_NAME_OVERRIDES: dict[TreatmentEnum, str | None] = {
-    # Fuzzy match fails — correct name provided manually
     TreatmentEnum.DEHYDRATION:         "response to water deprivation",
+    TreatmentEnum.DROUGHT:             "response to water deprivation",
+    TreatmentEnum.FLOOD:               "response to decreased oxygen levels",
     TreatmentEnum.BIOTIC:              "response to biotic stimulus",
     TreatmentEnum.ABIOTIC:             "response to abiotic stimulus",
     TreatmentEnum.LOW_LIGHT:           "response to light intensity",
     TreatmentEnum.OTHER_LIGHT:         "response to light stimulus",
     TreatmentEnum.CUT:                 "response to wounding",
     TreatmentEnum.NUTRIENT_DEFICIENCY: "response to nutrient levels",
-    
-    # No meaningful GO root — exclude from GSEA entirely
     TreatmentEnum.OTHER:               None,
     TreatmentEnum.CONTROL:             None,
     TreatmentEnum.UNKNOWN:             None,
@@ -191,6 +191,22 @@ SANITY_CHECK_SAMPLES = [
 # =============================================================================
 # Spider plot helper
 # =============================================================================
+def _get_term_row(gsea_df: pd.DataFrame, root_id: str, obodag) -> pd.DataFrame:
+    exact = gsea_df[gsea_df["go_id"] == root_id]
+    if not exact.empty:
+        return exact
+
+    if root_id not in obodag:
+        return exact
+
+    descendants = obodag[root_id].get_all_children()
+    desc_rows = gsea_df[gsea_df["go_id"].isin(descendants)]
+    if desc_rows.empty:
+        return desc_rows
+
+    best = desc_rows.sort_values("FDR q-val").head(1).copy()
+    best["Term"] = best["Term"] + " [proxy for root]"   # ← change this string
+    return best
 
 def get_spider_plots(
     path: str,
@@ -258,13 +274,18 @@ def get_spider_plots(
                     try:
                         gsea_df  = pd.read_csv(csv_file)
                         
-                        term_row = gsea_df[gsea_df["go_id"] == term].copy()
+                        term_row = _get_term_row(gsea_df, term, obodag).copy()
                         if term_row.empty:
                             continue
 
                         tissue_desc = "Single Tissue" if tissue else "Combined Tissues"
                         study_desc  = "Combined Studies" if Full else "Single Study"
                         term_row["Name"] = f"{data_type} {tissue_desc} {study_desc}"
+
+                        # Flag in the legend if this row came from the fallback, not the exact root
+                        if "[proxy for root]" in str(term_row["Term"].iloc[0]):
+                            term_row["Name"] = term_row["Name"] + " (proxy)"
+
                         all_rows.append(term_row)
 
                     except Exception as exc:
@@ -433,9 +454,18 @@ def run_diff_exp_and_enrichment(
                                         f"{tissue_display}_{stress}_genes.csv"
                                     )
                                     diff_results = pd.read_csv(diff_csv)
+
+                                    # Floor adj.P.Val to avoid -log10(0) = inf, which breaks gseapy on
+                                    # this pandas version (NDFrame.replace() 'method' kwarg removed).
+                                    nonzero_min = diff_results.loc[diff_results["adj.P.Val"] > 0, "adj.P.Val"].min()
+                                    p_floor = nonzero_min if pd.notna(nonzero_min) else 1e-300
+                                    n_zero = (diff_results["adj.P.Val"] == 0).sum()
+                                    if n_zero:
+                                        print(f"    Note: {n_zero} genes had adj.P.Val == 0, floored to {p_floor:.3g}")
+
+                                    adj_p_clipped = diff_results["adj.P.Val"].clip(lower=p_floor)
                                     diff_results["rank"] = (
-                                        diff_results["logFC"]
-                                        * (-np.log10(diff_results["adj.P.Val"]))
+                                        diff_results["logFC"] * (-np.log10(adj_p_clipped))
                                     )
 
                                     gsea_df = perform_gsea_enrichment(
@@ -549,4 +579,4 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True,False], filter_low_combination=[0])
+    run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True] if RNA_USED else [True], filter_low_combination=[0])

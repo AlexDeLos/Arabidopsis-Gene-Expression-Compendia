@@ -150,7 +150,7 @@ def diff_exp_combine_tissues(
             is_control = design["treatment"].str.contains(TreatmentEnum.CONTROL, na=False)
 
             if samples is not None:
-                is_study = design["Sample_ID"].apply(lambda x: x in samples)
+                is_study = design.index.isin(samples)
                 design_filtered = design[(is_treatment | is_control) & is_study & is_tissue].copy()
             else:
                 design_filtered = design[(is_treatment | is_control) & is_tissue].copy()
