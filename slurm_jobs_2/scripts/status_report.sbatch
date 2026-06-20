@@ -12,10 +12,10 @@ BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 SIF="/home/nfs/alexdelossanto/fused.sif"
 
 # Inputs / outputs for the status report
-STUDY_LIST="${REPO_DIR}/study_ids/RNA_seq_ids.txt"
+STUDY_LIST="./study_ids/RNA_seq_ids.txt"
 TRACKER_DIR="${BIG_STORAGE}/rnaseq_data/file_tracker/"
 SAMPLE_MAP="${BIG_STORAGE}/final_data/rnaseq_processed/Salmon_RNAseq_Combined_TPM_sample_map.csv"
-OUTPUT_DIR="${BIG_STORAGE}/outputs/rnaseq_status_report/"
+OUTPUT_DIR="./rnaseq_status_report/"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Make sure the log directory exists before the job starts writing to it
@@ -55,7 +55,7 @@ apptainer exec \
   --bind "$REPO_DIR":/repo \
   --pwd /repo \
   "$SIF" \
-  python /repo/src/data_analisys/rnaseq_processing_status_report.py \
+  python /repo/src/scripts/rnaseq_processing_status_report.py \
     --study-list "${STUDY_LIST}" \
     --tracker-dir "${TRACKER_DIR}" \
     --sample-map "${SAMPLE_MAP}" \
