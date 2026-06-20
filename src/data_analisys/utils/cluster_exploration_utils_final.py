@@ -1204,7 +1204,7 @@ def estimate_axis_weights(
 def find_n_components_for_variance(
     df: pd.DataFrame,
     variance_threshold: float = 0.90,
-    max_components: int | None = 500,
+    max_components: int | None = 5000,
     random_state: int = 42,
     plot: bool = True,
     save_path: str | None = None,
