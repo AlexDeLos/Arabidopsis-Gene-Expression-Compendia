@@ -926,7 +926,7 @@ if __name__ == "__main__":
 	# # parser.add_argument("--ma", action="store_true", default=False)
 	# parser.add_argument("--rna", action="store_true", default=False)
 	# args = parser.parse_args()
-	N_SAMPLES = 1000
+	N_SAMPLES = None
 	LIGHT_WEIGHT = True
 	DATA_DRIVEN_WEIGHTS = None
 	all_metrics = {}
