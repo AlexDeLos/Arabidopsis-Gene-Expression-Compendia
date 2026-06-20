@@ -31,6 +31,8 @@ if [ ! -f "${SIF}" ]; then
     exit 1
 fi
 
+echo "+++++++++++++++++ NOW RUNNING MICROARRAY DATA +++++++++++++++++"
+
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \
