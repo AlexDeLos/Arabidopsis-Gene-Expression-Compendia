@@ -28,6 +28,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	run_tsne,
 	run_umap,
 	multinomial_logistic_accuracy_fun,
+	find_n_components_for_variance
 )
 from src.data_analisys.utils.proxy_distance_metric import run_distance_evaluation	# noqa: E402
 from src.data_analisys.utils.plot_distance_metric import plot_distance_metrics, plot_similarity_distance_scatter	# noqa: E402
@@ -969,8 +970,13 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun20_1s_new_sim_func/{file}"
-			
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_jun20_1s_new_sim_func_PCA/{file}"
+			n_components, cumulative_variance, pca = find_n_components_for_variance(
+				df,           # Samples x Genes
+				variance_threshold=0.90,
+				save_path = output_dir
+			)
+			continue
 			metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			
 			# if file == "filter_norm":
@@ -1022,9 +1028,9 @@ if __name__ == "__main__":
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
-
+	raise ValueError("This is the temporary end of the file")
 	# Generate the Comparison Plots
-	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun20_1s_new_sim_func"
+	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_jun20_1s_new_sim_func_PCA"
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")

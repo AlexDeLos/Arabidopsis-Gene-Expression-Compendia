@@ -1200,3 +1200,119 @@ def estimate_axis_weights(
     final_weights /= final_weights.mean()
 
     return final_weights.to_dict()
+
+def find_n_components_for_variance(
+    df: pd.DataFrame,
+    variance_threshold: float = 0.90,
+    max_components: int | None = 500,
+    random_state: int = 42,
+    plot: bool = True,
+    save_path: str | None = None,
+) -> tuple[int, np.ndarray, PCA]:
+    """
+    Fit PCA on a data matrix and determine how many principal components
+    are needed to explain a target fraction of variance.
+ 
+    Parameters
+    ----------
+    df
+        Samples x Features data matrix.
+    variance_threshold
+        Target cumulative explained variance fraction (e.g. 0.90 for 90%).
+    max_components
+        Upper cap on the number of components to fit, for speed on wide
+        matrices (e.g. genes-as-columns expression data). Set to None to
+        fit the full min(n_samples, n_features) components.
+    random_state
+        Random state used by PCA's randomized SVD solver.
+    plot
+        Whether to render the components-vs-variance-explained plot.
+    save_path
+        If provided, saves the plot to this path instead of/in addition to
+        showing it.
+ 
+    Returns
+    -------
+    n_components_needed
+        Smallest number of components whose cumulative explained variance
+        is >= variance_threshold.
+    cumulative_variance
+        Array of cumulative explained variance ratios, one entry per
+        component fit (length == n_components fit).
+    pca
+        The fitted sklearn PCA object (full fit, not truncated to
+        n_components_needed), in case you want to inspect loadings, etc.
+    """
+ 
+    X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
+ 
+    n_samples, n_features = X.shape
+    upper_bound = min(n_samples, n_features)
+    n_fit = upper_bound if max_components is None else min(upper_bound, max_components)
+ 
+    print(f"  Fitting PCA with {n_fit} components (of {upper_bound} possible) on a {X.shape} matrix...")
+    pca = PCA(n_components=n_fit, random_state=random_state)
+    pca.fit(X)
+ 
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+ 
+    # Smallest n_components hitting the threshold. If even the full fit
+    # doesn't reach it (e.g. max_components capped too low), fall back to
+    # the max we actually fit and warn.
+    above_threshold = np.where(cumulative_variance >= variance_threshold)[0]
+    if len(above_threshold) > 0:
+        n_components_needed = int(above_threshold[0] + 1)
+    else:
+        n_components_needed = n_fit
+        print(
+            f"  ! Warning: {variance_threshold:.0%} variance not reached within "
+            f"{n_fit} components fit (reached {cumulative_variance[-1]:.1%}). "
+            "Consider raising max_components."
+        )
+ 
+    print(f"  -> {n_components_needed} components needed to explain {variance_threshold:.0%} of variance "
+          f"(actual: {cumulative_variance[n_components_needed - 1]:.1%}).")
+ 
+    if plot or save_path:
+        fig, ax = plt.subplots(figsize=(8, 5))
+ 
+        x_axis = np.arange(1, len(cumulative_variance) + 1)
+        ax.plot(x_axis, cumulative_variance, color="#2b6cb0", linewidth=2, zorder=3)
+        ax.scatter(
+            [n_components_needed],
+            [cumulative_variance[n_components_needed - 1]],
+            color="#e53e3e",
+            zorder=4,
+            s=50,
+        )
+ 
+        ax.axhline(variance_threshold, color="gray", linestyle="--", linewidth=1, zorder=2)
+        ax.axvline(n_components_needed, color="gray", linestyle="--", linewidth=1, zorder=2)
+ 
+        ax.annotate(
+            f"{n_components_needed} PCs\n({cumulative_variance[n_components_needed - 1]:.1%})",
+            xy=(n_components_needed, cumulative_variance[n_components_needed - 1]),
+            xytext=(10, -25),
+            textcoords="offset points",
+            fontsize=9,
+            color="#e53e3e",
+        )
+ 
+        ax.set_xlabel("Number of Principal Components")
+        ax.set_ylabel("Cumulative Variance Explained")
+        ax.set_title(f"PCA: Components Needed for {variance_threshold:.0%} Variance Explained")
+        ax.set_ylim(0, 1.02)
+        ax.set_xlim(1, len(cumulative_variance))
+        ax.grid(alpha=0.3, zorder=1)
+ 
+        fig.tight_layout()
+ 
+        if save_path:
+            fig.savefig(save_path, dpi=150)
+            print(f"  Saved plot to {save_path}")
+        if plot:
+            plt.show()
+        else:
+            plt.close(fig)
+ 
+    return n_components_needed, cumulative_variance, pca
