@@ -12,19 +12,21 @@ import sys
 import re
 import numpy as np
 import pandas as pd
-import rpy2.robjects as ro
-from rpy2.robjects import Formula, pandas2ri
-from rpy2.robjects.conversion import localconverter
-from rpy2.robjects.packages import importr
+# import rpy2.robjects as ro
+# from rpy2.robjects import Formula, pandas2ri
+# from rpy2.robjects.conversion import localconverter
+# from rpy2.robjects.packages import importr
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants import CLUSTER_RUN, RNA_USED,DEBUG  # noqa: E402
+from src.constants import CLUSTER_RUN, RNA_USED,DEBUG,SAMPLE_STUDY_MAP  # noqa: E402
 from src.constants_labeling import TreatmentEnum  # noqa: E402
 from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
 
 def diff_exp_combine_tissues(
 	treatments: list[str],
+	save_dir: str,
+	data_type: str,
 	design: pd.DataFrame,
 	out_dir: str,
 	samples: list[str] | None = None,
@@ -98,7 +100,24 @@ def diff_exp_combine_tissues(
 			# 1. Load expression data
 			# ------------------------------------------------------------------
 			data = pd.read_csv(os.path.join(save_dir, f"{data_type}.csv"), index_col=0)
-			
+			print("\tBackfilling missing study_ids using SAMPLE_STUDY_MAP...")
+
+			if "study_id" not in design.columns:
+				design["study_id"] = pd.NA
+
+			study_map = SAMPLE_STUDY_MAP["StudyID"].astype(str)
+
+			missing = design["study_id"].isna()
+
+			design.loc[missing, "study_id"] = (
+				design.index.to_series()
+				.map(study_map)
+				.fillna("Unknown_Study")
+			)
+
+			count_filled = missing.sum()
+
+			print(f"\t-> Added study_id labels for {count_filled} samples.")
 			if DEBUG:
 				# Keep only the samples we need + a random gene subset for speed
 				debug_genes = data.index[:500]   # first 500 genes — deterministic, fast
