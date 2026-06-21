@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import warnings
 from typing import Dict, Optional
-
+from scipy.stats import spearmanr, pearsonr
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
@@ -303,7 +303,7 @@ def compute_mean_pairwise_distance(dist_matrix: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 # Main metric function
 # ---------------------------------------------------------------------------
-from scipy.stats import spearmanr, pearsonr
+
 
 
 def compute_global_distance_metrics(
