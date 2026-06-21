@@ -410,8 +410,6 @@ def run_diff_exp_and_enrichment(
                                 target_samples = None if Full else SANITY_CHECK_SAMPLES
                                 diff_exp_combine_tissues(
                                     TREATMENTS,
-                                    save_dir,
-                                    data_type,
                                     out_dir=diff_exp_outdir,
                                     design=labels,
                                     samples=target_samples,
