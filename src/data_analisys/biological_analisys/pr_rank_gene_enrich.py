@@ -151,7 +151,48 @@ def get_go_data(
 
 
 # =============================================================================
-# 3. GSEA Prerank
+# 3. Shared GO Gene-Set Construction
+# =============================================================================
+
+def build_go_gene_sets(
+    obodag: GODag,
+    geneid2gos: dict[str, set[str]],
+    keys: list | None = None,
+) -> dict[str, list[str]]:
+    """
+    Build a {GO:XXXXXXX (term name): [gene, ...]} dict by inverting
+    `geneid2gos`. Shared by both GSEA prerank and ORA, so both methods
+    are tested against exactly the same gene-set universe.
+
+    Parameters
+    ----------
+    obodag : GODag
+        Parsed GO DAG (from :func:`get_go_data`).
+    geneid2gos : dict[str, set[str]]
+        Filtered gene → GO mapping (from :func:`get_go_data`).
+    keys : list or None
+        If given, restrict gene sets to those whose GO ID starts with one
+        of these keys (legacy filter; set to None to keep all).
+
+    Returns
+    -------
+    dict[str, list[str]]
+    """
+    go_gene_sets: dict[str, list[str]] = {}
+    for gene, go_ids in geneid2gos.items():
+        for go_id in go_ids:
+            label = f"{go_id} ({obodag[go_id].name if go_id in obodag else 'Unknown'})"
+            go_gene_sets.setdefault(label, []).append(gene.upper())
+
+    if keys is not None:
+        keys_set = set(keys)
+        go_gene_sets = {k: v for k, v in go_gene_sets.items() if k.split(" ")[0] in keys_set}
+
+    return go_gene_sets
+
+
+# =============================================================================
+# 4. GSEA Prerank
 # =============================================================================
 
 def perform_gsea_enrichment(
@@ -210,17 +251,7 @@ def perform_gsea_enrichment(
     # 1. Build GO gene-set dictionary  {GO:XXXXXXX (name): [gene, ...]}
     # ------------------------------------------------------------------
     print("Building GO gene sets...")
-    go_gene_sets: dict[str, list[str]] = {}
-    for gene, go_ids in geneid2gos.items():
-        for go_id in go_ids:
-            label = f"{go_id} ({obodag[go_id].name if go_id in obodag else 'Unknown'})"
-            go_gene_sets.setdefault(label, []).append(gene.upper())
-
-    # Optional key-based filter (legacy)
-    if keys is not None:
-        keys_set = set(keys)
-        go_gene_sets = {k: v for k, v in go_gene_sets.items() if k.split(" ")[0] in keys_set}
-
+    go_gene_sets = build_go_gene_sets(obodag, geneid2gos, keys=keys)
     print(f"  {len(go_gene_sets)} GO term gene sets prepared.")
 
     # ------------------------------------------------------------------
@@ -277,3 +308,103 @@ def perform_gsea_enrichment(
     results_df["go_id"] = results_df["Term"].str.split(" ").str[0]
 
     return results_df.sort_values(by="ES", ascending=False)
+
+
+# =============================================================================
+# 5. Overrepresentation Analysis (ORA) — complementary to GSEA prerank
+# =============================================================================
+
+def perform_ora_enrichment(
+    diff_results: pd.DataFrame,
+    gene_col: str,
+    obodag: GODag,
+    geneid2gos: dict[str, set[str]],
+    keys: list | None,
+    background_genes: list[str],
+    adj_p_threshold: float = 0.05,
+    logfc_threshold: float = 1.0,
+    out_path: str | None = None,
+) -> pd.DataFrame:
+    """
+    Run a hypergeometric overrepresentation test (ORA) on a thresholded
+    significant-gene list, using gseapy.enrich. Complementary to
+    :func:`perform_gsea_enrichment`: ORA tests a hard-thresholded gene
+    list rather than a continuous ranking, so it is far less sensitive
+    to how the ranking metric was constructed (ties, near-zero p-values,
+    clipping choices, etc.). Useful for checking whether GSEA results
+    that look unstable across normalization methods reflect genuinely
+    unstable differential expression calls, or just instability in the
+    continuous ranking metric itself.
+
+    Parameters
+    ----------
+    diff_results : pd.DataFrame
+        Differential expression results. Must contain `gene_col`,
+        "adj.P.Val", and "logFC" columns.
+    gene_col : str
+        Column name for gene identifiers (AGI codes).
+    obodag : GODag
+        Parsed GO DAG (from :func:`get_go_data`).
+    geneid2gos : dict[str, set[str]]
+        Filtered gene → GO mapping (from :func:`get_go_data`).
+    keys : list or None
+        Optional legacy GO-ID-prefix filter, same as in
+        :func:`perform_gsea_enrichment`.
+    background_genes : list[str]
+        The full gene universe actually tested in this comparison
+        (e.g. the index of the ranked gene list used for GSEA on the
+        same contrast). Using the wrong background — e.g. the entire
+        TAIR annotation set instead of just the genes that passed
+        expression filtering for this run — will bias ORA p-values,
+        since gseapy.enrich treats `background` as "all genes that
+        could have been selected."
+    adj_p_threshold : float
+        Adjusted p-value cutoff for calling a gene significant.
+    logfc_threshold : float
+        Absolute logFC cutoff for calling a gene significant.
+    out_path : str or None
+        If given, passed to gseapy.enrich as `outdir` so it also
+        writes its own output files; if None, results are only
+        returned as a DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        gseapy ORA results (Term, go_id, Overlap, P-value, Adjusted P-value,
+        Genes, ...), sorted by ascending Adjusted P-value. Empty DataFrame
+        if no genes pass the significance threshold.
+    """
+    print("Building GO gene sets (ORA)...")
+    go_gene_sets = build_go_gene_sets(obodag, geneid2gos, keys=keys)
+    print(f"  {len(go_gene_sets)} GO term gene sets prepared.")
+
+    sig_mask = (
+        (diff_results["adj.P.Val"] < adj_p_threshold)
+        & (diff_results["logFC"].abs() > logfc_threshold)
+    )
+    sig_genes = diff_results.loc[sig_mask, gene_col].str.upper().unique().tolist()
+    print(
+        f"  {len(sig_genes)} genes pass adj.P.Val < {adj_p_threshold} "
+        f"& |logFC| > {logfc_threshold}."
+    )
+
+    if not sig_genes:
+        print("Error: no genes pass the significance threshold for ORA.")
+        return pd.DataFrame()
+
+    background = [g.upper() for g in background_genes]
+    print(f"  Background gene universe: {len(background)} genes.")
+
+    print("Running ORA (gseapy.enrich)...")
+    enr = gseapy.enrich(
+        gene_list=sig_genes,
+        gene_sets=go_gene_sets,
+        background=background,
+        outdir=out_path,
+    )
+
+    results_df = enr.results.copy()
+    results_df["go_id"] = results_df["Term"].str.split(" ").str[0]
+
+    sort_col = "Adjusted P-value" if "Adjusted P-value" in results_df.columns else "P-value"
+    return results_df.sort_values(by=sort_col, ascending=True)

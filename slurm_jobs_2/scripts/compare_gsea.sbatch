@@ -13,9 +13,9 @@ SIF="/home/nfs/alexdelossanto/fused.sif"
 
 # Script + args
 SCRIPT="src/data_analisys/biological_analisys/scripts/comapre_gsea.py"
-TREATMENT="${1:-Cold}"          # pass treatment as first arg, defaults to Cold
-CONFIG="${2:-All_tissues_full_mixed_min_group_0}"
-FDR="${3:-0.25}"
+CONFIG="${1:-All_tissues_full_mixed_min_group_0}"
+FDR="${2:-0.25}"
+OUT_CSV="${3:-./gsea_norm_comparison.csv}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Make sure the log directory exists before the job starts writing to it
@@ -26,9 +26,9 @@ echo "Job ID      : ${SLURM_JOB_ID}"
 echo "Node        : $(hostname)"
 echo "Started     : $(date)"
 echo "SIF         : ${SIF}"
-echo "Treatment   : ${TREATMENT}"
 echo "Config      : ${CONFIG}"
 echo "FDR cutoff  : ${FDR}"
+echo "Output CSV  : ${OUT_CSV}"
 echo "========================================"
 
 # Verify the .sif file is reachable from this compute node before attempting exec.
@@ -58,9 +58,9 @@ apptainer exec \
     --pwd /repo \
     "$SIF" \
     python /repo/"${SCRIPT}" \
-        --treatment "${TREATMENT}" \
         --config "${CONFIG}" \
-        --fdr "${FDR}"
+        --fdr "${FDR}" \
+        --out-csv "${OUT_CSV}"
 
 EXIT_CODE=$?
 

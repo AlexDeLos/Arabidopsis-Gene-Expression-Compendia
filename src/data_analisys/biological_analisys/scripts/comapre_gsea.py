@@ -1,17 +1,26 @@
 """
-compare_gsea_overlap.py
-------------------------
+comapre_gsea.py
+----------------
 Compares GSEA GO-term enrichment results across normalization methods
-(filter_norm, combat_norm, rankin) for a given treatment, to quantify
-how consistent "significant" terms are between methods.
+(filter_norm, combat_norm, rankin) for ALL stress treatments, surfacing
+both:
+
+  1. The raw stat values (ES, NES, NOM p-val, FDR q-val, FWER p-val) for
+     each GO term, side by side across normalization methods — so you can
+     see directly how normalization shifts the numbers for the same term.
+  2. Significant-term overlap (Jaccard) per treatment, as before.
+
+Outputs one combined long-format CSV (one row per treatment × go_id × norm
+method) plus a per-treatment console summary.
 
 Usage:
-    python compare_gsea_overlap.py --treatment Cold
-    python compare_gsea_overlap.py --treatment Cold --fdr 0.1
-    python compare_gsea_overlap.py --treatment Cold --config leaf_full_mixed_min_group_0
+    python comapre_gsea.py
+    python comapre_gsea.py --config All_tissues_full_mixed_min_group_0
+    python comapre_gsea.py --fdr 0.1 --out-csv my_comparison.csv
 """
 
 import argparse
+from enum import Enum
 from pathlib import Path
 
 import pandas as pd
@@ -29,59 +38,101 @@ PERMUTATIONS = 1000
 
 NORM_METHODS = ["filter_norm", "combat_norm", "rankin"]
 
-# Folder suffix matching your run config, e.g. "All_tissues_full_mixed_min_group_0"
 DEFAULT_CONFIG = "All_tissues_full_mixed_min_group_0"
+
+STAT_COLS = ["ES", "NES", "NOM p-val", "FDR q-val", "FWER p-val"]
+
+
+# =============================================================================
+# Treatments — excludes non-stress / structural labels (Control, Other,
+# unknown, unspecified) since no GSEA contrast was ever run "treatment vs
+# control" for those — they ARE the control / catch-all side of contrasts.
+# =============================================================================
+
+class TreatmentEnum(str, Enum):
+    DROUGHT = "Drought"
+    FLOOD = "Flood"
+    DEHYDRATION = "Dehydration"
+    SALINITY = "Salinity"
+    HEAT = "Heat"
+    COLD = "Cold"
+    CHEMICAL = "Chemical"
+    BIOTIC = "Biotic"
+    ABIOTIC = "Abiotic"
+    LOW_LIGHT = "Low Light"
+    HIGH_LIGHT = "High Light"
+    OTHER_LIGHT = "Other Light"
+    CUT = "Cut"
+    NUTRIENT_DEFICIENCY = "Nutrient Deficiency"
+    OTHER = "Other"
+    CONTROL = "Control"
+    UNKNOWN = "unknown"
+    UNSPECIFIED = "unspecified"
+
+
+NON_STRESS_LABELS = {
+    TreatmentEnum.OTHER,
+    TreatmentEnum.CONTROL,
+    TreatmentEnum.UNKNOWN,
+    TreatmentEnum.UNSPECIFIED,
+}
+
+STRESS_TREATMENTS = [t for t in TreatmentEnum if t not in NON_STRESS_LABELS]
 
 
 def build_csv_path(norm: str, config: str, treatment: str) -> Path:
-    """
-    Reconstruct the GSEA results CSV path for a given normalization method.
-
-    Matches the pattern:
-      {BASE}/GSEA_enrichment_{EXPERIMENT_NAME}_{norm}_{config}/
-          {treatment}_gsea_go_enrichment_results_{PERMUTATIONS}.csv
-    """
+    """Reconstruct the GSEA results CSV path for a given normalization method."""
     folder = f"GSEA_enrichment_{EXPERIMENT_NAME}_{norm}_{config}"
     filename = f"{treatment}_gsea_go_enrichment_results_{PERMUTATIONS}.csv"
     return BASE / folder / filename
 
 
 def load_results(treatment: str, config: str) -> dict[str, pd.DataFrame]:
-    """Load available GSEA result CSVs per normalization method."""
+    """Load available GSEA result CSVs per normalization method for one treatment."""
     dfs = {}
     for norm in NORM_METHODS:
         path = build_csv_path(norm, config, treatment)
         if not path.exists():
-            print(f"  [skip] {norm}: file not found at {path}")
+            print(f"    [skip] {norm}: not found")
             continue
-        dfs[norm] = pd.read_csv(path)
-        print(f"  [ok]   {norm}: loaded {len(dfs[norm])} terms from {path}")
+        df = pd.read_csv(path)
+        missing_cols = [c for c in STAT_COLS + ["go_id", "Term"] if c not in df.columns]
+        if missing_cols:
+            print(f"    [warn] {norm}: missing columns {missing_cols}, skipping")
+            continue
+        dfs[norm] = df
+        print(f"    [ok]   {norm}: {len(df)} terms")
     return dfs
 
 
-def compare_significant_sets(
-    dfs: dict[str, pd.DataFrame], fdr_threshold: float
-) -> dict[str, set[str]]:
-    """Build per-method sets of go_id passing the FDR threshold."""
-    sig_sets = {}
-    for name, df in dfs.items():
-        if "go_id" not in df.columns or "FDR q-val" not in df.columns:
-            print(f"  [warn] {name}: missing expected columns, skipping")
-            continue
-        sig = set(df.loc[df["FDR q-val"] < fdr_threshold, "go_id"])
-        sig_sets[name] = sig
-        print(f"  {name}: {len(sig)} significant terms (FDR < {fdr_threshold})")
-    return sig_sets
+def build_stat_comparison(treatment: str, dfs: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Long-format table: one row per (go_id, norm_method), with the five
+    stat columns, for a single treatment. Makes it easy to pivot/filter
+    later (e.g. df.pivot(index="go_id", columns="norm_method", values="NES")).
+    """
+    rows = []
+    for norm, df in dfs.items():
+        sub = df[["go_id", "Term"] + STAT_COLS].copy()
+        sub["treatment"] = treatment
+        sub["norm_method"] = norm
+        rows.append(sub)
+    if not rows:
+        return pd.DataFrame()
+    return pd.concat(rows, ignore_index=True)
 
 
-def print_pairwise_overlap(sig_sets: dict[str, set[str]]) -> None:
-    """Print pairwise overlap counts and Jaccard similarity between methods."""
+def summarize_overlap(treatment: str, dfs: dict[str, pd.DataFrame], fdr_threshold: float) -> None:
+    """Print Jaccard overlap of significant terms across normalization methods."""
+    sig_sets = {
+        norm: set(df.loc[df["FDR q-val"] < fdr_threshold, "go_id"])
+        for norm, df in dfs.items()
+    }
     names = list(sig_sets.keys())
     if len(names) < 2:
-        print("\nNeed at least two successfully loaded methods to compare overlap.")
+        print("    (fewer than 2 methods loaded — skipping overlap)")
         return
 
-    print("\nPairwise overlap of significant terms:")
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             set_a, set_b = sig_sets[a], sig_sets[b]
@@ -89,26 +140,19 @@ def print_pairwise_overlap(sig_sets: dict[str, set[str]]) -> None:
             union = set_a | set_b
             jaccard = len(overlap) / len(union) if union else float("nan")
             print(
-                f"  {a:10s} ∩ {b:10s}: {len(overlap):3d} shared "
-                f"(out of {len(set_a)}, {len(set_b)})  "
-                f"Jaccard={jaccard:.2%}"
+                f"    {a:11s} ∩ {b:11s}: {len(overlap):3d} shared "
+                f"(of {len(set_a)}, {len(set_b)})  Jaccard={jaccard:.1%}"
             )
 
-    if len(names) >= 2:
-        common_to_all = set.intersection(*sig_sets.values())
-        print(f"\nTerms significant in ALL {len(names)} methods: {len(common_to_all)}")
-        if common_to_all:
-            for go_id in sorted(common_to_all):
-                print(f"    {go_id}")
+    common_to_all = set.intersection(*sig_sets.values()) if len(names) >= 2 else set()
+    print(f"    Significant in ALL {len(names)} methods: {len(common_to_all)} "
+          f"{sorted(common_to_all) if common_to_all else ''}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compare GSEA significant-term overlap across normalization methods."
-    )
-    parser.add_argument(
-        "--treatment", required=True,
-        help="Treatment name as used in filenames, e.g. Cold, Salinity, 'Low Light'",
+        description="Compare GSEA stat values + significant-term overlap "
+                     "across normalization methods, for all stress treatments."
     )
     parser.add_argument(
         "--config", default=DEFAULT_CONFIG,
@@ -116,23 +160,50 @@ def main():
     )
     parser.add_argument(
         "--fdr", type=float, default=0.25,
-        help="FDR q-val threshold for 'significant' (default: 0.25, matching GSEA convention)",
+        help="FDR q-val threshold for 'significant' (default: 0.25)",
+    )
+    parser.add_argument(
+        "--out-csv", default="gsea_norm_comparison.csv",
+        help="Path to write the combined long-format stat comparison CSV",
     )
     args = parser.parse_args()
 
-    print(f"Comparing GSEA results for treatment='{args.treatment}', config='{args.config}'\n")
+    print(f"Config: {args.config}")
+    print(f"Treatments to compare: {[t.value for t in STRESS_TREATMENTS]}\n")
 
-    print("Loading result files:")
-    dfs = load_results(args.treatment, args.config)
+    all_comparisons = []
 
-    if len(dfs) < 2:
-        print("\nFewer than 2 normalization methods loaded — cannot compare. Exiting.")
+    for treatment in STRESS_TREATMENTS:
+        print(f"--- {treatment.value} ---")
+        dfs = load_results(treatment.value, args.config)
+
+        if len(dfs) < 1:
+            print("    No files found for any normalization method. Skipping.\n")
+            continue
+
+        comparison = build_stat_comparison(treatment.value, dfs)
+        if not comparison.empty:
+            all_comparisons.append(comparison)
+
+        if len(dfs) >= 2:
+            print(f"  Applying FDR < {args.fdr} threshold:")
+            summarize_overlap(treatment.value, dfs, args.fdr)
+        else:
+            print("    Only one normalization method available — no overlap to compute.")
+        print()
+
+    if not all_comparisons:
+        print("No comparable results found for any treatment. Nothing written.")
         return
 
-    print(f"\nApplying FDR < {args.fdr} threshold:")
-    sig_sets = compare_significant_sets(dfs, args.fdr)
-
-    print_pairwise_overlap(sig_sets)
+    combined = pd.concat(all_comparisons, ignore_index=True)
+    combined.to_csv(args.out_csv, index=False)
+    print(f"Wrote combined stat comparison ({len(combined)} rows) → {args.out_csv}")
+    print("\nColumns: treatment, go_id, Term, norm_method, "
+          + ", ".join(STAT_COLS))
+    print("\nTip: pivot for a specific stat to see normalization side by side, e.g.:")
+    print("  df = pd.read_csv(out_csv)")
+    print("  df[df['treatment']=='Cold'].pivot(index='go_id', columns='norm_method', values='NES')")
 
 
 if __name__ == "__main__":

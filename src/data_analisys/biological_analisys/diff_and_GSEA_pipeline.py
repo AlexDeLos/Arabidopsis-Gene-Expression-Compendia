@@ -39,6 +39,7 @@ from src.data_analisys.biological_analisys.plot_enrichment_new import (  # noqa:
 from src.data_analisys.biological_analisys.pr_rank_gene_enrich import (  # noqa: E402
     get_go_data,
     perform_gsea_enrichment,
+    perform_ora_enrichment,
 )
 from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E402
     load_labels_study,
@@ -479,6 +480,19 @@ def run_diff_exp_and_enrichment(
                                         out_path=gsea_outdir,
                                         permutations=ITERATIONS,
                                     )
+                                    ora_results = perform_ora_enrichment(
+                                        diff_results=diff_results,
+                                        gene_col="agi",
+                                        obodag=obodag,
+                                        geneid2gos=geneid2gos,
+                                        keys=None,
+                                        background_genes=diff_results["agi"].tolist(),  # the full tested gene universe for this contrast
+                                        adj_p_threshold=0.05,
+                                        logfc_threshold=1.0,
+                                        out_path=None,  # or f"{out_path}{stress}_ora_results" to also write gseapy's own files
+                                    )
+
+                                    ora_results.to_csv(f"{out_path}{stress}_ora_go_enrichment_results.csv", index=False)
                                     gsea_df.sort_values(by="FDR q-val", inplace=True)
                                     gsea_df.to_csv(gsea_csv, index=False)
                                     print(f"    GSEA saved → {gsea_csv}")
