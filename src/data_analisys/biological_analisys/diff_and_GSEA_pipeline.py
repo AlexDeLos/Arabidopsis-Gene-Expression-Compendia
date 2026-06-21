@@ -263,7 +263,7 @@ def get_spider_plots(
 						f"{full_str}_{pure_str}_min_group_{filter_val}"
 					)
 					out_dir = (
-						f"{results_path}GSEA_enrichment_{exp_name}/"
+						f"{results_path}GSEA_enrichment_{exp_name}_matched_control/"
 					)
 					csv_file	= (
 						f"{out_dir}{stress}_gsea_go_enrichment_results_{ITERATIONS}.csv"
@@ -399,7 +399,7 @@ def run_diff_exp_and_enrichment(
 							f"{EXPERIMENT_NAME}_{data_type}_{tissue_str}_"
 							f"{full_str}_{pure_str}_min_group_{fil}"
 						)
-						diff_exp_outdir = f"{FIGURES_DIR}dif_expression_results/{exp_name}/"
+						diff_exp_outdir = f"{FIGURES_DIR}dif_expression_results/{exp_name}_matched_control/"
 						done_file	   = f"{diff_exp_outdir}done.txt"
 
 						# ------------------------------------------------------
@@ -439,7 +439,7 @@ def run_diff_exp_and_enrichment(
 						# ------------------------------------------------------
 						gsea_outdir = (
 							f"{FIGURES_DIR}GSEA_enrichment_results/"
-							f"GSEA_enrichment_{exp_name}/"
+							f"GSEA_enrichment_{exp_name}_matched_control/"
 						)
 
 						for stress in TREATMENTS:
