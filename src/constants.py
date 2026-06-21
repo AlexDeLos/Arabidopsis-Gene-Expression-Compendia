@@ -18,7 +18,7 @@ DEBUG = False
 
 GLOBAL_DIR_PATH = f"{os.getcwd()}/"
 CLUSTER_RUN = GLOBAL_DIR_PATH != "/home/alex/Documents/GitHub/Dataset_fusion_Microarray/"
-EXPERIMENT_NAME = "5.0"
+EXPERIMENT_NAME = "6.0_testing_matched_control"
 
 STORAGE_DIR = "/tudelft.net/staff-umbrella/GeneExpressionStorage/" if CLUSTER_RUN else "./new_storage/"
 

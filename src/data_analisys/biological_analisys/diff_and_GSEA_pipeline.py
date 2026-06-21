@@ -418,6 +418,7 @@ def run_diff_exp_and_enrichment(
 									pure=pure,
 									tissue=tissue,
 									filter_low_combination=fil,
+									matched_control = True #TODO KEEP AN EYE ON THIS
 								)
 							produced = any(
 								f.endswith("_genes.csv")

@@ -12,10 +12,10 @@ import sys
 import re
 import numpy as np
 import pandas as pd
-# import rpy2.robjects as ro
-# from rpy2.robjects import Formula, pandas2ri
-# from rpy2.robjects.conversion import localconverter
-# from rpy2.robjects.packages import importr
+import rpy2.robjects as ro
+from rpy2.robjects import Formula, pandas2ri
+from rpy2.robjects.conversion import localconverter
+from rpy2.robjects.packages import importr
 
 module_dir = "./"
 sys.path.append(module_dir)
@@ -33,6 +33,7 @@ def diff_exp_combine_tissues(
 	pure: bool = False,
 	tissue: str | None = None,
 	filter_low_combination: int = 10,
+	matched_control: bool = False,
 ) -> None:
 	"""
 	Runs limma differential expression for every treatment in `treatments`.
@@ -50,6 +51,7 @@ def diff_exp_combine_tissues(
 		Name of the expression matrix file (without .csv extension).
 	design : pd.DataFrame
 		Labels DataFrame with at least columns [sample_id, treatment, tissue].
+		Must also contain "study_id" if matched_control=True.
 		Index must match sample IDs used as column headers in the expression matrix.
 	out_dir : str
 		Directory where output files are written; created if it does not exist.
@@ -63,6 +65,13 @@ def diff_exp_combine_tissues(
 	filter_low_combination : int
 		Minimum number of samples required per (treatment × tissue) group.
 		Groups below this threshold are dropped before model fitting.
+	matched_control : bool
+		If True, restrict the control pool for each treatment to only those
+		control samples whose "study_id" also contains at least one treatment
+		sample for that treatment (within the current tissue restriction).
+		This removes cross-study/batch heterogeneity from the control group,
+		at the cost of a smaller, more variable control pool size per
+		treatment. Requires a "study_id" column in `design`.
 	"""
 	os.makedirs(out_dir, exist_ok=True)
 
@@ -167,8 +176,52 @@ def diff_exp_combine_tissues(
 				is_treatment = is_only_treatment
 			is_control = design["treatment"].str.contains(TreatmentEnum.CONTROL, na=False)
 
+			# ------------------------------------------------------------------
+			# 2b. Optional: restrict controls to study-matched samples only
+			# ------------------------------------------------------------------
+			if matched_control:
+				if "study_id" not in design.columns:
+					raise KeyError(
+						"matched_control=True but 'study_id' column not found in design. "
+						"Add it before calling diff_exp_combine_tissues."
+					)
+
+				# Treatment studies, restricted to the current tissue scope —
+				# matching is meant to be local to this specific comparison,
+				# not "any study that ever had this treatment anywhere."
+				treatment_study_ids = set(
+					design.loc[is_treatment & is_tissue, "study_id"].dropna().unique()
+				)
+
+				is_control_unmatched = is_control.copy()
+				is_control = is_control & design["study_id"].isin(treatment_study_ids)
+
+				n_before = is_control_unmatched.sum()
+				n_after = is_control.sum()
+				n_treatment_studies = len(treatment_study_ids)
+				print(f"  [2b] matched_control enabled — restricting control pool")
+				print(f"  [2b] Treatment studies (within tissue scope):  {n_treatment_studies}")
+				print(f"  [2b] Control samples before study-matching:	{n_before}")
+				print(f"  [2b] Control samples after study-matching:	 {n_after}")
+
+				if n_after == 0:
+					print(
+						f"  [2b] WARNING: 0 study-matched control samples for "
+						f"'{treatment}' — no studies overlap between treatment "
+						f"and control. Skipping this treatment."
+					)
+					continue
+				if n_after < filter_low_combination:
+					print(
+						f"  [2b] WARNING: only {n_after} study-matched control "
+						f"samples for '{treatment}' (below filter_low_combination="
+						f"{filter_low_combination}). Proceeding, but the fit may "
+						f"be unstable — consider relaxing matched_control or "
+						f"filter_low_combination for this treatment."
+					)
+
 			if samples is not None:
-				is_study = design.index.isin(samples)
+				is_study = design["Sample_ID"].apply(lambda x: x in samples)
 				design_filtered = design[(is_treatment | is_control) & is_study & is_tissue].copy()
 			else:
 				design_filtered = design[(is_treatment | is_control) & is_tissue].copy()
