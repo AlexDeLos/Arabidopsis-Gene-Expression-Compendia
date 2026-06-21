@@ -991,7 +991,7 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_1.1/{file}"
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_1.2/{file}"
 			os.makedirs(output_dir, exist_ok=True)
 			n_components, cumulative_variance, pca = find_n_components_for_variance(
 				df,           # Samples x Genes
@@ -1018,8 +1018,8 @@ if __name__ == "__main__":
 				"tissue": 1,
 				"developmental_stage": 1,
 				"treatment": 1,
-				"ecotype": 1,
-				"modification": 1,
+				# "ecotype": 1,
+				# "modification": 1,
 				"medium": 1,
 				"treatment_intensity": 1,
 			}
@@ -1052,7 +1052,7 @@ if __name__ == "__main__":
 			print(f"Error: Data file not found at {data_path}")
 
 	# Generate the Comparison Plots
-	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_1.1"
+	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons_1.2"
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
