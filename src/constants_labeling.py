@@ -356,3 +356,22 @@ CONTROL_MAP = {
     "treatment": TreatmentEnum.CONTROL.value,  # e.g., 'Control'
     # Add others if needed: 'tissue': TissueEnum.CONTROL.value
 }
+
+
+STRESS_GO_ROOTS: dict[str, tuple[str, str]] = {
+    # treatment_value: (go_id, go_name)
+    "Drought":              ("GO:0009414", "response to water deprivation"),
+    "Flood":                ("GO:0036293", "response to decreased oxygen levels"),
+    "Dehydration":           ("GO:0009414", "response to water deprivation"),
+    "Salinity":             ("GO:0009651", "response to salt stress"),
+    "Heat":                 ("GO:0009408", "response to heat"),
+    "Cold":                 ("GO:0009409", "response to cold"),
+    "Chemical":             ("GO:0042221", "response to chemical"),
+    "Biotic":               ("GO:0009607", "response to biotic stimulus"),
+    "Abiotic":              ("GO:0009628", "response to abiotic stimulus"),
+    "Low Light":            ("GO:0009642", "response to light intensity"),
+    "High Light":           ("GO:0009644", "response to high light intensity"),
+    "Other Light":          ("GO:0009416", "response to light stimulus"),
+    "Cut":                  ("GO:0009611", "response to wounding"),
+    "Nutrient Deficiency":  ("GO:0031667", "response to nutrient levels"),
+}

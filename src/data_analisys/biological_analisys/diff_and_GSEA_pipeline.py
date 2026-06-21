@@ -28,7 +28,8 @@ from src.constants import (  # noqa: E402
 	RNA_USED
 )
 from src.constants_labeling import ( # noqa: E402
-	TreatmentEnum
+	# TreatmentEnum,
+	STRESS_GO_ROOTS as STRESS_GO_ROOTS_RAW
 )
 
 from src.data_analisys.biological_analisys.diff_expr import diff_exp_combine_tissues  # noqa: E402
@@ -46,94 +47,117 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E
 	make_df_from_labels,
 )
 
+# # =============================================================================
+# # Constants
+# # =============================================================================
+# ITERATIONS = 1000
+
+# GO_OBO_FILE	 = f"{CORE_DATA_DIR}go-basic.obo"
+# ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
+
+# # ------------------------------------------------------------------
+# # Pass 1: load obodag unfiltered, just to discover GO root IDs
+# # ------------------------------------------------------------------
+# GO_NAME_OVERRIDES: dict[TreatmentEnum, str | None] = {
+# 	TreatmentEnum.DEHYDRATION:		 "response to water deprivation",
+# 	TreatmentEnum.DROUGHT:			 "response to water deprivation",
+# 	TreatmentEnum.FLOOD:			   "response to decreased oxygen levels",
+# 	TreatmentEnum.BIOTIC:			  "response to biotic stimulus",
+# 	TreatmentEnum.ABIOTIC:			 "response to abiotic stimulus",
+# 	TreatmentEnum.LOW_LIGHT:		   "response to light intensity",
+# 	TreatmentEnum.OTHER_LIGHT:		 "response to light stimulus",
+# 	TreatmentEnum.CUT:				 "response to wounding",
+# 	TreatmentEnum.NUTRIENT_DEFICIENCY: "response to nutrient levels",
+# 	TreatmentEnum.OTHER:			   None,
+# 	TreatmentEnum.CONTROL:			 None,
+# 	TreatmentEnum.UNKNOWN:			 None,
+# 	TreatmentEnum.UNSPECIFIED:		 None,
+# }
+
+# _stemmer = PorterStemmer()
+
+# def _stem_phrase(phrase: str) -> str:
+# 	"""Stem every word in a phrase and rejoin."""
+# 	return " ".join(_stemmer.stem(w) for w in phrase.lower().split())
+
+# def find_go_root_for_treatment(treatment: TreatmentEnum, obodag) -> str | None:
+# 	# Check for explicit override first
+# 	if treatment in GO_NAME_OVERRIDES:
+# 		override = GO_NAME_OVERRIDES[treatment]
+# 		if override is None:
+# 			return None  # explicitly excluded
+# 		query = override
+# 	else:
+# 		query = f"response to {treatment.value.lower()}"
+
+# 	stemmed_query = _stem_phrase(query)
+# 	candidates = [
+# 		(go_id, term) for go_id, term in obodag.items()
+# 		if term.name.lower().startswith("response to")
+# 		and term.namespace == "biological_process"
+# 	]
+
+# 	if not candidates:
+# 		return None
+
+# 	def score(item):
+# 		go_id, term = item
+# 		stemmed_name = _stem_phrase(term.name)
+# 		name_similarity = SequenceMatcher(
+# 			None, stemmed_query, stemmed_name
+# 		).ratio()
+# 		depth_penalty = len(term.parents) * 0.01
+# 		return name_similarity - depth_penalty
+
+# 	best_go_id, best_term = max(candidates, key=score)
+# 	best_score = score((best_go_id, best_term))
+
+# 	print(f"  {treatment.value!r} → '{best_term.name}' ({best_go_id}, score={best_score:.3f})")
+
+# 	if best_score < 0.6:
+# 		print(f"  Warning: low confidence match for '{treatment.value}', consider adding an override.")
+# 		return None
+
+# 	return best_go_id
+
+
+# unfiltered_obodag, _ = get_go_data(GO_OBO_FILE, ANNOTATION_FILE)
+
+# TREATMENT_GO_MAP: dict[TreatmentEnum, str] = {}
+# for treatment in TreatmentEnum:
+# 	go_id = find_go_root_for_treatment(treatment, unfiltered_obodag)
+# 	if go_id:
+# 		TREATMENT_GO_MAP[treatment] = go_id
+
+# # Derived automatically
+# TREATMENTS:	  list[str]	  = [t.value for t in TREATMENT_GO_MAP]
+# print(TREATMENTS)
+# STRESS_GO_ROOTS: dict[str, str] = {go: t.value for t, go in TREATMENT_GO_MAP.items()}
+# STRESS_IDS:	  set[str]	   = set(STRESS_GO_ROOTS.keys())
 # =============================================================================
 # Constants
 # =============================================================================
 ITERATIONS = 1000
 
-GO_OBO_FILE	 = f"{CORE_DATA_DIR}go-basic.obo"
+GO_OBO_FILE  = f"{CORE_DATA_DIR}go-basic.obo"
 ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
 
 # ------------------------------------------------------------------
-# Pass 1: load obodag unfiltered, just to discover GO root IDs
+# Pass 1: Derive pipeline mappings from static constants_labeling
 # ------------------------------------------------------------------
-GO_NAME_OVERRIDES: dict[TreatmentEnum, str | None] = {
-	TreatmentEnum.DEHYDRATION:		 "response to water deprivation",
-	TreatmentEnum.DROUGHT:			 "response to water deprivation",
-	TreatmentEnum.FLOOD:			   "response to decreased oxygen levels",
-	TreatmentEnum.BIOTIC:			  "response to biotic stimulus",
-	TreatmentEnum.ABIOTIC:			 "response to abiotic stimulus",
-	TreatmentEnum.LOW_LIGHT:		   "response to light intensity",
-	TreatmentEnum.OTHER_LIGHT:		 "response to light stimulus",
-	TreatmentEnum.CUT:				 "response to wounding",
-	TreatmentEnum.NUTRIENT_DEFICIENCY: "response to nutrient levels",
-	TreatmentEnum.OTHER:			   None,
-	TreatmentEnum.CONTROL:			 None,
-	TreatmentEnum.UNKNOWN:			 None,
-	TreatmentEnum.UNSPECIFIED:		 None,
+
+# Derived automatically from the configured dictionary keys
+TREATMENTS: list[str] = list(STRESS_GO_ROOTS_RAW.keys())
+print(TREATMENTS)
+
+# Recreate the exact mapping downstream expects: {go_id: treatment_value}
+STRESS_GO_ROOTS: dict[str, str] = {
+    go_id: treatment_val 
+    for treatment_val, (go_id, _) in STRESS_GO_ROOTS_RAW.items()
 }
 
-_stemmer = PorterStemmer()
-
-def _stem_phrase(phrase: str) -> str:
-	"""Stem every word in a phrase and rejoin."""
-	return " ".join(_stemmer.stem(w) for w in phrase.lower().split())
-
-def find_go_root_for_treatment(treatment: TreatmentEnum, obodag) -> str | None:
-	# Check for explicit override first
-	if treatment in GO_NAME_OVERRIDES:
-		override = GO_NAME_OVERRIDES[treatment]
-		if override is None:
-			return None  # explicitly excluded
-		query = override
-	else:
-		query = f"response to {treatment.value.lower()}"
-
-	stemmed_query = _stem_phrase(query)
-	candidates = [
-		(go_id, term) for go_id, term in obodag.items()
-		if term.name.lower().startswith("response to")
-		and term.namespace == "biological_process"
-	]
-
-	if not candidates:
-		return None
-
-	def score(item):
-		go_id, term = item
-		stemmed_name = _stem_phrase(term.name)
-		name_similarity = SequenceMatcher(
-			None, stemmed_query, stemmed_name
-		).ratio()
-		depth_penalty = len(term.parents) * 0.01
-		return name_similarity - depth_penalty
-
-	best_go_id, best_term = max(candidates, key=score)
-	best_score = score((best_go_id, best_term))
-
-	print(f"  {treatment.value!r} → '{best_term.name}' ({best_go_id}, score={best_score:.3f})")
-
-	if best_score < 0.6:
-		print(f"  Warning: low confidence match for '{treatment.value}', consider adding an override.")
-		return None
-
-	return best_go_id
-
-
-unfiltered_obodag, _ = get_go_data(GO_OBO_FILE, ANNOTATION_FILE)
-
-TREATMENT_GO_MAP: dict[TreatmentEnum, str] = {}
-for treatment in TreatmentEnum:
-	go_id = find_go_root_for_treatment(treatment, unfiltered_obodag)
-	if go_id:
-		TREATMENT_GO_MAP[treatment] = go_id
-
-# Derived automatically
-TREATMENTS:	  list[str]	  = [t.value for t in TREATMENT_GO_MAP]
-print(TREATMENTS)
-STRESS_GO_ROOTS: dict[str, str] = {go: t.value for t, go in TREATMENT_GO_MAP.items()}
-STRESS_IDS:	  set[str]	   = set(STRESS_GO_ROOTS.keys())
-
+# Explicit set of target GO IDs
+STRESS_IDS: set[str] = set(STRESS_GO_ROOTS.keys())
 # ------------------------------------------------------------------
 # Pass 2: reload with proper descendant filtering now that STRESS_IDS is known
 # ------------------------------------------------------------------
