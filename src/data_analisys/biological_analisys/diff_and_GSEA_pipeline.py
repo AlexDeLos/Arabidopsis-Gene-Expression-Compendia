@@ -434,12 +434,12 @@ def get_spider_plots(
 # =============================================================================
 
 def run_diff_exp_and_enrichment(
+	data_types: list[str],
+	pures: list[bool],
+	Fulls: list[bool],
+	filter_low_combination: list[int],
+	tissues: list[str | None],
 	save_dir: str = PROCESSED_DATA_FOLDER,
-	data_types: list[str] | None = None,
-	pures: list[bool] | None = None,
-	Fulls: list[bool] | None = None,
-	filter_low_combination: list[int] | None = None,
-	tissues: list[str | None] | None = None,
 	just_plot: bool = False,
 	experiment_version: str | None = None,
 	run_notes: str = "",
@@ -487,16 +487,16 @@ def run_diff_exp_and_enrichment(
 	if experiment_version is not None:
 		EXPERIMENT_VERSION = experiment_version
 
-	if data_types is None:
-		data_types = ["combat_norm", "rankin", "filter"]
-	if pures is None:
-		pures = [False,True]
-	if Fulls is None:
-		Fulls = [True, False]
-	if filter_low_combination is None:
-		filter_low_combination = [0, 15]
-	if tissues is None:
-		tissues = [None, 'leaf']
+	# if data_types is None:
+	# 	data_types = ["combat_norm", "rankin", "filter"]
+	# if pures is None:
+	# 	pures = [False,True]
+	# if Fulls is None:
+	# 	Fulls = [True, False]
+	# if filter_low_combination is None:
+	# 	filter_low_combination = [0, 15]
+	# if tissues is None:
+	# 	tissues = [None, 'leaf']
 
 	labels = make_df_from_labels(load_labels_study(LABELS_PATH))
 
@@ -603,7 +603,11 @@ def run_diff_exp_and_enrichment(
 										f"{diff_exp_outdir}"
 										f"{tissue_display}_{stress}_genes.csv"
 									)
-									diff_results = pd.read_csv(diff_csv)
+									try:
+										diff_results = pd.read_csv(diff_csv)
+									except FileNotFoundError:
+										print(f"file {diff_csv} was not found, asuming it was not generated due to low samples moving on")
+										continue
 
 									# Floor adj.P.Val to avoid -log10(0) = inf, which breaks gseapy on
 									# this pandas version (NDFrame.replace() 'method' kwarg removed).
@@ -762,6 +766,8 @@ if __name__ == "__main__":
 		data_types=['filter_norm', 'combat_norm', 'rankin'],
 		Fulls=[True] if RNA_USED else [True],
 		filter_low_combination=[0],
+		pures=[False],
+		tissues=[None],
 		experiment_version="matched_control_and_ORA_v1",
 		run_notes=(
 			"Testing whether matched_control (restricting the control pool to "
