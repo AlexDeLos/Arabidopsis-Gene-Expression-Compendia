@@ -253,7 +253,7 @@ def build_gsea_outdir(exp_name: str) -> str:
 	return f"{FIGURES_DIR}GSEA_enrichment_results/{EXPERIMENT_VERSION}/GSEA_enrichment_{exp_name}/"
 
 
-def build_scatter_plot_path(exp_name: str, tissue_str: str, full_str: str, data_type: str, fil: int, pure_str: str, stress: str) -> str:
+def build_scatter_plot_path(tissue_str: str, full_str: str, data_type: str, fil: int, pure_str: str, stress: str) -> str:
 	"""Path for the interactive per-treatment GSEA scatter plot HTML."""
 	return (
 		f"{FIGURES_DIR}plots_enrichment/{EXPERIMENT_VERSION}/"
@@ -588,7 +588,6 @@ def run_diff_exp_and_enrichment(
 						gsea_outdir = build_gsea_outdir(exp_name)
 
 						for stress in TREATMENTS:
-							try:
 								gsea_csv = (
 									f"{gsea_outdir}{stress}_gsea_go_enrichment_results"
 									f"_{ITERATIONS}.csv"
@@ -645,17 +644,6 @@ def run_diff_exp_and_enrichment(
 									ora_results.to_csv(oar_csv, index=False)
 									print(f"	ORA saved → {oar_csv}")
 
-									ora_plot_path = build_scatter_plot_path(
-										exp_name, tissue_str, full_str, data_type, fil, pure_str, stress
-									).replace("_scatter.html", "_ora_dotplot.pdf") 
-									
-									ora_title = f"ORA: {stress} | {tissue_display} | {data_type}"
-									plot_ora_dotplot(
-										ora_results=ora_results,
-										top_n=15,
-										title=ora_title,
-										save_path=ora_plot_path
-									)
 
 									gsea_df.sort_values(by="FDR q-val", inplace=True)
 									gsea_df.to_csv(gsea_csv, index=False)
@@ -665,6 +653,23 @@ def run_diff_exp_and_enrichment(
 									print(f"	Loading pre-existing GSEA: {gsea_csv}")
 									gsea_df = pd.read_csv(gsea_csv)
 
+									print(f"	Loading pre-existing ORA: {oar_csv}")
+									ora_results = pd.read_csv(oar_csv)
+
+
+								ora_plot_path = build_scatter_plot_path(
+									tissue_str, full_str, data_type, fil, pure_str, stress
+								).replace(".html", "_ora_dotplot.pdf") 
+								
+								ora_title = f"ORA: {stress} | {tissue_display} | {data_type}"
+								plot_ora_dotplot(
+									ora_results=ora_results,
+									top_n=15,
+									title=ora_title,
+									save_path=ora_plot_path
+								)
+
+
 								# Scatter plot
 								plot_title = (
 									f"GSEA for {stress} | {tissue_display} | "
@@ -672,7 +677,7 @@ def run_diff_exp_and_enrichment(
 									f"filter >{fil}"
 								)
 								plot_out = build_scatter_plot_path(
-									exp_name, tissue_str, full_str, data_type, fil, pure_str, stress
+									tissue_str, full_str, data_type, fil, pure_str, stress
 								)
 								plot_enrichment_scatter_interactive(
 									gsea_df,
@@ -683,8 +688,8 @@ def run_diff_exp_and_enrichment(
 									filter_options=filter_low_combination
 								)
 
-							except Exception as exc:
-								print(f"  Error during GSEA for {stress}: {exc}")
+							# except Exception as exc:
+							# 	print(f"  Error during GSEA for {stress}: {exc}")
 
 			# ------------------------------------------------------------------
 			# Spider plots — one set per (filter × pure) combination
