@@ -408,7 +408,7 @@ def perform_ora_enrichment(
     except Exception as e:
         print(f"  ! Runtime exception in gseapy.enrich: {e}")
         return pd.DataFrame(columns=fallback_cols)
-    if not isinstance(results_raw, pd.DataFrame) or results_raw.empty:
+    if not isinstance(enr.results, pd.DataFrame) or enr.results.empty:
         print("  ! Warning: No valid enrichment results returned (0 overlapping hits).")
         return pd.DataFrame(columns=fallback_cols)
     results_df = enr.results.copy()
