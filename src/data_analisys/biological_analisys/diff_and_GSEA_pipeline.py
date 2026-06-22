@@ -628,7 +628,7 @@ def run_diff_exp_and_enrichment(
 										rank_col="rank",
 										obodag=obodag,
 										geneid2gos=geneid2gos,
-										keys=None,
+										keys=list(map(lambda x: x[0],list(STRESS_GO_ROOTS.values()))),
 										stress=stress,
 										out_path=gsea_outdir,
 										permutations=ITERATIONS,
@@ -638,7 +638,7 @@ def run_diff_exp_and_enrichment(
 										gene_col="ID",
 										obodag=obodag,
 										geneid2gos=geneid2gos,
-										keys=None,
+										keys=list(map(lambda x: x[0],list(STRESS_GO_ROOTS.values()))),
 										background_genes=diff_results["ID"].tolist(),  # the full tested gene universe for this contrast
 										adj_p_threshold=0.05,
 										logfc_threshold=1.0,
@@ -768,7 +768,7 @@ if __name__ == "__main__":
 		filter_low_combination=[0],
 		pures=[False],
 		tissues=[None],
-		experiment_version="matched_control_and_ORA_v1",
+		experiment_version="matched_control_limited_treat_set_v1",
 		run_notes=(
 			"Testing whether matched_control (restricting the control pool to "
 			"study-matched samples per treatment) improves cross-normalization "
