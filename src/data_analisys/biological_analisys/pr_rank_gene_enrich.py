@@ -398,13 +398,16 @@ def perform_ora_enrichment(
     print(f"  Background gene universe: {len(background)} genes.")
 
     print("Running ORA (gseapy.enrich)...")
-    enr = gseapy.enrich(
-        gene_list=sig_genes,
-        gene_sets=go_gene_sets,
-        background=background,
-        outdir=out_path,
-    )
-
+    try:
+        enr = gseapy.enrich(
+            gene_list=sig_genes,
+            gene_sets=go_gene_sets,
+            background=background,
+            outdir=out_path,
+        )
+    except Exception as e:
+        print(f"  ! Runtime exception in gseapy.enrich: {e}")
+        return pd.DataFrame(columns=fallback_cols)
     results_df = enr.results.copy()
     results_df["go_id"] = results_df["Term"].str.split(" ").str[0]
 
