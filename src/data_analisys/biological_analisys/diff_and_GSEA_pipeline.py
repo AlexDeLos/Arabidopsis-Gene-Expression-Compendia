@@ -12,8 +12,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from difflib import SequenceMatcher
-from nltk.stem import PorterStemmer
 
 module_dir = "./"
 sys.path.append(module_dir)
@@ -28,7 +26,6 @@ from src.constants import (  # noqa: E402
 	RNA_USED
 )
 from src.constants_labeling import ( # noqa: E402
-	# TreatmentEnum,
 	STRESS_GO_ROOTS as STRESS_GO_ROOTS_RAW
 )
 
@@ -36,6 +33,7 @@ from src.data_analisys.biological_analisys.diff_expr import diff_exp_combine_tis
 from src.data_analisys.biological_analisys.plot_enrichment_new import (  # noqa: E402
 	create_gsea_spider_plot,
 	plot_enrichment_scatter_interactive,
+	plot_ora_dotplot
 )
 from src.data_analisys.biological_analisys.pr_rank_gene_enrich import (  # noqa: E402
 	get_go_data,
@@ -152,8 +150,8 @@ print(TREATMENTS)
 
 # Recreate the exact mapping downstream expects: {go_id: treatment_value}
 STRESS_GO_ROOTS: dict[str, str] = {
-    go_id: treatment_val 
-    for treatment_val, (go_id, _) in STRESS_GO_ROOTS_RAW.items()
+	go_id: treatment_val 
+	for treatment_val, (go_id, _) in STRESS_GO_ROOTS_RAW.items()
 }
 
 # Explicit set of target GO IDs
@@ -214,6 +212,104 @@ SANITY_CHECK_SAMPLES = [
 
 
 # =============================================================================
+# Centralized path building
+# -----------------------------------------------------------------------------
+# Every output path in this pipeline (diff-exp results, GSEA results, scatter
+# plots, spider plots) is derived from the SAME run-configuration tuple
+# (data_type, tissue, Full, pure, fil) via the helpers below. There is
+# exactly one place that knows how an "exp_name" string is built, and exactly
+# one place that knows how the matched_control / experiment_version suffix
+# is applied — every call site (diff-exp, GSEA-write, GSEA-read for spider
+# plots) goes through these functions instead of re-building the string
+# locally. This is what caused the original bug: diff-exp wrote to a path
+# with "_matched_control" appended, but the GSEA step built its own path
+# string without that suffix, and the spider-plot step built yet another
+# path string WITH the suffix hardcoded — three independent, silently
+# divergent copies of what should have been one piece of logic.
+#
+# experiment_version: an optional extra folder layer under
+# dif_expression_results/ and GSEA_enrichment_results/, so results from
+# different experiments (e.g. "matched_control_v1", "baseline") don't
+# overwrite each other. Defaults to "default" if not set, which preserves
+# the original (pre-experiment-version) directory layout for anyone who
+# doesn't need multiple parallel experiments.
+# =============================================================================
+
+EXPERIMENT_VERSION = "default"  # override before calling run_diff_exp_and_enrichment
+
+
+def build_exp_name(data_type: str, tissue_str: str, full_str: str, pure_str: str, fil: int) -> str:
+	"""The single canonical experiment-configuration name used everywhere."""
+	return f"{EXPERIMENT_NAME}_{data_type}_{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
+
+
+def build_diff_exp_outdir(exp_name: str) -> str:
+	"""Directory where diff-exp gene CSVs + done.txt live for one exp_name."""
+	return f"{FIGURES_DIR}dif_expression_results/{EXPERIMENT_VERSION}/{exp_name}/"
+
+
+def build_gsea_outdir(exp_name: str) -> str:
+	"""Directory where GSEA + ORA result CSVs live for one exp_name."""
+	return f"{FIGURES_DIR}GSEA_enrichment_results/{EXPERIMENT_VERSION}/GSEA_enrichment_{exp_name}/"
+
+
+def build_scatter_plot_path(exp_name: str, tissue_str: str, full_str: str, data_type: str, fil: int, pure_str: str, stress: str) -> str:
+	"""Path for the interactive per-treatment GSEA scatter plot HTML."""
+	return (
+		f"{FIGURES_DIR}plots_enrichment/{EXPERIMENT_VERSION}/"
+		f"{EXPERIMENT_NAME}/{full_str}/{tissue_str}/{data_type}/{fil}/{pure_str}/{stress}.html"
+	)
+
+
+def build_spider_dir(fil: int, pure_str: str) -> str:
+	"""Directory where spider-plot SVGs are written for one (fil, pure) combo."""
+	return f"{FIGURES_DIR}GSEA_radar_comparison/{EXPERIMENT_VERSION}/{EXPERIMENT_NAME}_{fil}_{pure_str}/"
+
+
+def write_run_metadata(exp_name: str, run_notes: str, **hyperparams) -> None:
+	"""
+	Write a small metadata.txt into this run's experiment_version folder,
+	recording when the run started, the key hyperparameters used, and a
+	free-text note describing the goal of this particular experiment.
+
+	Writes to:  {FIGURES_DIR}dif_expression_results/{EXPERIMENT_VERSION}/metadata.txt
+
+	Safe to call multiple times across a run (e.g. once per fil/pure/data_type
+	combination) — appends a new timestamped entry each time rather than
+	overwriting, so the file accumulates a log of everything that has been
+	run under this experiment_version.
+	"""
+	import datetime
+
+	meta_dir = f"{FIGURES_DIR}dif_expression_results/{EXPERIMENT_VERSION}/"
+	os.makedirs(meta_dir, exist_ok=True)
+	meta_path = f"{meta_dir}metadata.txt"
+
+	timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+	lines = [
+		"=" * 60,
+		f"Run started:		{timestamp}",
+		f"Experiment version: {EXPERIMENT_VERSION}",
+		f"Experiment name:	{exp_name}",
+		"",
+		"Hyperparameters:",
+	]
+	for key, value in hyperparams.items():
+		lines.append(f"  {key}: {value}")
+	lines.append("")
+	lines.append("Goal / notes:")
+	lines.append(f"  {run_notes if run_notes else '(none provided)'}")
+	lines.append("=" * 60)
+	lines.append("")
+
+	with open(meta_path, "a") as fh:
+		fh.write("\n".join(lines) + "\n")
+
+	print(f"  [metadata] Logged run to {meta_path}")
+
+
+# =============================================================================
 # Spider plot helper
 # =============================================================================
 def _get_term_row(gsea_df: pd.DataFrame, root_id: str, obodag) -> pd.DataFrame:
@@ -253,7 +349,12 @@ def get_spider_plots(
 	path : str
 		Output directory for spider plot SVGs.
 	results_path : str
-		Root directory that contains the per-experiment GSEA result folders.
+		UNUSED — retained only for call-site / signature backward
+		compatibility. Path construction now goes entirely through
+		build_gsea_outdir(), which derives from FIGURES_DIR and
+		EXPERIMENT_VERSION directly, so this argument has no effect.
+		Safe to pass anything (including None); consider removing this
+		parameter the next time this function's call sites are touched.
 	data_types : list of str
 		All normalization stages to consider.
 	Fulls : list of bool
@@ -282,13 +383,8 @@ def get_spider_plots(
 				for tissue in tissues:
 					tissue_str  = tissue if tissue else "All_tissues"
 					full_str	= "full" if Full else "sanity"
-					exp_name	= (
-						f"{EXPERIMENT_NAME}_{data_type}_{tissue_str}_"
-						f"{full_str}_{pure_str}_min_group_{filter_val}"
-					)
-					out_dir = (
-						f"{results_path}GSEA_enrichment_{exp_name}_matched_control/"
-					)
+					exp_name = build_exp_name(data_type, tissue_str, full_str, pure_str, filter_val)
+					out_dir = build_gsea_outdir(exp_name)
 					csv_file	= (
 						f"{out_dir}{stress}_gsea_go_enrichment_results_{ITERATIONS}.csv"
 					)
@@ -345,6 +441,8 @@ def run_diff_exp_and_enrichment(
 	filter_low_combination: list[int] | None = None,
 	tissues: list[str | None] | None = None,
 	just_plot: bool = False,
+	experiment_version: str | None = None,
+	run_notes: str = "",
 ) -> None:
 	"""
 	Run differential expression and GSEA for all combinations of the supplied
@@ -371,7 +469,24 @@ def run_diff_exp_and_enrichment(
 		Tissue filters to iterate over (None = all tissues combined).
 	just_plot : bool
 		If True, skip computation and regenerate plots from existing CSVs only.
+	experiment_version : str or None
+		Folder name under dif_expression_results/ and GSEA_enrichment_results/
+		that isolates this run's outputs from other experiments. If None,
+		falls back to the module-level EXPERIMENT_VERSION constant (which
+		itself defaults to "default"). Set this per-call when running
+		multiple distinct experiments without overwriting each other, e.g.
+		experiment_version="matched_control_v1".
+	run_notes : str
+		Free-text description of what this run's goal was. Written into
+		metadata.txt alongside the timestamp and hyperparameters, so future
+		you (or a collaborator) can tell at a glance why a given experiment
+		folder exists. E.g. "Testing whether matched_control reduces
+		cross-normalization GSEA instability for low-n treatments."
 	"""
+	global EXPERIMENT_VERSION
+	if experiment_version is not None:
+		EXPERIMENT_VERSION = experiment_version
+
 	if data_types is None:
 		data_types = ["combat_norm", "rankin", "filter"]
 	if pures is None:
@@ -419,12 +534,21 @@ def run_diff_exp_and_enrichment(
 						tissue_display = tissue if tissue is not None else "All-Tissues"
 						full_str	   = "full" if Full else "sanity"
 
-						exp_name		= (
-							f"{EXPERIMENT_NAME}_{data_type}_{tissue_str}_"
-							f"{full_str}_{pure_str}_min_group_{fil}"
-						)
-						diff_exp_outdir = f"{FIGURES_DIR}dif_expression_results/{exp_name}_matched_control/"
+						exp_name = build_exp_name(data_type, tissue_str, full_str, pure_str, fil)
+						diff_exp_outdir = build_diff_exp_outdir(exp_name)
 						done_file	   = f"{diff_exp_outdir}done.txt"
+
+						write_run_metadata(
+							exp_name=exp_name,
+							run_notes=run_notes,
+							data_type=data_type,
+							tissue=tissue_str,
+							full_str=full_str,
+							pure=pure_str,
+							filter_low_combination=fil,
+							matched_control=True,
+							iterations=ITERATIONS,
+						)
 
 						# ------------------------------------------------------
 						# Differential expressionrun_diff_exp_and_enrichment
@@ -461,15 +585,16 @@ def run_diff_exp_and_enrichment(
 						# ------------------------------------------------------
 						# GSEA per stress treatment
 						# ------------------------------------------------------
-						gsea_outdir = (
-							f"{FIGURES_DIR}GSEA_enrichment_results/"
-							f"GSEA_enrichment_{exp_name}_matched_control/"
-						)
+						gsea_outdir = build_gsea_outdir(exp_name)
 
 						for stress in TREATMENTS:
 							try:
 								gsea_csv = (
 									f"{gsea_outdir}{stress}_gsea_go_enrichment_results"
+									f"_{ITERATIONS}.csv"
+								)
+								oar_csv = (
+									f"{gsea_outdir}{stress}_ora_enrichment_results"
 									f"_{ITERATIONS}.csv"
 								)
 
@@ -507,17 +632,31 @@ def run_diff_exp_and_enrichment(
 									)
 									ora_results = perform_ora_enrichment(
 										diff_results=diff_results,
-										gene_col="agi",
+										gene_col="ID",
 										obodag=obodag,
 										geneid2gos=geneid2gos,
 										keys=None,
-										background_genes=diff_results["agi"].tolist(),  # the full tested gene universe for this contrast
+										background_genes=diff_results["ID"].tolist(),  # the full tested gene universe for this contrast
 										adj_p_threshold=0.05,
 										logfc_threshold=1.0,
 										out_path=None,  # or f"{out_path}{stress}_ora_results" to also write gseapy's own files
 									)
 
-									ora_results.to_csv(f"{out_path}{stress}_ora_go_enrichment_results.csv", index=False)
+									ora_results.to_csv(oar_csv, index=False)
+									print(f"	ORA saved → {oar_csv}")
+
+									ora_plot_path = build_scatter_plot_path(
+										exp_name, tissue_str, full_str, data_type, fil, pure_str, stress
+									).replace("_scatter.html", "_ora_dotplot.pdf") 
+									
+									ora_title = f"ORA: {stress} | {tissue_display} | {data_type}"
+									plot_ora_dotplot(
+										ora_results=ora_results,
+										top_n=15,
+										title=ora_title,
+										save_path=ora_plot_path
+									)
+
 									gsea_df.sort_values(by="FDR q-val", inplace=True)
 									gsea_df.to_csv(gsea_csv, index=False)
 									print(f"	GSEA saved → {gsea_csv}")
@@ -532,10 +671,8 @@ def run_diff_exp_and_enrichment(
 									f"{full_str} | {pure_str} treatments | "
 									f"filter >{fil}"
 								)
-								plot_out = (
-									f"{FIGURES_DIR}plots_enrichment/"
-									f"{EXPERIMENT_NAME}/{full_str}/{tissue_str}/"
-									f"{data_type}/{fil}/{pure_str}/{stress}.html"
+								plot_out = build_scatter_plot_path(
+									exp_name, tissue_str, full_str, data_type, fil, pure_str, stress
 								)
 								plot_enrichment_scatter_interactive(
 									gsea_df,
@@ -552,13 +689,10 @@ def run_diff_exp_and_enrichment(
 			# ------------------------------------------------------------------
 			# Spider plots — one set per (filter × pure) combination
 			# ------------------------------------------------------------------
-			spider_dir = (
-				f"{FIGURES_DIR}GSEA_radar_comparison/"
-				f"{EXPERIMENT_NAME}_{fil}_{pure_str}/"
-			)
+			spider_dir = build_spider_dir(fil, pure_str)
 			get_spider_plots(
 				path=spider_dir,
-				results_path=f"{FIGURES_DIR}GSEA_enrichment_results/",
+				results_path=None,  # unused — see build_gsea_outdir / docstring note
 				data_types=data_types,
 				Fulls=Fulls,
 				tissues=tissues,
@@ -618,4 +752,16 @@ def subsample_labels_for_debug(
 # =============================================================================
 
 if __name__ == "__main__":
-	run_diff_exp_and_enrichment(just_plot=False, data_types=['filter_norm', 'combat_norm','rankin'],Fulls=[True] if RNA_USED else [True], filter_low_combination=[0])
+	run_diff_exp_and_enrichment(
+		just_plot=False,
+		data_types=['filter_norm', 'combat_norm', 'rankin'],
+		Fulls=[True] if RNA_USED else [True],
+		filter_low_combination=[0],
+		experiment_version="matched_control_and_ORA_v1",
+		run_notes=(
+			"Testing whether matched_control (restricting the control pool to "
+			"study-matched samples per treatment) improves cross-normalization "
+			"GSEA stability for low-sample-size treatments."
+			"Also testing ORA and it's plotting (Check that it is not empty)"
+		),
+	)

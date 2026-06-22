@@ -33,6 +33,7 @@ from matplotlib.projections.polar import PolarAxes
 from matplotlib.spines import Spine
 from matplotlib.transforms import Affine2D
 
+import seaborn as sns
 module_dir = "./"
 sys.path.append(module_dir)
 from src.constants import FIGURES_DIR, GLOBAL_DIR_PATH  # noqa: E402
@@ -646,3 +647,99 @@ def create_gsea_spider_plot(df: pd.DataFrame, save_path: str, term: str) -> None
     fig.savefig(save_path, bbox_inches="tight")
     plt.close(fig)
     print(f"Spider plot saved → {save_path}")
+
+
+#TEMP
+
+# =============================================================================
+# ORA Dot Plot Generation
+# =============================================================================
+def plot_ora_dotplot(
+    ora_results: pd.DataFrame,
+    top_n: int = 15,
+    title: str = "ORA Enrichment",
+    save_path: str | None = None
+) -> None:
+    """
+    Generates a publication-quality dot plot for Overrepresentation Analysis (ORA).
+    
+    Parameters
+    ----------
+    ora_results : pd.DataFrame
+        The output from `perform_ora_enrichment`.
+    top_n : int
+        Number of top significant terms to display.
+    title : str
+        Title of the plot.
+    save_path : str or None
+        Path to save the generated figure (e.g., 'ora_plot.pdf').
+    """
+    if ora_results is None or ora_results.empty:
+        print(f"  [Plot] No data to plot for {title}")
+        return
+
+    # Work on a copy to avoid SettingWithCopyWarning
+    df = ora_results.copy()
+
+    # Determine sorting column
+    p_col = "Adjusted P-value" if "Adjusted P-value" in df.columns else "P-value"
+    
+    # Sort and take top N
+    df = df.sort_values(p_col, ascending=True).head(top_n)
+    
+    # If there's nothing significant, skip plotting
+    if df[p_col].min() > 1.0: # Adjust if you only want to plot if p < 0.05
+        print(f"  [Plot] No significant terms to plot for {title}")
+        return
+
+    # Parse the "Overlap" column (e.g., "45/1500") to get the count (45)
+    # This dictates the size of the dots
+    if "Overlap" in df.columns:
+        df["Gene_Count"] = df["Overlap"].apply(
+            lambda x: int(str(x).split('/')[0]) if pd.notnull(x) and '/' in str(x) else 0
+        )
+    else:
+        # Fallback if Overlap isn't formatted properly
+        df["Gene_Count"] = df["Genes"].apply(lambda x: len(str(x).split(';')))
+
+    # To plot with the most significant at the top, reverse the dataframe
+    df = df.iloc[::-1]
+
+    # Set up the plot
+    plt.figure(figsize=(8, 0.4 * len(df) + 2))  # Dynamic height based on terms
+    sns.set_theme(style="whitegrid")
+
+    # Create the scatter plot
+    scatter = sns.scatterplot(
+        data=df,
+        x="Gene_Count",
+        y="Term",
+        hue=p_col,
+        size="Gene_Count",
+        sizes=(50, 400),
+        palette="viridis_r", # Reverse viridis so low p-value is dark/intense
+        edgecolor="black",
+        linewidth=0.5
+    )
+
+    # Aesthetics
+    plt.title(title, fontsize=14, fontweight="bold", pad=15)
+    plt.xlabel("Number of Significant Genes", fontsize=12, fontweight="bold")
+    plt.ylabel("", fontsize=12)
+    
+    # Customize legend
+    handles, labels = scatter.get_legend_handles_labels()
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., title="Legend", frameon=False)
+    
+    # Tweak grid and borders
+    sns.despine(left=True, bottom=True)
+    plt.grid(axis="y", linestyle="--", alpha=0.5)
+    plt.tight_layout()
+
+    # Save or show
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"    ORA Dotplot saved → {save_path}")
+    
+    plt.close()

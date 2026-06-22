@@ -390,7 +390,9 @@ def perform_ora_enrichment(
 
     if not sig_genes:
         print("Error: no genes pass the significance threshold for ORA.")
-        return pd.DataFrame()
+        return pd.DataFrame(
+            columns=["Term", "go_id", "Overlap", "P-value", "Adjusted P-value", "Genes"]
+        )
 
     background = [g.upper() for g in background_genes]
     print(f"  Background gene universe: {len(background)} genes.")
@@ -408,3 +410,101 @@ def perform_ora_enrichment(
 
     sort_col = "Adjusted P-value" if "Adjusted P-value" in results_df.columns else "P-value"
     return results_df.sort_values(by=sort_col, ascending=True)
+
+
+# =============================================================================
+# 6. ORA term lookup — shared primitive for pathway-recovery checks
+# =============================================================================
+
+def get_ora_term_row(
+    ora_results: pd.DataFrame,
+    go_id: str,
+) -> dict | None:
+    """
+    Find one GO term's row in an ORA results DataFrame (from
+    :func:`perform_ora_enrichment`), along with its rank by Adjusted
+    P-value among every term ORA actually tested (rank 1 = most
+    significant).
+
+    This is the single-call primitive behind pathway-recovery checks: do we
+    look for the literal expected term here, by design, rather than falling
+    back to a GO descendant — "recovered the literal expected term" and
+    "recovered a related descendant" are different-strength claims, and
+    conflating them silently would overstate recovery. Callers that want
+    descendant-level fallback (e.g. matching the spider-plot behavior in
+    diff_and_GSEA_pipeline.py's `_get_term_row`) should implement that
+    separately using `obodag[go_id].get_all_children()`, since it needs
+    the GODag object that this function deliberately does not require.
+
+    No assumption is made about a treatment/stress label — this function
+    is treatment-agnostic; callers building treatment-aware tables (e.g.
+    a recovery table across many treatments and normalization methods)
+    should loop over their own treatment -> go_id mapping and call this
+    once per (treatment, normalization method) pair, exactly as
+    perform_gsea_enrichment's callers loop per stress treatment.
+
+    Parameters
+    ----------
+    ora_results : pd.DataFrame
+        Output of :func:`perform_ora_enrichment`. May be empty (no genes
+        passed the significance threshold) — handled gracefully, returns
+        None rather than raising.
+    go_id : str
+        The literal GO ID to look up (e.g. "GO:0009409").
+
+    Returns
+    -------
+    dict or None
+        None if `ora_results` is empty or `go_id` was not among the terms
+        ORA actually tested. Otherwise a dict with keys:
+        go_id, Term, Overlap, P-value, Adjusted P-value, rank,
+        n_terms_tested.
+    """
+    if ora_results is None or ora_results.empty:
+        return None
+
+    sort_col = "Adjusted P-value" if "Adjusted P-value" in ora_results.columns else "P-value"
+    ranked = ora_results.sort_values(sort_col, ascending=True).reset_index(drop=True)
+    match = ranked[ranked["go_id"] == go_id]
+
+    if match.empty:
+        return None
+
+    row = match.iloc[0]
+    rank = int(match.index[0]) + 1
+
+    return {
+        "go_id": go_id,
+        "Term": row["Term"],
+        "Overlap": row["Overlap"],
+        "P-value": row["P-value"],
+        "Adjusted P-value": row.get("Adjusted P-value", float("nan")),
+        "rank": rank,
+        "n_terms_tested": len(ranked),
+    }
+
+
+def count_ora_significant_genes(ora_results: pd.DataFrame) -> int:
+    """
+    Lower-bound count of genes that contributed to at least one ORA hit,
+    by taking the union of every term's "Genes" field (gseapy's
+    semicolon-separated convention).
+
+    This UNDERCOUNTS the true significant-gene-list size whenever a
+    significant gene didn't land in any tested GO term at all (e.g. an
+    unannotated gene, or a gene whose only annotations were filtered out
+    upstream by `stress_root_go_ids` in :func:`get_go_data`) — there is no
+    way to recover the true count from `ora_results` alone, since
+    :func:`perform_ora_enrichment` does not currently return the original
+    `sig_genes` list alongside its results. Treat this as a diagnostic
+    lower bound, useful for distinguishing "ORA found nothing because
+    there's no signal" from "ORA found nothing because almost no genes
+    cleared the hard threshold at this sample size" — not as an exact
+    significant-gene count.
+    """
+    if ora_results is None or ora_results.empty or "Genes" not in ora_results.columns:
+        return 0
+    all_genes: set[str] = set()
+    for genes_str in ora_results["Genes"].dropna():
+        all_genes.update(g.strip() for g in str(genes_str).split(";") if g.strip())
+    return len(all_genes)
