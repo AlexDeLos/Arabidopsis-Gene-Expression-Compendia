@@ -267,7 +267,7 @@ def _pca_distances(
         coords = use_precomputed_pca
     else:
         n_comp = min(n_components, X.shape[0] - 1, X.shape[1])
-        pca = PCA(n_components=n_comp, random_state=42)
+        pca = PCA(n_components=n_comp)
         coords = pca.fit_transform(X)  # (n_samples, n_comp)
 
     dist_matrix = pairwise_distances(coords, metric="euclidean")
@@ -311,7 +311,7 @@ def compute_global_distance_metrics(
     labels_map: Dict[str, Dict[str, str]],
     study_map: pd.DataFrame,
     axis_weights: Optional[Dict[str, float]] = None,
-    n_pca_components: int = 50,
+    n_pca_components: int | None = None,
     precomputed_pca: Optional[np.ndarray] = None,
     verbose: bool = True,
 ) -> Dict[str, object]:
@@ -322,12 +322,15 @@ def compute_global_distance_metrics(
     # --------------------------------------------------
     # PCA distance matrix
     # --------------------------------------------------
-
-    dist_matrix, ordered_samples = _pca_distances(
-        expr_df,
-        n_pca_components,
-        precomputed_pca,
-    )
+    if n_pca_components:
+        dist_matrix, ordered_samples = _pca_distances(
+            expr_df,
+            n_pca_components,
+            precomputed_pca,
+        )
+    else:
+        ordered_samples = list(expr_df.columns)
+        dist_matrix = pairwise_distances(expr_df, metric="euclidean")
 
     label_lookup = _build_label_lookup(
         labels_map,
@@ -749,7 +752,7 @@ def run_distance_evaluation(
     labels_dict: Dict[str, Dict[str, str]],
     sample_study_map: pd.DataFrame,
     experiment_name: str = "",
-    n_pca_components: int = 50,
+    n_pca_components: int | None = None,
     axis_weights: Optional[Dict[str, float]] = None,
     verbose: bool = True,
 ) -> pd.DataFrame:

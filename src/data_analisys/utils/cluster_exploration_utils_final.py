@@ -670,7 +670,7 @@ def run_pca(df: pd.DataFrame, n_components=50):
 def find_n_components_for_variance(
     df: pd.DataFrame,
     variance_threshold: float = 0.90,
-    max_components: int | None = 500,
+    max_components: int | None = 1000,
     random_state: int = 42,
     plot: bool = True,
     save_path: str | None = None,
@@ -711,7 +711,7 @@ def find_n_components_for_variance(
     """
 
     X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
-
+    print(f"df of shape -> {df.shape}, expected to be Samples x Features so Samples x Genes(~34.858 for RNA or 22.600 for MA)")
     n_samples, n_features = X.shape
     upper_bound = min(n_samples, n_features)
     n_fit = upper_bound if max_components is None else min(upper_bound, max_components)

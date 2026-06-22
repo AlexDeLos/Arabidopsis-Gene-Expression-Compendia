@@ -1001,16 +1001,16 @@ if __name__ == "__main__":
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-
+			n_components = None
+			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
+		
+			os.makedirs(output_dir, exist_ok=True)
+			n_components, cumulative_variance, pca = find_n_components_for_variance(
+				df,# Samples x Genes
+				variance_threshold=0.90,
+				save_path = output_dir
+			)
 			if False:
-				output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
-			
-				os.makedirs(output_dir, exist_ok=True)
-				n_components, cumulative_variance, pca = find_n_components_for_variance(
-					df,# Samples x Genes
-					variance_threshold=0.90,
-					save_path = output_dir
-				)
 				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			
 			# if file == "filter_norm":
@@ -1041,6 +1041,7 @@ if __name__ == "__main__":
 				labels_dict=labels_map,
 				sample_study_map=SAMPLE_STUDY_MAP,
 				experiment_name=file,
+				n_pca_components= n_components,
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics
@@ -1062,8 +1063,8 @@ if __name__ == "__main__":
 		geeky_file.write(str(DATA_DRIVEN_WEIGHTS))
 		geeky_file.close()
 
-	except:
-		print("Unable to write to file")
+	except Exception as e:
+		print(f"Unable to write to file because {e}")
 	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
 		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
