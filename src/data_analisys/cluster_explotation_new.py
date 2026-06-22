@@ -993,13 +993,13 @@ if __name__ == "__main__":
 
 			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots_1.2/{file}"
 			os.makedirs(output_dir, exist_ok=True)
-			n_components, cumulative_variance, pca = find_n_components_for_variance(
-				df,           # Samples x Genes
-				variance_threshold=0.90,
-				save_path = output_dir
-			)
-			# continue
-			metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+			if False:
+				n_components, cumulative_variance, pca = find_n_components_for_variance(
+					df,# Samples x Genes
+					variance_threshold=0.90,
+					save_path = output_dir
+				)
+				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			
 			# if file == "filter_norm":
 			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
@@ -1040,13 +1040,13 @@ if __name__ == "__main__":
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics
-			all_metrics[file] = metrics_df
-			if not LIGHT_WEIGHT:
-				all_bulk_metrics[file] = bulk_metrics_df
-				all_umaps[file] = embeddings["UMAP"]
-				all_tsnes[file] = embeddings["TSNE"]
-				all_bulk[file] = embeddings["bulk"]
-			all_metas[file] = meta_df
+			# all_metrics[file] = metrics_df
+			# if not LIGHT_WEIGHT:
+			# 	all_bulk_metrics[file] = bulk_metrics_df
+			# 	all_umaps[file] = embeddings["UMAP"]
+			# 	all_tsnes[file] = embeddings["TSNE"]
+			# 	all_bulk[file] = embeddings["bulk"]
+			# all_metas[file] = meta_df
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
@@ -1062,7 +1062,7 @@ if __name__ == "__main__":
 		experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
 		plot_ratio=True
 	)
-	
+	raise ValueError("done. only wanted plot_distance_metrics")
 	print("\nGenerating Metric Comparisons (gene expression space)...")
 	combined_meta = pd.concat(all_metas.values())
 	# Only deduplicate if all columns are hashable
