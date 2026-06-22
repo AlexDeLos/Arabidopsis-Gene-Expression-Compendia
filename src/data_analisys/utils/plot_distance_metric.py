@@ -50,9 +50,18 @@ def plot_distance_metrics(
     output_folder: str | None = None,
     experiment_name: str = "Distance_Metrics",
     show: bool = False,
-    figsize: tuple[float, float] = (16, 14),
-    plot_ratio: bool = False,
-) -> plt.Figure:
+    figsize: tuple[float, float] = (16, 7),  # Adjusted default to fit individual panels nicely
+    plot_ratio: bool = True,
+) -> dict[str, plt.Figure]:
+    """
+    Fit and plot distance metrics, outputting separate figures for each panel.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the generated figure objects: 'distance', 'correlation', 
+        and optionally 'separation'.
+    """
 
     plt.rcParams.update(
         {
@@ -120,45 +129,18 @@ def plot_distance_metrics(
         for s in sep
     ]
 
-    # --------------------------------------------------
-    # Layout
-    # --------------------------------------------------
+    # Ensure output directory exists upfront if saving
+    if output_folder is not None:
+        os.makedirs(output_folder, exist_ok=True)
 
-    if plot_ratio:
-
-        fig, axes = plt.subplots(
-            3,
-            1,
-            figsize=(figsize[0], figsize[1] * 1.5),
-            gridspec_kw={
-                "height_ratios": [3, 2, 2]
-            },
-        )
-
-        ax_dist = axes[0]
-        ax_sep = axes[1]
-        ax_corr = axes[2]
-
-    else:
-
-        fig, axes = plt.subplots(
-            2,
-            1,
-            figsize=(figsize[0], figsize[1]),
-            gridspec_kw={
-                "height_ratios": [3, 2]
-            },
-        )
-
-        ax_dist = axes[0]
-        ax_corr = axes[1]
-
-    fig.patch.set_facecolor("white")
+    figs = {}
 
     # ==================================================
-    # DISTANCE METRICS
+    # 1. DISTANCE METRICS FIGURE
     # ==================================================
 
+    fig_dist, ax_dist = plt.subplots(figsize=figsize)
+    fig_dist.patch.set_facecolor("white")
     ax_dist.set_facecolor("#fafafa")
 
     bars_inter = ax_dist.bar(
@@ -184,18 +166,12 @@ def plot_distance_metrics(
         hatch="//",
     )
 
-    ymax = np.nanmax(
-        np.concatenate([inter, intra])
-    )
+    ymax = np.nanmax(np.concatenate([inter, intra]))
 
     for bars in (bars_inter, bars_intra):
-
         for bar in bars:
-
             h = bar.get_height()
-
             if np.isfinite(h):
-
                 ax_dist.text(
                     bar.get_x() + bar.get_width() / 2,
                     h + ymax * 0.02,
@@ -206,43 +182,28 @@ def plot_distance_metrics(
                 )
 
     ax_dist.set_xticks(x)
+    ax_dist.set_xticklabels(stages, rotation=15, ha="right")
+    ax_dist.set_ylabel("Normalized weighted distance")
+    ax_dist.set_title("Inter-study and intra-study biological distances", pad=20)
+    ax_dist.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
+    ax_dist.spines[["top", "right"]].set_visible(False)
+    ax_dist.legend(framealpha=0.8)
+    
+    fig_dist.tight_layout()
+    figs["distance"] = fig_dist
 
-    ax_dist.set_xticklabels(
-        stages,
-        rotation=15,
-        ha="right",
-    )
-
-    ax_dist.set_ylabel(
-        "Normalized weighted distance"
-    )
-
-    ax_dist.set_title(
-        "Inter-study and intra-study biological distances",
-        pad=20,
-    )
-
-    ax_dist.grid(
-        axis="y",
-        linestyle=":",
-        linewidth=1,
-        color="#cccccc",
-    )
-
-    ax_dist.spines[
-        ["top", "right"]
-    ].set_visible(False)
-
-    ax_dist.legend(
-        framealpha=0.8,
-    )
+    if output_folder is not None:
+        out_path_dist = os.path.join(output_folder, f"{experiment_name}_distance.pdf")
+        fig_dist.savefig(out_path_dist, dpi=300, bbox_inches="tight")
+        print(f"[DistMetrics] Distance figure saved → {out_path_dist}")
 
     # ==================================================
-    # SEPARATION SCORE
+    # 2. SEPARATION SCORE FIGURE (Optional)
     # ==================================================
 
     if plot_ratio:
-
+        fig_sep, ax_sep = plt.subplots(figsize=figsize)
+        fig_sep.patch.set_facecolor("white")
         ax_sep.set_facecolor("#fafafa")
 
         bars_sep = ax_sep.bar(
@@ -254,70 +215,44 @@ def plot_distance_metrics(
             linewidth=1.5,
         )
 
-        ax_sep.axhline(
-            0,
-            color=_COL_REF,
-            linestyle="--",
-            linewidth=2,
-        )
+        ax_sep.axhline(0, color=_COL_REF, linestyle="--", linewidth=2)
 
-        for bar, value in zip(
-            bars_sep,
-            sep,
-        ):
-
+        for bar, value in zip(bars_sep, sep):
             if np.isfinite(value):
-
                 ax_sep.text(
-                    bar.get_x()
-                    + bar.get_width() / 2,
+                    bar.get_x() + bar.get_width() / 2,
                     value,
                     f"{value:.3f}",
                     ha="center",
-                    va="bottom"
-                    if value >= 0
-                    else "top",
+                    va="bottom" if value >= 0 else "top",
                     fontsize=20,
                     fontweight="bold",
                 )
 
         ax_sep.set_xticks(x)
+        ax_sep.set_xticklabels(stages, rotation=15, ha="right")
+        ax_sep.set_ylabel("Separation score")
+        ax_sep.set_title("Biological separation metric")
+        ax_sep.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
+        ax_sep.spines[["top", "right"]].set_visible(False)
+        
+        fig_sep.tight_layout()
+        figs["separation"] = fig_sep
 
-        ax_sep.set_xticklabels(
-            stages,
-            rotation=15,
-            ha="right",
-        )
-
-        ax_sep.set_ylabel(
-            "Separation score"
-        )
-
-        ax_sep.set_title(
-            "Biological separation metric"
-        )
-
-        ax_sep.grid(
-            axis="y",
-            linestyle=":",
-            linewidth=1,
-            color="#cccccc",
-        )
-
-        ax_sep.spines[
-            ["top", "right"]
-        ].set_visible(False)
+        if output_folder is not None:
+            out_path_sep = os.path.join(output_folder, f"{experiment_name}_separation.pdf")
+            fig_sep.savefig(out_path_sep, dpi=300, bbox_inches="tight")
+            print(f"[DistMetrics] Separation figure saved → {out_path_sep}")
 
     # ==================================================
-    # SIMILARITY-DISTANCE CORRELATION
+    # 3. SIMILARITY-DISTANCE CORRELATION FIGURE
     # ==================================================
 
+    fig_corr, ax_corr = plt.subplots(figsize=figsize)
+    fig_corr.patch.set_facecolor("white")
     ax_corr.set_facecolor("#fafafa")
 
-    corr_colors = [
-        _COL_GOOD if c < 0 else _COL_BAD
-        for c in spearman
-    ]
+    corr_colors = [_COL_GOOD if c < 0 else _COL_BAD for c in spearman]
 
     bars_corr = ax_corr.bar(
         x,
@@ -328,99 +263,42 @@ def plot_distance_metrics(
         linewidth=1.5,
     )
 
-    ax_corr.axhline(
-        0,
-        color=_COL_REF,
-        linestyle="--",
-        linewidth=2,
-    )
+    ax_corr.axhline(0, color=_COL_REF, linestyle="--", linewidth=2)
 
-    for bar, corr, pval in zip(
-        bars_corr,
-        spearman,
-        spearman_p,
-    ):
-
+    for bar, corr, pval in zip(bars_corr, spearman, spearman_p):
         if np.isfinite(corr):
-
-            label = (
-                f"ρ={corr:.3f}\n"
-                f"p={pval:.1e}"
-            )
-
+            label = f"ρ={corr:.3f}\n" f"p={pval:.1e}"
             ax_corr.text(
-                bar.get_x()
-                + bar.get_width() / 2,
+                bar.get_x() + bar.get_width() / 2,
                 corr,
                 label,
                 ha="center",
-                va="bottom"
-                if corr >= 0
-                else "top",
+                va="bottom" if corr >= 0 else "top",
                 fontsize=18,
             )
 
     ax_corr.set_xticks(x)
-
-    ax_corr.set_xticklabels(
-        stages,
-        rotation=15,
-        ha="right",
-    )
-
-    ax_corr.set_ylabel(
-        "Spearman correlation"
-    )
-
-    ax_corr.set_title(
-        "Similarity vs distance relationship"
-    )
-
-    ax_corr.grid(
-        axis="y",
-        linestyle=":",
-        linewidth=1,
-        color="#cccccc",
-    )
-
-    ax_corr.spines[
-        ["top", "right"]
-    ].set_visible(False)
-
-    # ==================================================
-    # FINALIZE
-    # ==================================================
-
-    plt.tight_layout(
-        h_pad=3.0
-    )
+    ax_corr.set_xticklabels(stages, rotation=15, ha="right")
+    ax_corr.set_ylabel("Spearman correlation")
+    ax_corr.set_title("Similarity vs distance relationship")
+    ax_corr.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
+    ax_corr.spines[["top", "right"]].set_visible(False)
+    
+    fig_corr.tight_layout()
+    figs["correlation"] = fig_corr
 
     if output_folder is not None:
+        out_path_corr = os.path.join(output_folder, f"{experiment_name}_correlation.pdf")
+        fig_corr.savefig(out_path_corr, dpi=300, bbox_inches="tight")
+        print(f"[DistMetrics] Correlation figure saved → {out_path_corr}")
 
-        os.makedirs(
-            output_folder,
-            exist_ok=True,
-        )
-
-        out_path = os.path.join(
-            output_folder,
-            f"{experiment_name}.pdf",
-        )
-
-        fig.savefig(
-            out_path,
-            dpi=300,
-            bbox_inches="tight",
-        )
-
-        print(
-            f"[DistMetrics] Figure saved → {out_path}"
-        )
-
+    # --------------------------------------------------
+    # Global finalization commands
+    # --------------------------------------------------
     if show:
         plt.show()
 
-    return fig
+    return figs
 
 def plot_similarity_distance_scatter(
     pairwise_df: pd.DataFrame,
