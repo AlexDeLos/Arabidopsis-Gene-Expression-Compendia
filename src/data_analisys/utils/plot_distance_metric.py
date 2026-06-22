@@ -51,7 +51,7 @@ def plot_distance_metrics(
     experiment_name: str = "Distance_Metrics",
     show: bool = False,
     figsize: tuple[float, float] = (16, 14),
-    plot_ratio: bool = True,
+    plot_ratio: bool = False,
 ) -> plt.Figure:
 
     plt.rcParams.update(
