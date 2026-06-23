@@ -712,6 +712,7 @@ def run_diff_exp_and_enrichment(
 				pure_val=pure,
 				filter_val=fil
 			)
+			print("[INFO] PLotting general plots")
 			# ------------------------------------------------------------------
 			# Pathway recovery overview plots — one pair per (tissue × Full)
 			# combination, each covering ALL treatments × ALL normalization

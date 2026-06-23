@@ -69,7 +69,9 @@ import pandas as pd
 
 module_dir = "./"
 sys.path.append(module_dir)
-from src.constants_labeling import TreatmentEnum, STRESS_GO_ROOTS  # noqa: E402
+from diff_and_GSEA_pipeline import build_exp_name, build_gsea_outdir  # noqa: E402
+from src.constants import EXPERIMENT_NAME  # noqa: E402
+from src.constants_labeling import STRESS_GO_ROOTS as STRESS_GO_ROOTS_RAW  # noqa: E402
 
 matplotlib.rc("font", **{"size": 12})
 
@@ -79,77 +81,54 @@ matplotlib.rc("font", **{"size": 12})
 #    expected GO term, records its rank/percentile/FDR q-val/NES.
 # =============================================================================
 
+
+
 def collect_pathway_recovery_table(
     base_dir: str,
     config: str,
     normalizations: list[str],
     experiment_version: str = "default",
     permutations: int = 1000,
-    experiment_name: str = "5.0",
+    exp_name: str | None = None
 ) -> pd.DataFrame:
     """
     Build the long-format recovery table consumed by both plotting
     functions in this module: one row per (treatment, normalization
     method), with the expected GO term's rank, percentile, FDR q-val,
     and NES.
-
-    Percentile is computed as ``(rank - 1) / (n_terms_tested - 1) * 100``
-    when more than one term was tested (0% = top hit, 100% = last place),
-    or 0% if only one term was tested. This is what makes the resulting
-    plots comparable across treatments/matrices regardless of how many
-    GO terms or how large each gene set happened to be for a given run -
-    percentile is a relative position, not a magnitude, so a treatment
-    tested against 50 terms and one tested against 200 terms are still on
-    the same 0-100% scale.
-
-    Mirrors pathway_recovery_analysis.py's collect_recovery_table, but
-    factored out here as the data-loading half of these two plots rather
-    than living only in the standalone analysis script - so this module is
-    callable on its own, the same way plot_enrichment_scatter_interactive
-    is callable on its own given just a GSEA results DataFrame.
-
-    Parameters
-    ----------
-    base_dir : str
-        Directory containing the per-experiment GSEA_enrichment_{...}
-        folders (i.e. FIGURES_DIR + "GSEA_enrichment_results/").
-    config : str
-        Folder suffix for the run config to evaluate, e.g.
-        "All_tissues_full_mixed_min_group_0".
-    normalizations : list of str
-        Normalization method names to compare, e.g. ["filter_norm",
-        "combat_norm", "rankin"].
-    experiment_version : str
-        Folder name under base_dir isolating this experiment's outputs
-        (see EXPERIMENT_VERSION in diff_and_GSEA_pipeline.py).
-    permutations : int
-        Must match the `permutations` value used when GSEA was run, since
-        it's baked into the result CSV filename.
-    experiment_name : str
-        Must match EXPERIMENT_NAME in src/constants.py.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: treatment, norm_method, go_id, go_name, NES, FDR q-val,
-        rank, n_terms_tested, percentile.
     """
-    base = Path(base_dir)
-    non_stress = {TreatmentEnum.OTHER, TreatmentEnum.CONTROL, TreatmentEnum.UNKNOWN, TreatmentEnum.UNSPECIFIED}
-    stress_treatments = [t for t in TreatmentEnum if t not in non_stress]
+    # Extract treatments that are configured in our target stress dictionaries
+    stress_treatments = list(STRESS_GO_ROOTS_RAW.keys())
 
     rows = []
 
-    for treatment in stress_treatments:
-        t = treatment.value
-        if t not in STRESS_GO_ROOTS:
+    for t in stress_treatments:
+        if t not in STRESS_GO_ROOTS_RAW:
             print(f"  [recovery_table] no GO root mapping for '{t}' - skipping")
             continue
-        go_id, go_name = STRESS_GO_ROOTS[t]
+        
+        # Unpack the proper GO identity from the raw configuration mapping
+        go_id, go_name = STRESS_GO_ROOTS_RAW[t]
 
         for norm in normalizations:
-            folder = f"{experiment_version}/GSEA_enrichment_{experiment_name}_{norm}_{config}"
-            path = base / folder / f"{t}_gsea_go_enrichment_results_{permutations}.csv"
+            # 1. Break down the config string back into its canonical pieces
+            # config is typically: f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
+            parts = config.split("_")
+            
+            # Reconstruct variables to use canonical build_exp_name helper
+            tissue_str = parts[0] + "_" + parts[1] if parts[0] == "All" else parts[0]
+            
+            # Locate full_str, pure_str and the filter group from the tail of the layout
+            full_str = "full" if "full" in parts else "sanity"
+            pure_str = "pure" if "pure" in parts else "mixed"
+            fil = int(parts[-1])
+
+            # 2. Derive the unified layout naming structures
+            canonical_exp_name = build_exp_name(norm, tissue_str, full_str, pure_str, fil)
+            gsea_out_dir = build_gsea_outdir(canonical_exp_name)
+            
+            # 3. Create the direct absolute target filepath
+            path = Path(gsea_out_dir) / f"{t}_gsea_go_enrichment_results_{permutations}.csv"
 
             if not path.exists():
                 print(f"  [recovery_table] {t} / {norm}: file not found at {path}")
@@ -188,7 +167,6 @@ def collect_pathway_recovery_table(
             })
 
     return pd.DataFrame(rows)
-
 
 # =============================================================================
 # 2. Plot: percentile-rank heatmap
