@@ -3,7 +3,7 @@
 #SBATCH --partition=general
 #SBATCH --time=10:00:00
 #SBATCH --qos=medium
-#SBATCH --mem=4G
+#SBATCH --mem=40G
 #SBATCH --tmp=800000M
 #SBATCH --cpus-per-task=1
 #SBATCH --array=2%1
@@ -14,7 +14,7 @@
 # ══════════════════════════════════════════════════
 BIG_STORAGE="/tudelft.net/staff-umbrella/GeneExpressionStorage"
 HOME="/home/nfs/alexdelossanto/"
-TMP="/tmp/${USER}/${SLURM_JOBID}"
+TMP="/tmp/${USER}/${SLURM_JOB_ID}"
 export TMP
 mkdir -p "$TMP"
 SIF="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/dataset_fusion.sif"
@@ -60,7 +60,7 @@ MY_PASSWD="$TMP/tmp_passwd_$SLURM_JOB_ID"
 MY_GROUP="$TMP/tmp_group_$SLURM_JOB_ID"
 
 cat /etc/passwd > "$MY_PASSWD"
-getent passwd $(whoami) >> "$MY_PASSWD"
+getent passwd $USER >> "$MY_PASSWD"
 
 cat /etc/group > "$MY_GROUP"
 for g in $(id -G -n); do

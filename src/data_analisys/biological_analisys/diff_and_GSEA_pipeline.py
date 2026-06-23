@@ -9,6 +9,7 @@ Spider plots:  get_spider_plots(...)
 
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ module_dir = "./"
 sys.path.append(module_dir)
 
 from src.data_analisys.biological_analisys.plot_pathway_recovery_overview import (  # noqa: E402
-	collect_pathway_recovery_table,
+	# collect_pathway_recovery_table,
 	plot_pathway_recovery_percentile,
 	plot_pathway_recovery_binary,
 )
@@ -50,94 +51,6 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (  # noqa: E
 	load_labels_study,
 	make_df_from_labels,
 )
-
-# # =============================================================================
-# # Constants
-# # =============================================================================
-# ITERATIONS = 1000
-
-# GO_OBO_FILE	 = f"{CORE_DATA_DIR}go-basic.obo"
-# ANNOTATION_FILE = f"{CORE_DATA_DIR}tair.gaf.gz"
-
-# # ------------------------------------------------------------------
-# # Pass 1: load obodag unfiltered, just to discover GO root IDs
-# # ------------------------------------------------------------------
-# GO_NAME_OVERRIDES: dict[TreatmentEnum, str | None] = {
-# 	TreatmentEnum.DEHYDRATION:		 "response to water deprivation",
-# 	TreatmentEnum.DROUGHT:			 "response to water deprivation",
-# 	TreatmentEnum.FLOOD:			   "response to decreased oxygen levels",
-# 	TreatmentEnum.BIOTIC:			  "response to biotic stimulus",
-# 	TreatmentEnum.ABIOTIC:			 "response to abiotic stimulus",
-# 	TreatmentEnum.LOW_LIGHT:		   "response to light intensity",
-# 	TreatmentEnum.OTHER_LIGHT:		 "response to light stimulus",
-# 	TreatmentEnum.CUT:				 "response to wounding",
-# 	TreatmentEnum.NUTRIENT_DEFICIENCY: "response to nutrient levels",
-# 	TreatmentEnum.OTHER:			   None,
-# 	TreatmentEnum.CONTROL:			 None,
-# 	TreatmentEnum.UNKNOWN:			 None,
-# 	TreatmentEnum.UNSPECIFIED:		 None,
-# }
-
-# _stemmer = PorterStemmer()
-
-# def _stem_phrase(phrase: str) -> str:
-# 	"""Stem every word in a phrase and rejoin."""
-# 	return " ".join(_stemmer.stem(w) for w in phrase.lower().split())
-
-# def find_go_root_for_treatment(treatment: TreatmentEnum, obodag) -> str | None:
-# 	# Check for explicit override first
-# 	if treatment in GO_NAME_OVERRIDES:
-# 		override = GO_NAME_OVERRIDES[treatment]
-# 		if override is None:
-# 			return None  # explicitly excluded
-# 		query = override
-# 	else:
-# 		query = f"response to {treatment.value.lower()}"
-
-# 	stemmed_query = _stem_phrase(query)
-# 	candidates = [
-# 		(go_id, term) for go_id, term in obodag.items()
-# 		if term.name.lower().startswith("response to")
-# 		and term.namespace == "biological_process"
-# 	]
-
-# 	if not candidates:
-# 		return None
-
-# 	def score(item):
-# 		go_id, term = item
-# 		stemmed_name = _stem_phrase(term.name)
-# 		name_similarity = SequenceMatcher(
-# 			None, stemmed_query, stemmed_name
-# 		).ratio()
-# 		depth_penalty = len(term.parents) * 0.01
-# 		return name_similarity - depth_penalty
-
-# 	best_go_id, best_term = max(candidates, key=score)
-# 	best_score = score((best_go_id, best_term))
-
-# 	print(f"  {treatment.value!r} → '{best_term.name}' ({best_go_id}, score={best_score:.3f})")
-
-# 	if best_score < 0.6:
-# 		print(f"  Warning: low confidence match for '{treatment.value}', consider adding an override.")
-# 		return None
-
-# 	return best_go_id
-
-
-# unfiltered_obodag, _ = get_go_data(GO_OBO_FILE, ANNOTATION_FILE)
-
-# TREATMENT_GO_MAP: dict[TreatmentEnum, str] = {}
-# for treatment in TreatmentEnum:
-# 	go_id = find_go_root_for_treatment(treatment, unfiltered_obodag)
-# 	if go_id:
-# 		TREATMENT_GO_MAP[treatment] = go_id
-
-# # Derived automatically
-# TREATMENTS:	  list[str]	  = [t.value for t in TREATMENT_GO_MAP]
-# print(TREATMENTS)
-# STRESS_GO_ROOTS: dict[str, str] = {go: t.value for t, go in TREATMENT_GO_MAP.items()}
-# STRESS_IDS:	  set[str]	   = set(STRESS_GO_ROOTS.keys())
 # =============================================================================
 # Constants
 # =============================================================================
@@ -313,6 +226,95 @@ def write_run_metadata(exp_name: str, run_notes: str, **hyperparams) -> None:
 		fh.write("\n".join(lines) + "\n")
 
 	print(f"  [metadata] Logged run to {meta_path}")
+
+
+## HELPERS
+# =============================================================================
+# 1. Data collection - reads GSEA result CSVs, locates each treatment's
+#    expected GO term, records its rank/percentile/FDR q-val/NES.
+# =============================================================================
+
+def collect_pathway_recovery_table(
+    config: str,
+    normalizations: list[str],
+    permutations: int = 1000,
+) -> pd.DataFrame:
+    """
+    Build the long-format recovery table consumed by both plotting
+    functions in this module: one row per (treatment, normalization
+    method), with the expected GO term's rank, percentile, FDR q-val,
+    and NES.
+    """
+    # Extract treatments that are configured in our target stress dictionaries
+    stress_treatments = list(STRESS_GO_ROOTS_RAW.keys())
+
+    rows = []
+
+    for t in stress_treatments:
+        if t not in STRESS_GO_ROOTS_RAW:
+            print(f"  [recovery_table] no GO root mapping for '{t}' - skipping")
+            continue
+        
+        # Unpack the proper GO identity from the raw configuration mapping
+        go_id, go_name = STRESS_GO_ROOTS_RAW[t]
+
+        for norm in normalizations:
+            # 1. Break down the config string back into its canonical pieces
+            # config is typically: f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
+            parts = config.split("_")
+            
+            # Reconstruct variables to use canonical build_exp_name helper
+            tissue_str = parts[0] + "_" + parts[1] if parts[0] == "All" else parts[0]
+            
+            # Locate full_str, pure_str and the filter group from the tail of the layout
+            full_str = "full" if "full" in parts else "sanity"
+            pure_str = "pure" if "pure" in parts else "mixed"
+            fil = int(parts[-1])
+
+            # 2. Derive the unified layout naming structures
+            canonical_exp_name = build_exp_name(norm, tissue_str, full_str, pure_str, fil)
+            gsea_out_dir = build_gsea_outdir(canonical_exp_name)
+            
+            # 3. Create the direct absolute target filepath
+            path = Path(gsea_out_dir) / f"{t}_gsea_go_enrichment_results_{permutations}.csv"
+
+            if not path.exists():
+                print(f"  [recovery_table] {t} / {norm}: file not found at {path}")
+                continue
+
+            df = pd.read_csv(path)
+            if df.empty or "go_id" not in df.columns or "FDR q-val" not in df.columns:
+                print(f"  [recovery_table] {t} / {norm}: empty or missing expected columns")
+                continue
+
+            ranked = df.sort_values("FDR q-val", ascending=True).reset_index(drop=True)
+            match = ranked[ranked["go_id"] == go_id]
+
+            if match.empty:
+                print(f"  [recovery_table] {t} / {norm}: go_id {go_id} not found among "
+                      f"{len(ranked)} tested terms")
+                rows.append({
+                    "treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
+                    "NES": np.nan, "FDR q-val": np.nan, "rank": np.nan,
+                    "n_terms_tested": len(ranked), "percentile": np.nan,
+                })
+                continue
+
+            row = match.iloc[0]
+            rank = int(match.index[0]) + 1
+            n_terms = len(ranked)
+            percentile = 0.0 if n_terms <= 1 else (rank - 1) / (n_terms - 1) * 100.0
+
+            print(f"  [recovery_table] {t} / {norm}: rank {rank}/{n_terms} "
+                  f"(percentile={percentile:.1f}%, FDR={row['FDR q-val']:.4g}, NES={row['NES']:.3g})")
+
+            rows.append({
+                "treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
+                "NES": row["NES"], "FDR q-val": row["FDR q-val"],
+                "rank": rank, "n_terms_tested": n_terms, "percentile": percentile,
+            })
+
+    return pd.DataFrame(rows)
 
 
 # =============================================================================
@@ -728,10 +730,8 @@ def run_diff_exp_and_enrichment(
 					config	   = f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
 
 					recovery_df = collect_pathway_recovery_table(
-						base_dir=f"{FIGURES_DIR}GSEA_enrichment_results/",
 						config=config,
 						normalizations=data_types,
-						experiment_version=EXPERIMENT_VERSION,
 						permutations=ITERATIONS,
 					)
 
