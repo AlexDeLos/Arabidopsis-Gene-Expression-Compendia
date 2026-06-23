@@ -38,7 +38,7 @@ apptainer exec --nv \
     --bind "$REPO_DIR":/repo \
     --pwd /repo \
     "$SIF" \
-    python src/scripts/temp.py
+    python src/scripts/plot_distribution_summaries.py
 
 EXIT_CODE=$?
 echo "========================================"

@@ -1,0 +1,127 @@
+import time
+import pandas as pd
+import requests
+
+# ---------------------------------------------------------------------------
+# Configuration & Keywords
+# ---------------------------------------------------------------------------
+# Keywords that indicate the study isolates non-coding/small RNA fractions 
+# instead of standard full-length protein-coding mRNAs.
+RED_FLAG_KEYWORDS = [
+    "small rna", "srna", "mirna", "microrna", "trf", "trna-derived", 
+    "pirna", "snrna", "scrna", "ncrna", "non-coding rna",
+    "ribo-seq", "ribosome profiling"
+]
+
+def check_study_for_outliers(gse_id: str) -> dict:
+    """
+    Queries NCBI E-utilities for a single GSE ID and screens its 
+    metadata fields for potential compendium mismatch risks.
+    """
+    clean_id = gse_id.strip().upper()
+    result = {
+        "GSE_ID": clean_id,
+        "Status": "Passed",
+        "Type": "Unknown",
+        "Title": "",
+        "Matched_Keywords": [],
+        "Reason": ""
+    }
+    
+    try:
+        # Step 1: Resolve GSE String to NCBI inner Unique Identifier (UID)
+        search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+        search_params = {
+            "db": "gds",
+            "term": f"{clean_id}[Accession]",
+            "retmode": "json"
+        }
+        r_search = requests.get(search_url, params=search_params, timeout=15)
+        r_search.raise_for_status()
+        search_data = r_search.json()
+        
+        id_list = search_data.get("esearchresult", {}).get("idlist", [])
+        if not id_list:
+            result["Status"] = "Error"
+            result["Reason"] = "Accession ID not found on GEO."
+            return result
+        
+        uid = id_list[0]
+        
+        # Step 2: Fetch the full document summary using the UID
+        summary_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+        summary_params = {
+            "db": "gds",
+            "id": uid,
+            "retmode": "json"
+        }
+        r_summary = requests.get(summary_url, params=summary_params, timeout=15)
+        r_summary.raise_for_status()
+        summary_data = r_summary.json()
+        
+        doc_summary = summary_data.get("result", {}).get(uid, {})
+        
+        # Extract core fields
+        title = doc_summary.get("title", "")
+        summary_text = doc_summary.get("summary", "")
+        gds_type = doc_summary.get("gdstype", "")
+        
+        result["Title"] = title
+        result["Type"] = gds_type
+        
+        # Combine texts for unified string screening
+        full_text_lower = f"{title} {summary_text} {gds_type}".lower()
+        
+        # Step 3: Screen texts for red flags
+        matched = [kw for kw in RED_FLAG_KEYWORDS if kw in full_text_lower]
+        
+        if matched:
+            result["Status"] = "FLAGGED (HIGH RISK)"
+            result["Matched_Keywords"] = matched
+            result["Reason"] = f"Contains sequencing/biological target keywords: {', '.join(matched)}"
+            
+        # Specific check for non-coding classifications in the GDS metadata types
+        elif "non-coding rna" in gds_type.lower():
+            result["Status"] = "FLAGGED (HIGH RISK)"
+            result["Matched_Keywords"] = ["gdstype: non-coding"]
+            result["Reason"] = "GEO explicitly classifies this dataset layout as Non-coding RNA profiling."
+
+    except Exception as e:
+        result["Status"] = "Error"
+        result["Reason"] = f"API connection failed: {str(e)}"
+        
+    return result
+
+# ---------------------------------------------------------------------------
+# Main Execution Entry Point
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    # Add your list of target dataset IDs here to evaluate them automatically
+    studies_to_check = ['GSE189933', 'GSE123984', 'GSE90061', 'GSE150605', 'GSE123258', 'GSE116582', 'GSE297308', 'GSE131227', 'GSE206966', 'GSE65740', 'GSE121674', 'GSE123656', 'GSE192610', 'GSE30814', 'GSE189177', 'GSE237670', 'GSE107820', 'GSE123561', 'GSE82086', 'GSE128778', 'GSE189513', 'GSE94786', 'GSE218944', 'GSE117416', 'GSE283555', 'GSE115428', 'GSE53198', 'GSE152455', 'GSE286145', 'GSE193146', 'GSE163007', 'GSE236872', 'GSE232251', 'GSE256166', 'GSE201648', 'GSE221661', 'GSE146914', 'GSE209644', 'GSE277725', 'GSE50956', 'GSE173899', 'GSE186842', 'GSE147968', 'GSE118338', 'GSE252395', 'GSE79885', 'GSE188596', 'GSE107778', 'GSE42899', 'GSE296827', 'GSE30720', 'GSE289942', 'GSE198206', 'GSE112442', 'GSE232026', 'GSE129395', 'GSE242125', 'GSE111238', 'GSE59677', 'GSE234285', 'GSE117857', 'GSE293768', 'GSE142628', 'GSE130962', 'GSE115583', 'GSE110923', 'GSE267571', 'GSE74386', 'GSE307237', 'GSE107700', 'GSE154601', 'GSE104083', 'GSE132841', 'GSE137753', 'GSE193252', 'GSE224451', 'GSE293950', 'GSE253109', 'GSE90004', 'GSE243494', 'GSE205298', 'GSE75288', 'GSE152454', 'GSE121450', 'GSE136944', 'GSE198853', 'GSE112563', 'GSE234377', 'GSE290158', 'GSE278345', 'GSE234036', 'GSE75640', 'GSE108162', 'GSE163057', 'GSE295496', 'GSE74587', 'GSE266158', 'GSE42968', 'GSE205861', 'GSE81166', 'GSE232671', 'GSE213185', 'GSE152456', 'GSE94309', 'GSE75933', 'GSE193111', 'GSE113515', 'GSE149429', 'GSE221138', 'GSE155980', 'GSE214887', 'GSE233415', 'GSE56675', 'GSE198092', 'GSE112748', 'GSE282297', 'GSE112950', 'GSE178241', 'GSE253674', 'GSE284704', 'GSE229217', 'GSE99805', 'GSE192608', 'GSE64870', 'GSE166755', 'GSE311031', 'GSE158898', 'GSE290176', 'GSE276461', 'GSE151082', 'GSE230392', 'GSE124235', 'GSE205893', 'GSE145514', 'GSE72806', 'GSE209643', 'GSE138196', 'GSE199501', 'GSE95669', 'GSE192469', 'GSE171926', 'GSE270862', 'GSE237118', 'GSE150454', 'GSE285082', 'GSE119382', 'GSE243846', 'GSE156677', 'GSE111288', 'GSE270950', 'GSE201607', 'GSE99405', 'GSE87916', 'GSE200271', 'GSE83573', 'GSE89291', 'GSE226731', 'GSE324480', 'GSE36469', 'GSE301807', 'GSE286232', 'GSE282564', 'GSE127819', 'GSE95373', 'GSE152462', 'GSE141547', 'GSE190107', 'GSE166896', 'GSE172298', 'GSE127300', 'GSE230218', 'GSE133182', 'GSE181484', 'GSE107260', 'GSE316512', 'GSE225407', 'GSE207509', 'GSE186546', 'GSE152279', 'GSE213025', 'GSE156016', 'GSE284455', 'GSE199667', 'GSE156491', 'GSE107786', 'GSE152813', 'GSE193570', 'GSE221658', 'GSE156268', 'GSE46226', 'GSE288493', 'GSE98389', 'GSE42665', 'GSE128877', 'GSE188606', 'GSE237550', 'GSE158238', 'GSE128655', 'GSE281398', 'GSE171778', 'GSE271344', 'GSE315134', 'GSE168385', 'GSE262902', 'GSE138478', 'GSE218962', 'GSE301312', 'GSE138706', 'GSE158907', 'GSE275988', 'GSE210631', 'GSE259415', 'GSE90169', 'GSE142747', 'GSE143762', 'GSE289413', 'GSE233480', 'GSE196111', 'GSE206841', 'GSE195912', 'GSE269609', 'GSE227950', 'GSE292373', 'GSE147350', 'GSE145884', 'GSE152030', 'GSE112051', 'GSE210614', 'GSE208657', 'GSE131808', 'GSE136367', 'GSE120672', 'GSE134019', 'GSE62256', 'GSE262997', 'GSE114214', 'GSE179628', 'GSE155464', 'GSE222562', 'GSE196925', 'GSE121383', 'GSE208176', 'GSE260960', 'GSE122436', 'GSE199142', 'GSE212401', 'GSE94107', 'GSE166887', 'GSE63462', 'GSE59699', 'GSE129938', 'GSE155365', 'GSE93420', 'GSE271462', 'GSE243205', 'GSE144091', 'GSE123010', 'GSE43983', 'GSE210742', 'GSE124747', 'GSE283047', 'GSE157443', 'GSE139595', 'GSE166886', 'GSE227500', 'GSE119872', 'GSE74972', 'GSE268032', 'GSE222967', 'GSE95198', 'GSE106943', 'GSE279431', 'GSE256274', 'GSE123621', 'GSE186586', 'GSE97446', 'GSE324478', 'GSE141135', 'GSE129190', 'GSE232803', 'GSE144674', 'GSE96041', 'GSE109150', 'GSE246848', 'GSE37206', 'GSE141188', 'GSE212855', 'GSE241974', 'GSE123818', 'GSE152458', 'GSE90078', 'GSE155710', 'GSE245958', 'GSE77170', 'GSE280342', 'GSE80585', 'GSE222132', 'GSE145580', 'GSE90925', 'GSE208376', 'GSE180819', 'GSE230280', 'GSE175963', 'GSE137713', 'GSE104590', 'GSE226105', 'GSE175392', 'GSE252415', 'GSE189264', 'GSE24696', 'GSE98193', 'GSE306047', 'GSE273725', 'GSE114646', 'GSE160106', 'GSE72134', 'GSE131156', 'GSE77017', 'GSE158992', 'GSE191042', 'GSE292401', 'GSE233248', 'GSE137732', 'GSE34476', 'GSE158410', 'GSE158761', 'GSE112662', 'GSE166885', 'GSE94995', 'GSE69222', 'GSE166888', 'GSE178268', 'GSE192429', 'GSE86206', 'GSE222356', 'GSE297582', 'GSE242964', 'GSE108764', 'GSE181083', 'GSE259310', 'GSE224926', 'GSE288426', 'GSE299054', 'GSE118298', 'GSE278842', 'GSE114641', 'GSE118102', 'GSE235141', 'GSE151005', 'GSE182672', 'GSE80422', 'GSE251921', 'GSE141916', 'GSE152457', 'GSE80350', 'GSE158567', 'GSE210893', 'GSE122454', 'GSE288352', 'GSE58082', 'GSE127991', 'GSE111062', 'GSE275006', 'GSE130611', 'GSE103762', 'GSE100966', 'GSE109388', 'GSE137623', 'GSE128209', 'GSE218342', 'GSE109613', 'GSE129589', 'GSE81496', 'GSE111286', 'GSE261437', 'GSE156883', 'GSE164424', 'GSE287464', 'GSE133564', 'GSE104370', 'GSE69510', 'GSE197718', 'GSE249447', 'GSE151462', 'GSE124290', 'GSE166883', 'GSE77486', 'GSE137625', 'GSE181536', 'GSE183118', 'GSE128156', 'GSE132249', 'GSE115951', 'GSE242932', 'GSE41766', 'GSE248400', 'GSE142259', 'GSE139917', 'GSE166857', 'GSE168118', 'GSE81668', 'GSE77171', 'GSE225213', 'GSE113557', 'GSE74692', 'GSE147589', 'GSE74955', 'GSE161516', 'GSE161704', 'GSE199834', 'GSE133324', 'GSE120840', 'GSE201389', 'GSE248561', 'GSE118143', 'GSE52407', 'GSE239834', 'GSE114250', 'GSE157957', 'GSE212019', 'GSE218029', 'GSE150116', 'GSE148457', 'GSE215151', 'GSE104518', 'GSE253005', 'GSE232781', 'GSE225072', 'GSE214800', 'GSE145795', 'GSE85847', 'GSE150362', 'GSE53952', 'GSE127759', 'GSE155462', 'GSE154697', 'GSE199212', 'GSE226745', 'GSE59722', 'GSE99576', 'GSE311032', 'GSE120791', 'GSE79012', 'GSE193833', 'GSE114363', 'GSE97662', 'GSE202679', 'GSE64501', 'GSE249737', 'GSE75507', 'GSE210807', 'GSE242292', 'GSE196725', 'GSE167280', 'GSE99615', 'GSE124498', 'GSE270451', 'GSE289165', 'GSE101422', 'GSE110500', 'GSE239833', 'GSE245457', 'GSE278188', 'GSE61293', 'GSE87339', 'GSE92702', 'GSE147793', 'GSE180587', 'GSE118502', 'GSE197325', 'GSE199760', 'GSE276432', 'GSE212362', 'GSE308941', 'GSE253107', 'GSE306346', 'GSE223330', 'GSE177028', 'GSE71488', 'GSE213557', 'GSE179635', 'GSE39463', 'GSE138133', 'GSE166892', 'GSE110605', 'GSE167135', 'GSE126782', 'GSE157823', 'GSE78946', 'GSE60835', 'GSE130463', 'GSE208057', 'GSE42957', 'GSE102363', 'GSE140037', 'GSE80301', 'GSE146340', 'GSE210828', 'GSE49935', 'GSE146282', 'GSE198496', 'GSE140506', 'GSE150648', 'GSE289681', 'GSE113847', 'GSE51119', 'GSE240117', 'GSE201804', 'GSE179700', 'GSE252832', 'GSE90549', 'GSE161940', 'GSE151223', 'GSE89345', 'GSE88798', 'GSE278544', 'GSE151749', 'GSE233524', 'GSE92314', 'GSE154774', 'GSE269727', 'GSE128426', 'GSE278189', 'GSE122617', 'GSE291226', 'GSE101782', 'GSE192383', 'GSE149816', 'GSE226876', 'GSE268259', 'GSE152405', 'GSE272240', 'GSE104483', 'GSE196648', 'GSE217676', 'GSE102510', 'GSE157128', 'GSE81837', 'GSE167291', 'GSE198394', 'GSE53197', 'GSE173818', 'GSE308603', 'GSE270544', 'GSE112543', 'GSE156426', 'GSE63407', 'GSE182673', 'GSE142976', 'GSE299198', 'GSE125906', 'GSE64475', 'GSE242435', 'GSE75199', 'GSE291285', 'GSE218963', 'GSE206323', 'GSE272620', 'GSE65739', 'GSE224694', 'GSE99406', 'GSE163270', 'GSE242010', 'GSE167143', 'GSE179008', 'GSE136680', 'GSE270329', 'GSE230448', 'GSE152249', 'GSE136177', 'GSE247054', 'GSE95586', 'GSE119330', 'GSE213934', 'GSE193345', 'GSE231841', 'GSE123013', 'GSE197714', 'GSE136362', 'GSE111290', 'GSE41433', 'GSE110488', 'GSE78862', 'GSE83568', 'GSE121778', 'GSE172328', 'GSE227564', 'GSE263007', 'GSE129396', 'GSE112254', 'GSE161297', 'GSE154349', 'GSE90077', 'GSE39214', 'GSE221567', 'GSE116135', 'GSE249042', 'GSE186152', 'GSE174656', 'GSE288027', 'GSE137887', 'GSE243706', 'GSE282145', 'GSE180096', 'GSE221857', 'GSE128427', 'GSE110702', 'GSE107276', 'GSE207501', 'GSE113243', 'GSE60387', 'GSE183558', 'GSE87745', 'GSE117052', 'GSE134945', 'GSE124485', 'GSE169629', 'GSE255443', 'GSE51116', 'GSE140977', 'GSE197771', 'GSE278942', 'GSE101567', 'GSE134538', 'GSE119344', 'GSE57690', 'GSE293328', 'GSE266817', 'GSE149834', 'GSE275367', 'GSE87337', 'GSE67777', 'GSE169284', 'GSE149410', 'GSE275912', 'GSE150435', 'GSE105262', 'GSE255066', 'GSE188610', 'GSE95620', 'GSE276909', 'GSE205111', 'GSE228011', 'GSE149431', 'GSE106574', 'GSE208755', 'GSE226250', 'GSE217020', 'GSE116914', 'GSE210860', 'GSE106223', 'GSE99854', 'GSE250123', 'GSE248301', 'GSE163009', 'GSE228905', 'GSE138131', 'GSE102713', 'GSE283262', 'GSE208786', 'GSE100298', 'GSE64665', 'GSE275012', 'GSE262650', 'GSE171459', 'GSE32202', 'GSE207364', 'GSE188732', 'GSE207619', 'GSE198017', 'GSE236852', 'GSE116802', 'GSE152910', 'GSE93560', 'GSE161152', 'GSE294853', 'GSE236282', 'GSE65016', 'GSE201786', 'GSE273664', 'GSE200247', 'GSE142052', 'GSE200500', 'GSE108544', 'GSE69077', 'GSE262324', 'GSE70575', 'GSE53641', 'GSE184528', 'GSE297649', 'GSE224214', 'GSE253941', 'GSE196892', 'GSE199977', 'GSE108987', 'GSE270747', 'GSE248817', 'GSE108117', 'GSE106383', 'GSE146189', 'GSE221446', 'GSE179910', 'GSE169363', 'GSE60870', 'GSE232254', 'GSE64742', 'GSE97308', 'GSE111284', 'GSE142622', 'GSE78969', 'GSE196667', 'GSE146690', 'GSE295323', 'GSE325023', 'GSE256453', 'GSE108119', 'GSE74458', 'GSE184730', 'GSE278759', 'GSE120418', 'GSE79881', 'GSE277462', 'GSE98313', 'GSE83262', 'GSE143520', 'GSE94547', 'GSE71487', 'GSE98779', 'GSE236463', 'GSE142354', 'GSE274343', 'GSE35288', 'GSE217485', 'GSE152690', 'GSE196602', 'GSE250418', 'GSE136269', 'GSE228764', 'GSE55884', 'GSE98284', 'GSE162373', 'GSE138132', 'GSE220490', 'GSE176161', 'GSE180380', 'GSE94457', 'GSE302462', 'GSE102950', 'GSE283133', 'GSE161482', 'GSE145207', 'GSE55482', 'GSE101219', 'GSE178717', 'GSE186156', 'GSE247158', 'GSE263310', 'GSE188611', 'GSE112544', 'GSE152072', 'GSE152252', 'GSE246173', 'GSE201380', 'GSE293944', 'GSE280648', 'GSE182265', 'GSE195745', 'GSE81205', 'GSE301177', 'GSE144560', 'GSE71517', 'GSE230257', 'GSE153588', 'GSE242479', 'GSE100371', 'GSE270988', 'GSE101839', 'GSE101488', 'GSE183312', 'GSE148575', 'GSE139154', 'GSE142032', 'GSE287184', 'GSE115001', 'GSE277320', 'GSE165401', 'GSE77395', 'GSE65717', 'GSE240683', 'GSE131988', 'GSE94308', 'GSE153510', 'GSE184508', 'GSE83108', 'GSE111812', 'GSE274439', 'GSE261441', 'GSE124918', 'GSE239633', 'GSE176451', 'GSE280792', 'GSE97857', 'GSE64547', 'GSE85653', 'GSE199741', 'GSE104945', 'GSE120757', 'GSE201685', 'GSE40256', 'GSE136268', 'GSE261914', 'GSE160180', 'GSE227628', 'GSE189669', 'GSE198360', 'GSE141304', 'GSE154652', 'GSE130734', 'GSE248735', 'GSE62799', 'GSE116517', 'GSE95665', 'GSE228893', 'GSE282627', 'GSE98075', 'GSE99367', 'GSE155806', 'GSE159796', 'GSE201940', 'GSE61812', 'GSE239281', 'GSE108912', 'GSE220449', 'GSE130186', 'GSE54125', 'GSE291552', 'GSE271678', 'GSE246855', 'GSE85923', 'GSE122687', 'GSE244175', 'GSE283105', 'GSE87352', 'GSE142034', 'GSE181260', 'GSE79709', 'GSE131610', 'GSE268511', 'GSE281310', 'GSE34655', 'GSE134651', 'GSE152614', 'GSE137009', 'GSE173945', 'GSE60865', 'GSE104916', 'GSE255867', 'GSE139715', 'GSE86471', 'GSE131056', 'GSE307651', 'GSE270487', 'GSE73067', 'GSE70491', 'GSE97792', 'GSE144356', 'GSE172353', 'GSE282484', 'GSE72461', 'GSE167633', 'GSE84606', 'GSE118371', 'GSE50597', 'GSE248337', 'GSE150422', 'GSE221657', 'GSE56811', 'GSE112441', 'GSE212355', 'GSE56326', 'GSE109595', 'GSE215755', 'GSE136356', 'GSE148406', 'GSE223169', 'GSE226691', 'GSE293191', 'GSE288197', 'GSE166156', 'GSE96812', 'GSE193804', 'GSE59154', 'GSE239462', 'GSE232067', 'GSE129011', 'GSE144823', 'GSE123459', 'GSE247811', 'GSE293194', 'GSE217609', 'GSE167244', 'GSE104028', 'GSE199202', 'GSE143433', 'GSE158809']
+
+    
+    print(f"Starting pipeline mismatch scan for {len(studies_to_check)} studies...\n")
+    scanned_results = []
+    
+    for i, gse in enumerate(studies_to_check, start=1):
+        print(f"[{i}/{len(studies_to_check)}] Scanning {gse}...")
+        res = check_study_for_outliers(gse)
+        scanned_results.append(res)
+        
+        # Graceful rate-limit spacing for NCBI API endpoints
+        time.sleep(0.4)
+        
+    # Format execution run into a clean presentation DataFrame
+    df_results = pd.DataFrame(scanned_results)
+    
+    print("\n" + "="*80)
+    print("SCAN COMPLETED: SCREENING SUMMARY REPORT")
+    print("="*80)
+    
+    # Show clean terminal overview
+    print(df_results[["GSE_ID", "Status", "Type", "Reason"]].to_string(index=False))
+    
+    # Save the deep metadata logs directly to disk for evaluation documentation
+    output_csv = "geo_compendium_outlier_report.csv"
+    df_results.to_csv(output_csv, index=False)
+    print(f"\nDetailed audit log written to disk: '{output_csv}'")
