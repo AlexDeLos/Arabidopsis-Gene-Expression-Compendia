@@ -7,10 +7,24 @@ import requests
 # ---------------------------------------------------------------------------
 # Keywords that indicate the study isolates non-coding/small RNA fractions 
 # instead of standard full-length protein-coding mRNAs.
-RED_FLAG_KEYWORDS = [
-    "small rna", "srna", "mirna", "microrna", "trf", "trna-derived", 
-    "pirna", "snrna", "scrna", "ncrna", "non-coding rna",
-    "ribo-seq", "ribosome profiling"
+RED_FLAG_PATTERNS = [
+    # Non-coding & Small RNA
+    r"\bsmall rna\b", r"\bsrna\b", r"\bmirna\b", r"\bmicrorna\b", 
+    r"\btrf\b", r"\btrna-derived\b", r"\bpirna\b", r"\bsnrna\b", 
+    r"\bscrna\b", r"\bncrna\b", r"\bnon-coding\b",
+    
+    # Translation/Ribosome
+    r"\bribo-seq\b", r"\bribosome profiling\b", r"\btranslatome\b",
+    
+    # Single-Cell / Spatial (Incompatible with bulk pipelines)
+    r"\bscrna-seq\b", r"\bsnrna-seq\b", r"\bsingle-cell\b", 
+    r"\bsingle-nucleus\b", r"\b10x genomics\b", r"\bspatial transcriptomics\b",
+    
+    # End-capture & Cleavage (Breaks transcript length models)
+    r"\bcage-seq\b", r"\bcage\b", r"\bdegradome\b", r"\bpare-seq\b",
+    
+    # Protein-RNA binding
+    r"\bclip-seq\b", r"\brip-seq\b", r"\beclip\b", r"\biclip\b"
 ]
 
 def check_study_for_outliers(gse_id: str) -> dict:

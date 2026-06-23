@@ -16,6 +16,12 @@ import pandas as pd
 module_dir = "./"
 sys.path.append(module_dir)
 
+from src.data_analisys.biological_analisys.plot_pathway_recovery_overview import (  # noqa: E402
+	collect_pathway_recovery_table,
+	plot_pathway_recovery_percentile,
+	plot_pathway_recovery_binary,
+)
+
 from src.constants import (  # noqa: E402
 	CORE_DATA_DIR,
 	EXPERIMENT_NAME,
@@ -331,7 +337,6 @@ def _get_term_row(gsea_df: pd.DataFrame, root_id: str, obodag) -> pd.DataFrame:
 
 def get_spider_plots(
 	path: str,
-	results_path: str,
 	data_types: list[str],
 	Fulls: list[bool],
 	tissues: list[str | None],
@@ -701,13 +706,58 @@ def run_diff_exp_and_enrichment(
 			spider_dir = build_spider_dir(fil, pure_str)
 			get_spider_plots(
 				path=spider_dir,
-				results_path=None,  # unused — see build_gsea_outdir / docstring note
 				data_types=data_types,
 				Fulls=Fulls,
 				tissues=tissues,
 				pure_val=pure,
 				filter_val=fil
 			)
+			# ------------------------------------------------------------------
+			# Pathway recovery overview plots — one pair per (tissue × Full)
+			# combination, each covering ALL treatments × ALL normalization
+			# methods at once. Sits at the same loop depth as spider plots
+			# (outside data_type, since it COMPARES across data_types) but
+			# still needs one concrete tissue/Full config per call, unlike
+			# get_spider_plots which loops those internally.
+			# ------------------------------------------------------------------
+			for Full in Fulls:
+				for tissue in tissues:
+					tissue_str = tissue if tissue else "All_tissues"
+					full_str   = "full" if Full else "sanity"
+					config	   = f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
+
+					recovery_df = collect_pathway_recovery_table(
+						base_dir=f"{FIGURES_DIR}GSEA_enrichment_results/",
+						config=config,
+						normalizations=data_types,
+						experiment_version=EXPERIMENT_VERSION,
+						permutations=ITERATIONS,
+					)
+
+					if recovery_df.empty:
+						print(f"  [pathway_recovery] No recovery data for config={config} — skipping plots.")
+						continue
+
+					overview_dir = f"{FIGURES_DIR}biological_overview_plots/pathway_recovery/{EXPERIMENT_VERSION}/{config}/"
+
+					plot_pathway_recovery_percentile(
+						recovery_df,
+						save_path=f"{overview_dir}recovery_percentile.pdf",
+						title=f"Pathway recovery (percentile) | {tissue_str} | {full_str} | {pure_str} | filter>{fil}",
+						treatments=TREATMENTS,
+						normalizations=data_types,
+						filter_options=filter_low_combination,
+						sig_threshold=0.01,
+					)
+					plot_pathway_recovery_binary(
+						recovery_df,
+						save_path=f"{overview_dir}recovery_binary.pdf",
+						title=f"Pathway recovery (pass/fail) | {tissue_str} | {full_str} | {pure_str} | filter>{fil}",
+						treatments=TREATMENTS,
+						normalizations=data_types,
+						filter_options=filter_low_combination,
+						sig_threshold=0.01,
+					)
 
 	print("Pipeline complete.")
 

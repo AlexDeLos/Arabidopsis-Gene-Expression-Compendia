@@ -19,11 +19,6 @@ export TMP
 mkdir -p "$TMP"
 SIF="/home/nfs/alexdelossanto/Dataset_fusion_Microarray/dataset_fusion.sif"
 
-# ══════════════════════════════════════════════════
-#  /tmp KILL-SWITCH THRESHOLD
-#  If the local scratch dir ($TMP) grows past this many
-#  GB, the background monitor below scancels the job.
-# ══════════════════════════════════════════════════
 
 echo "=================================================="
 echo "Job ID:          $SLURM_JOB_ID"
