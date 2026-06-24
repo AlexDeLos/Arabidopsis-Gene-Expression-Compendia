@@ -820,6 +820,7 @@ if __name__ == "__main__":
 		pures=[False],
 		tissues=[None],
 		experiment_version="matched_control_limited_treat_set_v1",
+		# experiment_version - "matched_control_and_ORA_v1" -> version with all the treatments
 		run_notes=(
 			"Testing whether matched_control (restricting the control pool to "
 			"study-matched samples per treatment) improves cross-normalization "

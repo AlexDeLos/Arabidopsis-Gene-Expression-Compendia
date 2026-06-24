@@ -22,7 +22,6 @@ import os
 from typing import Dict, Union
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 
@@ -267,7 +266,8 @@ def plot_distance_metrics(
 
     for bar, corr, pval in zip(bars_corr, spearman, spearman_p):
         if np.isfinite(corr):
-            label = f"ρ={corr:.3f}\n" f"p={pval:.1e}"
+            # label = f"ρ={corr:.3f}\n" f"p={pval:.1e}"
+            label = f"ρ={corr:.3f}"
             ax_corr.text(
                 bar.get_x() + bar.get_width() / 2,
                 corr,
