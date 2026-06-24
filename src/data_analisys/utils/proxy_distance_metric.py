@@ -463,6 +463,7 @@ def compute_global_distance_metrics(
                 pairwise_df["Distance"],
                 pairwise_df["Similarity"],
             )
+            print(f"got a spearman_p value of {spearman_p}")
         except Exception:
             spearman_corr = np.nan
             spearman_p = np.nan
@@ -472,6 +473,7 @@ def compute_global_distance_metrics(
                 pairwise_df["Distance"],
                 pairwise_df["Similarity"],
             )
+            print(f"got a pearson_p value of {pearson_p}")
         except Exception:
             pearson_corr = np.nan
             pearson_p = np.nan
