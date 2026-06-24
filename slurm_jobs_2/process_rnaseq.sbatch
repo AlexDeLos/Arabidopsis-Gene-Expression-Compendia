@@ -34,11 +34,11 @@ if [ ! -f "${SIF}" ]; then
 fi
 
 apptainer exec \
-    --bind "${STORAGE}:${STORAGE}" \
-    --bind "${REPO}:/repo" \
-    --pwd "/repo" \
-    "${SIF}" \
-    python src/data_importing/scripts/combine_rna.py --rna
+    # --bind "${STORAGE}:${STORAGE}" \
+    # --bind "${REPO}:/repo" \
+    # --pwd "/repo" \
+    # "${SIF}" \
+    # python src/data_importing/scripts/combine_rna.py --rna
 
 echo "Done with data combination. generating new data matrices"
 

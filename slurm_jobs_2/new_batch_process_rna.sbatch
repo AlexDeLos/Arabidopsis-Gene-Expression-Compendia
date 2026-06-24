@@ -140,42 +140,15 @@ trap 'clean_up' EXIT # Setup clean_up to run on exit
 #  /tmp KILL SWITCH
 # ══════════════════════════════════════════════════
 monitor_tmp_usage() {
-    TMP_FS_LIMIT=90          # kill if /tmp filesystem >90% full
-    TMP_JOB_LIMIT_GB=700     # kill if this job uses >700 GB
-
     while true; do
         sleep 60
 
-        # Filesystem usage
-        TMP_PCT=$(df -P /tmp | awk 'NR==2 {gsub("%","",$5); print $5}')
+        TMP_PCT=$(df -P /tmp 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')
         TMP_PCT=${TMP_PCT:-0}
 
-        # This job's usage
-        USAGE_KB=$(du -sk "$TMP" 2>/dev/null | cut -f1)
-        USAGE_KB=${USAGE_KB:-0}
-        USAGE_GB=$((USAGE_KB / 1024 / 1024))
-
-        if [ "$TMP_PCT" -ge "$TMP_FS_LIMIT" ]; then
+        if [ "$TMP_PCT" -ge 90 ]; then
             echo "$(date) KILL SWITCH: /tmp filesystem is ${TMP_PCT}% full. Cancelling job ${SLURM_JOB_ID}" >&2
-
             scancel "$SLURM_JOB_ID"
-
-            sleep 5
-
-            pkill -TERM -P $$ 2>/dev/null || true
-
-            exit 1
-        fi
-
-        if [ "$USAGE_GB" -ge "$TMP_JOB_LIMIT_GB" ]; then
-            echo "$(date) KILL SWITCH: job scratch usage is ${USAGE_GB}GB (limit ${TMP_JOB_LIMIT_GB}GB). Cancelling job ${SLURM_JOB_ID}" >&2
-
-            scancel "$SLURM_JOB_ID"
-
-            sleep 5
-
-            pkill -TERM -P $$ 2>/dev/null || true
-
             exit 1
         fi
     done
