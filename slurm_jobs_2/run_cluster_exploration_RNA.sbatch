@@ -3,7 +3,7 @@
 #SBATCH --partition=general
 #SBATCH --time=10:00:00
 #SBATCH --qos=medium
-#SBATCH --mem=300G
+#SBATCH --mem=320G
 #SBATCH --cpus-per-task=1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
 
