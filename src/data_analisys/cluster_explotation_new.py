@@ -951,6 +951,7 @@ if __name__ == "__main__":
 	# parser.add_argument("--rna", action="store_true", default=False)
 	# args = parser.parse_args()
 	N_SAMPLES = None
+	FULL = True
 	LIGHT_WEIGHT = True
 	DATA_DRIVEN_WEIGHTS = None
 	all_metrics = {}
@@ -1018,9 +1019,16 @@ if __name__ == "__main__":
 				variance_threshold=0.90,
 				save_path = output_dir
 			)
-			if False:
+			if FULL:
 				# check the the df is correctly aligned with the required input, non T df is samples x Genes (samples x features) now
 				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df.T, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+				all_metrics[file] = metrics_df
+				if not LIGHT_WEIGHT:
+					all_bulk_metrics[file] = bulk_metrics_df
+					all_umaps[file] = embeddings["UMAP"]
+					all_tsnes[file] = embeddings["TSNE"]
+					all_bulk[file] = embeddings["bulk"]
+				all_metas[file] = meta_df
 			
 			# if file == "filter_norm":
 			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
@@ -1054,13 +1062,6 @@ if __name__ == "__main__":
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics
-			# all_metrics[file] = metrics_df
-			# if not LIGHT_WEIGHT:
-			# 	all_bulk_metrics[file] = bulk_metrics_df
-			# 	all_umaps[file] = embeddings["UMAP"]
-			# 	all_tsnes[file] = embeddings["TSNE"]
-			# 	all_bulk[file] = embeddings["bulk"]
-			# all_metas[file] = meta_df
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
@@ -1083,24 +1084,24 @@ if __name__ == "__main__":
 		experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
 		plot_ratio=True
 	)
-	raise ValueError("done. only wanted plot_distance_metrics")
-	print("\nGenerating Metric Comparisons (gene expression space)...")
-	combined_meta = pd.concat(all_metas.values())
-	# Only deduplicate if all columns are hashable
-	try:
-		combined_meta = combined_meta.drop_duplicates()
-	except TypeError:
-		combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
-	plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+	if FULL:
+		print("\nGenerating Metric Comparisons (gene expression space)...")
+		combined_meta = pd.concat(all_metas.values())
+		# Only deduplicate if all columns are hashable
+		try:
+			combined_meta = combined_meta.drop_duplicates()
+		except TypeError:
+			combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
+		plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
 
-	if not LIGHT_WEIGHT:
-		print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
-		plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
+		if not LIGHT_WEIGHT:
+			print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
+			plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
 
-		print("Generating linked multi-stage UMAP comparison...")
-		plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
+			print("Generating linked multi-stage UMAP comparison...")
+			plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
 
-		print("Generating linked multi-stage t-SNE comparison...")
-		plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
-		print("Generating Bulk comparison...")
-		plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
+			print("Generating linked multi-stage t-SNE comparison...")
+			plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
+			print("Generating Bulk comparison...")
+			plot_combined_interactive_projections(embeddings_dict=all_bulk, meta_dicts=all_metas, title="Bulk Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_bulk.html")
