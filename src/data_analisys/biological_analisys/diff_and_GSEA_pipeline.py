@@ -819,12 +819,12 @@ if __name__ == "__main__":
 		filter_low_combination=[0],
 		pures=[False],
 		tissues=[None],
-		experiment_version="matched_control_limited_treat_set_v2",
+		experiment_version="matched_control_limited_treat_set_v3",
 		# experiment_version - "matched_control_and_ORA_v1" -> version with all the treatments
 		run_notes=(
 			"Testing whether matched_control (restricting the control pool to "
 			"study-matched samples per treatment) improves cross-normalization "
 			"GSEA stability for low-sample-size treatments. Additionally I am now using a limited set of treatments in the GSEA"
-			"I changed some of the GO terms"
+			"I changed some of the GO terms, some fixes based on before"
 		),
 	)
