@@ -342,7 +342,7 @@ def perform_gsea_enrichment(
 	print("Building GO gene sets...")
 	go_gene_sets = build_go_gene_sets(obodag, geneid2gos, keys=keys)
 	print(f"  {len(go_gene_sets)} GO term gene sets prepared.")
-	print(f"{go_gene_sets}")
+	# print(f"{go_gene_sets}")
 
 	# ------------------------------------------------------------------
 	# 2. Prepare ranked gene list
