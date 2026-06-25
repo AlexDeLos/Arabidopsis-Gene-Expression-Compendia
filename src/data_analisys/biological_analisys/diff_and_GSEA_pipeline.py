@@ -599,10 +599,10 @@ def run_diff_exp_and_enrichment(
 									f"{gsea_outdir}{stress}_gsea_go_enrichment_results"
 									f"_{ITERATIONS}.csv"
 								)
-								oar_csv = (
-									f"{gsea_outdir}{stress}_ora_enrichment_results"
-									f"_{ITERATIONS}.csv"
-								)
+								# oar_csv = (
+								# 	f"{gsea_outdir}{stress}_ora_enrichment_results"
+								# 	f"_{ITERATIONS}.csv"
+								# )
 
 								if (not just_plot) and (not os.path.isfile(gsea_csv)):
 									# Keep only the five root term sub-DAGs
@@ -640,20 +640,20 @@ def run_diff_exp_and_enrichment(
 										out_path=gsea_outdir,
 										permutations=ITERATIONS,
 									)
-									ora_results = perform_ora_enrichment(
-										diff_results=diff_results,
-										gene_col="ID",
-										obodag=obodag,
-										geneid2gos=geneid2gos,
-										keys=list(map(lambda x: x[0],list(STRESS_GO_ROOTS_RAW.values()))),
-										background_genes=diff_results["ID"].tolist(),  # the full tested gene universe for this contrast
-										adj_p_threshold=0.05,
-										logfc_threshold=1.0,
-										out_path=None,  # or f"{out_path}{stress}_ora_results" to also write gseapy's own files
-									)
+									# ora_results = perform_ora_enrichment(
+									# 	diff_results=diff_results,
+									# 	gene_col="ID",
+									# 	obodag=obodag,
+									# 	geneid2gos=geneid2gos,
+									# 	keys=list(map(lambda x: x[0],list(STRESS_GO_ROOTS_RAW.values()))),
+									# 	background_genes=diff_results["ID"].tolist(),  # the full tested gene universe for this contrast
+									# 	adj_p_threshold=0.05,
+									# 	logfc_threshold=1.0,
+									# 	out_path=None,  # or f"{out_path}{stress}_ora_results" to also write gseapy's own files
+									# )
 
-									ora_results.to_csv(oar_csv, index=False)
-									print(f"	ORA saved → {oar_csv}")
+									# ora_results.to_csv(oar_csv, index=False)
+									# print(f"	ORA saved → {oar_csv}")
 
 
 									gsea_df.sort_values(by="FDR q-val", inplace=True)
@@ -664,21 +664,21 @@ def run_diff_exp_and_enrichment(
 									print(f"	Loading pre-existing GSEA: {gsea_csv}")
 									gsea_df = pd.read_csv(gsea_csv)
 
-									print(f"	Loading pre-existing ORA: {oar_csv}")
-									ora_results = pd.read_csv(oar_csv)
+									# print(f"	Loading pre-existing ORA: {oar_csv}")
+									# ora_results = pd.read_csv(oar_csv)
 
 
-								ora_plot_path = build_scatter_plot_path(
-									tissue_str, full_str, data_type, fil, pure_str, stress
-								).replace(".html", "_ora_dotplot.pdf") 
+								# ora_plot_path = build_scatter_plot_path(
+								# 	tissue_str, full_str, data_type, fil, pure_str, stress
+								# ).replace(".html", "_ora_dotplot.pdf") 
 								
-								ora_title = f"ORA: {stress} | {tissue_display} | {data_type}"
-								plot_ora_dotplot(
-									ora_results=ora_results,
-									top_n=15,
-									title=ora_title,
-									save_path=ora_plot_path
-								)
+								# ora_title = f"ORA: {stress} | {tissue_display} | {data_type}"
+								# plot_ora_dotplot(
+								# 	ora_results=ora_results,
+								# 	top_n=15,
+								# 	title=ora_title,
+								# 	save_path=ora_plot_path
+								# )
 
 
 								# Scatter plot
@@ -819,12 +819,12 @@ if __name__ == "__main__":
 		filter_low_combination=[0],
 		pures=[False],
 		tissues=[None],
-		experiment_version="matched_control_limited_treat_set_v1",
+		experiment_version="matched_control_limited_treat_set_v2",
 		# experiment_version - "matched_control_and_ORA_v1" -> version with all the treatments
 		run_notes=(
 			"Testing whether matched_control (restricting the control pool to "
 			"study-matched samples per treatment) improves cross-normalization "
 			"GSEA stability for low-sample-size treatments. Additionally I am now using a limited set of treatments in the GSEA"
-			"Also testing ORA and it's plotting (Check that it is not empty)"
+			"I changed some of the GO terms"
 		),
 	)

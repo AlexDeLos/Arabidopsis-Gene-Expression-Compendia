@@ -63,8 +63,97 @@ def parse_gaf(annotation_file: str) -> dict[str, set[str]]:
 # =============================================================================
 # 2. GO Data Loading with Optional Filtering
 # =============================================================================
-
 def get_go_data(
+    go_obo_file: str,
+    annotation_file: str,
+    namespaces: set[str] | None = None,
+    stress_root_go_ids: set[str] | None = None,
+) -> tuple[GODag, dict[str, set[str]]]:
+    """
+    Load and optionally filter GO ontology and TAIR annotation data.
+
+    Downloads missing files automatically.  Filtering is cumulative: a GO
+    term must pass *all* supplied filters to be retained.
+
+    Parameters
+    ----------
+    go_obo_file : str
+        Path to go-basic.obo.  Downloaded if absent.
+    annotation_file : str
+        Path to tair.gaf.gz.  Downloaded if absent.
+    namespaces : set of str or None
+        If given, keep only GO terms in these namespaces
+        (e.g. {'biological_process'}).
+    stress_root_go_ids : set of str or None
+        If given, keep only GO terms that are descendants (or the root itself)
+        of these GO IDs.  Used to restrict GSEA to stress-relevant terms.
+
+    Returns
+    -------
+    obodag : GODag
+    geneid2gos : dict[str, set[str]]
+        Gene → filtered set of GO term IDs.
+    """
+    # --- OBO ---
+    if not os.path.exists(go_obo_file):
+        print(f"Downloading GO OBO to '{go_obo_file}'...")
+        download_go_basic_obo(go_obo_file)
+
+    print("Parsing GO OBO file...")
+    obodag = GODag(go_obo_file)
+
+    # --- Expand stress root IDs to full descendant set ---
+    all_stress_go_ids: set[str] = set()
+    if stress_root_go_ids:
+        print(f"Expanding {len(stress_root_go_ids)} root stress GO terms to descendants...")
+        for go_id in stress_root_go_ids:
+            if go_id in obodag:
+                go_term = obodag[go_id]
+                all_stress_go_ids.add(go_id)
+                all_stress_go_ids.update(go_term.get_all_children())
+            else:
+                print(f"  Warning: '{go_id}' not found in OBO DAG.")
+        print(f"  Total stress-related GO terms (with descendants): {len(all_stress_go_ids)}")
+
+    # --- GAF ---
+    if not os.path.exists(annotation_file):
+        print(f"Downloading TAIR annotation to '{annotation_file}'...")
+        import requests
+        r = requests.get("http://current.geneontology.org/annotations/tair.gaf.gz")
+        with open(annotation_file, "wb") as f:
+            f.write(r.content)
+
+    print("Parsing TAIR annotation file...")
+    geneid2gos = parse_gaf(annotation_file)
+
+    # --- Apply filters and propagate lineages ---
+    print("Filtering and propagating annotations...")
+    filtered: dict[str, set[str]] = {}
+    for gene_id, go_ids in geneid2gos.items():
+        kept = set()
+        
+        # 1. Expand direct annotations to include all parents (True Path Rule)
+        expanded_go_ids = set()
+        for go_id in go_ids:
+            if go_id in obodag:
+                expanded_go_ids.add(go_id)
+                expanded_go_ids.update(obodag[go_id].get_all_parents())
+                
+        # 2. Evaluate the expanded set against your filters
+        for go_id in expanded_go_ids:
+            passes_ns = not namespaces or obodag[go_id].namespace in namespaces
+            passes_stress = not all_stress_go_ids or go_id in all_stress_go_ids
+            
+            if passes_ns and passes_stress:
+                kept.add(go_id)
+                
+        if kept:
+            filtered[gene_id] = kept
+
+    print(f"  {len(filtered)} genes retained after filtering and propagation.")
+    return obodag, filtered
+
+def get_go_data_old(
 	go_obo_file: str,
 	annotation_file: str,
 	namespaces: set[str] | None = None,
@@ -253,6 +342,7 @@ def perform_gsea_enrichment(
 	print("Building GO gene sets...")
 	go_gene_sets = build_go_gene_sets(obodag, geneid2gos, keys=keys)
 	print(f"  {len(go_gene_sets)} GO term gene sets prepared.")
+	print(f"{go_gene_sets}")
 
 	# ------------------------------------------------------------------
 	# 2. Prepare ranked gene list
