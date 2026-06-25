@@ -297,32 +297,27 @@ def _pca_distances(
 
     return dist_matrix, samples
 
-def compute_mean_pairwise_distance(dist_matrix: np.ndarray) -> float:
+def compute_mean_pairwise_distance(
+    dist_matrix: np.ndarray,
+) -> float:
     """
-    Compute the global mean pairwise distance Dist_bar(S).
- 
-        Dist_bar(S) = 2 / (|S| * (|S| - 1))  *  sum_{j < k} Dist(x_j, x_k)
- 
-    This is simply the mean of the upper triangle of the full distance matrix,
-    which is equivalent to the closed-form expression above.
- 
-    Parameters
-    ----------
-    dist_matrix : np.ndarray
-        Square (n x n) pairwise distance matrix.
- 
-    Returns
-    -------
-    float — mean pairwise distance across all distinct sample pairs.
+    Mean distance across all unique sample pairs.
     """
-    n = dist_matrix.shape[0]
-    if n < 2:
-        warnings.warn("Cannot compute mean pairwise distance with fewer than 2 samples.")
-        return float("nan")
- 
-    upper_tri = dist_matrix[np.triu_indices(n, k=1)]   # j < k pairs only
-    return float(upper_tri.mean())
 
+    n = dist_matrix.shape[0]
+
+    if n < 2:
+        warnings.warn(
+            "Cannot compute mean pairwise distance "
+            "with fewer than 2 samples."
+        )
+        return float("nan")
+
+    total_distance = dist_matrix.sum() / 2.0
+
+    n_pairs = n * (n - 1) / 2.0
+
+    return float(total_distance / n_pairs)
 
 # ---------------------------------------------------------------------------
 # Main metric function
@@ -399,10 +394,12 @@ def compute_global_distance_metrics(
         else "Unknown_Study"
         for sample in ordered_samples
     }
-
+    print("labels set up")
+    
     dist_bar = compute_mean_pairwise_distance(
         dist_matrix
     )
+    print("mean distance calculated")
 
     # --------------------------------------------------
     # Biological separation metric
