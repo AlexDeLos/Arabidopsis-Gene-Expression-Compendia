@@ -3,7 +3,7 @@
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
 #SBATCH --qos=medium
-#SBATCH --time=32:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=150G
 #SBATCH --job-name=biological_pipeline
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
