@@ -709,7 +709,6 @@ def find_n_components_for_variance(
         The fitted sklearn PCA object (full fit, not truncated to
         n_components_needed), in case you want to inspect loadings, etc.
     """
-
     X = df.values if isinstance(df, pd.DataFrame) else np.asarray(df)
     print(f"df of shape -> {df.shape}, expected to be Samples x Features so Samples x Genes(~34.858 for RNA or 22.600 for MA)")
     n_samples, n_features = X.shape

@@ -3,7 +3,7 @@
 #SBATCH --partition=general
 #SBATCH --time=10:00:00
 #SBATCH --qos=medium
-#SBATCH --mem=40G
+#SBATCH --mem=100G
 #SBATCH --tmp=800000M
 #SBATCH --cpus-per-task=1
 #SBATCH --array=2%1
@@ -37,14 +37,12 @@ export NXF_WORK="$TMP/work_alexdelossatos_nextflow/${SLURM_ARRAY_TASK_ID}"
 
 mkdir -p "$NXF_WORK"
 
-# to NXF_WORK on $BIG_STORAGE.
-export TMPDIR="$TMP/scratch"
-mkdir -p "$TMPDIR"
-
 # ══════════════════════════════════════════════════
 #  SINGULARITY CACHES (RAM DISK + BIG STORAGE)
 # ══════════════════════════════════════════════════
-export NXF_SINGULARITY_CACHEDIR="$HOME/singularity_cache"
+# export NXF_SINGULARITY_CACHEDIR="$HOME/singularity_cache"
+# mkdir -p "$NXF_SINGULARITY_CACHEDIR"
+export NXF_SINGULARITY_CACHEDIR="/tudelft.net/staff-umbrella/GeneExpressionStorage/singularity_cache"
 mkdir -p "$NXF_SINGULARITY_CACHEDIR"
 
 export APPTAINER_TMPDIR="/dev/shm/apptainer_tmp_${USER}_${SLURM_JOB_ID}"
@@ -56,16 +54,14 @@ mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_CACHEDIR"
 # ══════════════════════════════════════════════════
 #  CREATE HYBRID PASSWD/GROUP FILES FOR CONTAINER
 # ══════════════════════════════════════════════════
-MY_PASSWD="$TMP/tmp_passwd_$SLURM_JOB_ID"
-MY_GROUP="$TMP/tmp_group_$SLURM_JOB_ID"
+MY_PASSWD="$TMP/passwd"
+MY_GROUP="$TMP/group"
 
 cat /etc/passwd > "$MY_PASSWD"
 getent passwd $USER >> "$MY_PASSWD"
 
 cat /etc/group > "$MY_GROUP"
-for g in $(id -G -n); do
-    getent group "$g" >> "$MY_GROUP" || true
-done
+getent group "$(id -gn)" >> "$MY_GROUP"
 sort -u "$MY_GROUP" -o "$MY_GROUP"
 
 # ══════════════════════════════════════════════════
@@ -87,8 +83,8 @@ if [[ "$1" == "pull" ]]; then
     EXIT_CODE=$?
     
     if [[ $EXIT_CODE -eq 0 ]]; then
-        # Copy ALL downloaded files (including .pulling temporary files)
-        find . -maxdepth 1 -type f -exec cp {} "$ORIG_DIR/" \;
+        shopt -s dotglob
+        mv ./* "$ORIG_DIR/" 2>/dev/null || true
     fi
     
     cd /tmp
@@ -102,29 +98,10 @@ EOF
 chmod +x "$FAKE_BIN/singularity"
 
 # ══════════════════════════════════════════════════
-#  DYNAMIC SLURM & PLUGIN CONFIGURATION
-# ══════════════════════════════════════════════════
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-# 1. Resolve the true physical directory for Slurm config
-HOST_SLURM_CONF=$(realpath "${SLURM_CONF:-/etc/slurm/slurm.conf}")
-HOST_SLURM_DIR=$(dirname "$HOST_SLURM_CONF")
-
-# 2. Dynamically locate the AUKS plugin to avoid mounting all of /usr/lib64
-AUKS_SO=$(find /usr/lib64 -name "auks.so" 2>/dev/null | head -n 1)
-if [ -n "$AUKS_SO" ]; then
-    AUKS_BIND="--bind $AUKS_SO:$AUKS_SO"
-    AUKS_DIR=$(dirname "$AUKS_SO")
-    DYNAMIC_LD_LIB="/usr/lib64/slurm:$AUKS_DIR"
-else
-    AUKS_BIND=""
-    DYNAMIC_LD_LIB="/usr/lib64/slurm"
-fi
-
-function clean_up {
-# ══════════════════════════════════════════════════
 #  CLEANUP
 # ══════════════════════════════════════════════════
+
+function clean_up {
 echo "Cleaning up all temporary directories..."
     kill "$MONITOR_PID" 2>/dev/null || true
     rm -f "$MY_PASSWD" "$MY_GROUP"
@@ -144,7 +121,10 @@ monitor_tmp_usage() {
         sleep 60
 
         TMP_PCT=$(df -P /tmp 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')
-        TMP_PCT=${TMP_PCT:-0}
+        if [ -z "$TMP_PCT" ]; then
+            echo "$(date) WARNING: failed to determine /tmp usage" >&2
+            continue
+        fi
 
         if [ "$TMP_PCT" -ge 90 ]; then
             echo "$(date) KILL SWITCH: /tmp filesystem is ${TMP_PCT}% full. Cancelling job ${SLURM_JOB_ID}" >&2
@@ -167,7 +147,7 @@ apptainer exec \
     --bind /usr/bin/squeue:/usr/bin/squeue \
     --bind /usr/bin/scancel:/usr/bin/scancel \
     --bind /usr/bin/scontrol:/usr/bin/scontrol \
-    --bind "$HOST_SLURM_DIR":/etc/slurm \
+    --bind /etc/slurm:/etc/slurm \
     --bind /var/run/munge:/var/run/munge \
     --bind /etc/munge:/etc/munge \
     --bind /usr/lib64/slurm:/usr/lib64/slurm \
@@ -176,12 +156,11 @@ apptainer exec \
     --bind /etc/auks:/etc/auks \
     --bind /usr/lib64/libmunge.so.2:/usr/lib64/libmunge.so.2 \
     --bind /usr/lib64/libmunge.so.2.0.0:/usr/lib64/libmunge.so.2.0.0 \
-    $AUKS_BIND \
     --bind "$MY_PASSWD":/etc/passwd \
     --bind "$MY_GROUP":/etc/group \
     --bind "$HOME/bin/nextflow":/usr/local/bin/nextflow \
     --bind "$HOME/java":"$HOME/java" \
-    --bind /tudelft.net/staff-umbrella:/tudelft.net/staff-umbrella \
+    --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
@@ -193,7 +172,6 @@ apptainer exec \
     --env SINGULARITY_CACHEDIR="$SINGULARITY_CACHEDIR" \
     --env APPTAINER_TMPDIR="$APPTAINER_TMPDIR" \
     --env SINGULARITY_TMPDIR="$SINGULARITY_TMPDIR" \
-    --env TMPDIR="$TMPDIR" \
     --env SLURM_JOB_ID="$SLURM_JOB_ID" \
     --env SLURM_ARRAY_TASK_ID="$SLURM_ARRAY_TASK_ID" \
     --env PATH="$HOME/java/bin:/usr/local/bin:/usr/bin:/bin" \

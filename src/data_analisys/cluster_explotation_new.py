@@ -771,12 +771,15 @@ def _build_enhancement_script(js_data, categories):
 
 
 def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, experiment_name: str, output_folder: str, light_weight: bool = False):
+
+	print(f"df for run_exploration_on_dataframe is now {data_df.shape}")
 	if not os.path.exists(output_folder):
 		os.makedirs(output_folder)
 
 	print(f"	>>> Using standard PCA preprocessing for {experiment_name}...")
-	df_aligned = prepare_data_structure(data_df)
-	print("MATRIX IS (Transposing dataframe from)")
+	# df_aligned = prepare_data_structure(data_df)
+	df_aligned = data_df 
+	print(f"MATRIX IS {data_df.shape} with head {data_df.head}")
 	# Define X_base for metric calculations
 	X_base = df_aligned.values
 
@@ -947,7 +950,7 @@ if __name__ == "__main__":
 	# # parser.add_argument("--ma", action="store_true", default=False)
 	# parser.add_argument("--rna", action="store_true", default=False)
 	# args = parser.parse_args()
-	N_SAMPLES = None
+	N_SAMPLES = 1000
 	LIGHT_WEIGHT = True
 	DATA_DRIVEN_WEIGHTS = None
 	all_metrics = {}
@@ -984,6 +987,7 @@ if __name__ == "__main__":
 			else:
 				df = pd.read_csv(data_path, index_col=0)
 			# df = df.iloc[:, :200]
+
 			print("	Cleaning sample IDs...")
 			df.columns = [c.split(".")[0].upper() for c in df.columns]
 
@@ -1003,15 +1007,20 @@ if __name__ == "__main__":
 
 			n_components = None
 			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
-		
 			os.makedirs(output_dir, exist_ok=True)
+
+
+			# df needs to be samples x Genes (samples x features)
+			df = df.T
+			print(f"df is now {df.shape}")
 			n_components, cumulative_variance, pca = find_n_components_for_variance(
 				df,# Samples x Genes
 				variance_threshold=0.90,
 				save_path = output_dir
 			)
 			if False:
-				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+				# check the the df is correctly aligned with the required input, non T df is samples x Genes (samples x features) now
+				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df.T, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 			
 			# if file == "filter_norm":
 			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
