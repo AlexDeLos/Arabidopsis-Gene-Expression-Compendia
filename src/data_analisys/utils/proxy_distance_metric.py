@@ -666,7 +666,7 @@ def run_distance_evaluation(
     if verbose:
         print(f"\n[DistMetrics] Running for stage: '{experiment_name}'")
     if RNA_USED:
-        data_df.columns = [get_gsm_id(col.split('_')[1]) for col in data_df.columns]
+        data_df.index = [get_gsm_id(col.split('_')[1]) for col in data_df.index]
     if RNA_USED:
         try:
             sample_study_map.index = [get_gsm_id(ind.split('_')[1]) for ind in sample_study_map.index]
