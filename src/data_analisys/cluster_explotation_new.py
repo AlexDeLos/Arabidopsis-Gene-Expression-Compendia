@@ -771,7 +771,9 @@ def _build_enhancement_script(js_data, categories):
 
 
 def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, experiment_name: str, output_folder: str, light_weight: bool = False):
-
+	"""
+	data_df is (Sample x Genes)
+	"""
 	print(f"df for run_exploration_on_dataframe is now {data_df.shape}")
 	if not os.path.exists(output_folder):
 		os.makedirs(output_folder)
@@ -1021,7 +1023,7 @@ if __name__ == "__main__":
 			)
 			if FULL:
 				# check the the df is correctly aligned with the required input, non T df is samples x Genes (samples x features) now
-				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df.T, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
 				all_metrics[file] = metrics_df
 				if not LIGHT_WEIGHT:
 					all_bulk_metrics[file] = bulk_metrics_df
