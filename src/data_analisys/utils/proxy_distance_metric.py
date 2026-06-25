@@ -374,7 +374,7 @@ def compute_global_distance_metrics(
             expr_df,
             metric="euclidean",
         )
-
+    print("distance matrix built")
     # --------------------------------------------------
     # Sanity checks
     # --------------------------------------------------

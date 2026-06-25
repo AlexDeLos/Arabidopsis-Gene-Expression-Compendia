@@ -231,90 +231,90 @@ def write_run_metadata(exp_name: str, run_notes: str, **hyperparams) -> None:
 ## HELPERS
 # =============================================================================
 # 1. Data collection - reads GSEA result CSVs, locates each treatment's
-#    expected GO term, records its rank/percentile/FDR q-val/NES.
+#	expected GO term, records its rank/percentile/FDR q-val/NES.
 # =============================================================================
 
 def collect_pathway_recovery_table(
-    config: str,
-    normalizations: list[str],
-    permutations: int = 1000,
+	config: str,
+	normalizations: list[str],
+	permutations: int = 1000,
 ) -> pd.DataFrame:
-    """
-    Build the long-format recovery table consumed by both plotting
-    functions in this module: one row per (treatment, normalization
-    method), with the expected GO term's rank, percentile, FDR q-val,
-    and NES.
-    """
-    # Extract treatments that are configured in our target stress dictionaries
-    stress_treatments = list(STRESS_GO_ROOTS_RAW.keys())
+	"""
+	Build the long-format recovery table consumed by both plotting
+	functions in this module: one row per (treatment, normalization
+	method), with the expected GO term's rank, percentile, FDR q-val,
+	and NES.
+	"""
+	# Extract treatments that are configured in our target stress dictionaries
+	stress_treatments = list(STRESS_GO_ROOTS_RAW.keys())
 
-    rows = []
+	rows = []
 
-    for t in stress_treatments:
-        if t not in STRESS_GO_ROOTS_RAW:
-            print(f"  [recovery_table] no GO root mapping for '{t}' - skipping")
-            continue
-        
-        # Unpack the proper GO identity from the raw configuration mapping
-        go_id, go_name = STRESS_GO_ROOTS_RAW[t]
+	for t in stress_treatments:
+		if t not in STRESS_GO_ROOTS_RAW:
+			print(f"  [recovery_table] no GO root mapping for '{t}' - skipping")
+			continue
+		
+		# Unpack the proper GO identity from the raw configuration mapping
+		go_id, go_name = STRESS_GO_ROOTS_RAW[t]
 
-        for norm in normalizations:
-            # 1. Break down the config string back into its canonical pieces
-            # config is typically: f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
-            parts = config.split("_")
-            
-            # Reconstruct variables to use canonical build_exp_name helper
-            tissue_str = parts[0] + "_" + parts[1] if parts[0] == "All" else parts[0]
-            
-            # Locate full_str, pure_str and the filter group from the tail of the layout
-            full_str = "full" if "full" in parts else "sanity"
-            pure_str = "pure" if "pure" in parts else "mixed"
-            fil = int(parts[-1])
+		for norm in normalizations:
+			# 1. Break down the config string back into its canonical pieces
+			# config is typically: f"{tissue_str}_{full_str}_{pure_str}_min_group_{fil}"
+			parts = config.split("_")
+			
+			# Reconstruct variables to use canonical build_exp_name helper
+			tissue_str = parts[0] + "_" + parts[1] if parts[0] == "All" else parts[0]
+			
+			# Locate full_str, pure_str and the filter group from the tail of the layout
+			full_str = "full" if "full" in parts else "sanity"
+			pure_str = "pure" if "pure" in parts else "mixed"
+			fil = int(parts[-1])
 
-            # 2. Derive the unified layout naming structures
-            canonical_exp_name = build_exp_name(norm, tissue_str, full_str, pure_str, fil)
-            gsea_out_dir = build_gsea_outdir(canonical_exp_name)
-            
-            # 3. Create the direct absolute target filepath
-            path = Path(gsea_out_dir) / f"{t}_gsea_go_enrichment_results_{permutations}.csv"
+			# 2. Derive the unified layout naming structures
+			canonical_exp_name = build_exp_name(norm, tissue_str, full_str, pure_str, fil)
+			gsea_out_dir = build_gsea_outdir(canonical_exp_name)
+			
+			# 3. Create the direct absolute target filepath
+			path = Path(gsea_out_dir) / f"{t}_gsea_go_enrichment_results_{permutations}.csv"
+			print(f"using path: {path}")
+			if not path.exists():
+				print(f"  [recovery_table] {t} / {norm}: file not found at {path}")
+				continue
 
-            if not path.exists():
-                print(f"  [recovery_table] {t} / {norm}: file not found at {path}")
-                continue
+			df = pd.read_csv(path)
+			if df.empty or "go_id" not in df.columns or "FDR q-val" not in df.columns:
+				print(f"  [recovery_table] {t} / {norm}: empty or missing expected columns")
+				continue
 
-            df = pd.read_csv(path)
-            if df.empty or "go_id" not in df.columns or "FDR q-val" not in df.columns:
-                print(f"  [recovery_table] {t} / {norm}: empty or missing expected columns")
-                continue
+			ranked = df.sort_values("FDR q-val", ascending=True).reset_index(drop=True)
+			match = ranked[ranked["go_id"] == go_id]
 
-            ranked = df.sort_values("FDR q-val", ascending=True).reset_index(drop=True)
-            match = ranked[ranked["go_id"] == go_id]
+			if match.empty:
+				print(f"  [recovery_table] {t} / {norm}: go_id {go_id} not found among "
+					  f"{len(ranked)} tested terms")
+				rows.append({
+					"treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
+					"NES": np.nan, "FDR q-val": np.nan, "rank": np.nan,
+					"n_terms_tested": len(ranked), "percentile": np.nan,
+				})
+				continue
 
-            if match.empty:
-                print(f"  [recovery_table] {t} / {norm}: go_id {go_id} not found among "
-                      f"{len(ranked)} tested terms")
-                rows.append({
-                    "treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
-                    "NES": np.nan, "FDR q-val": np.nan, "rank": np.nan,
-                    "n_terms_tested": len(ranked), "percentile": np.nan,
-                })
-                continue
+			row = match.iloc[0]
+			rank = int(match.index[0]) + 1
+			n_terms = len(ranked)
+			percentile = 0.0 if n_terms <= 1 else (rank - 1) / (n_terms - 1) * 100.0
 
-            row = match.iloc[0]
-            rank = int(match.index[0]) + 1
-            n_terms = len(ranked)
-            percentile = 0.0 if n_terms <= 1 else (rank - 1) / (n_terms - 1) * 100.0
+			print(f"  [recovery_table] {t} / {norm}: rank {rank}/{n_terms} "
+				  f"(percentile={percentile:.1f}%, FDR={row['FDR q-val']:.4g}, NES={row['NES']:.3g})")
 
-            print(f"  [recovery_table] {t} / {norm}: rank {rank}/{n_terms} "
-                  f"(percentile={percentile:.1f}%, FDR={row['FDR q-val']:.4g}, NES={row['NES']:.3g})")
+			rows.append({
+				"treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
+				"NES": row["NES"], "FDR q-val": row["FDR q-val"],
+				"rank": rank, "n_terms_tested": n_terms, "percentile": percentile,
+			})
 
-            rows.append({
-                "treatment": t, "norm_method": norm, "go_id": go_id, "go_name": go_name,
-                "NES": row["NES"], "FDR q-val": row["FDR q-val"],
-                "rank": rank, "n_terms_tested": n_terms, "percentile": percentile,
-            })
-
-    return pd.DataFrame(rows)
+	return pd.DataFrame(rows)
 
 
 # =============================================================================
