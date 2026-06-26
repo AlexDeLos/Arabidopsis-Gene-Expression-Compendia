@@ -366,14 +366,12 @@ STRESS_GO_ROOTS: dict[str, tuple[str, str]] = {
 	"Salinity":			 ("GO:0009651", "response to salt stress"),
 	"Heat":				 ("GO:0009408", "response to heat"),
 	"Cold":				 ("GO:0009409", "response to cold"),
-	# "Chemical":			 ("GO:0042221", "response to chemical"),
 	# "Biotic":			   ("GO:0009607", "response to biotic stimulus"), DROPPED, too generic
 	# "Abiotic":			  ("GO:0009628", "response to abiotic stimulus"), DROPPED, too generic
 	"Low Light":			("GO:0009642", "response to light intensity"),
 	"High Light":		   ("GO:0009644", "response to high light intensity"),
 	"Other Light":		  ("GO:0009416", "response to light stimulus"),
 	"Cut":				  ("GO:0009611", "response to wounding"),
-	# "Nutrient Deficiency":  ("GO:0031667", "response to nutrient levels"),
 	"Chemical":             ("GO:0062197", "cellular response to chemical stress"),
     "Nutrient Deficiency":  ("GO:0042594", "response to starvation"),
 }

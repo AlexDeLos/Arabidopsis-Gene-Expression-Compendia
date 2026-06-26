@@ -816,8 +816,8 @@ if __name__ == "__main__":
 		just_plot=False,
 		data_types=['filter_norm', 'combat_norm', 'rankin'],
 		Fulls=[True] if RNA_USED else [True],
-		filter_low_combination=[0],
-		pures=[False],
+		filter_low_combination=[0,10],
+		pures=[False,True],
 		tissues=[None],
 		experiment_version="matched_control_limited_treat_set_v3",
 		# experiment_version - "matched_control_and_ORA_v1" -> version with all the treatments
