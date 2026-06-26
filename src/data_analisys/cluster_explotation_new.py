@@ -23,7 +23,6 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	load_labels_study,
 	make_df_from_labels,
 	plot_metrics_comparison,
-	prepare_data_structure,
 	run_bulkformer,
 	run_pca,
 	run_tsne,
@@ -1016,11 +1015,15 @@ if __name__ == "__main__":
 			# df needs to be samples x Genes (samples x features)
 			df = df.T
 			print(f"df is now {df.shape}")
-			n_components, cumulative_variance, pca = find_n_components_for_variance(
-				df,# Samples x Genes
+			n_components, cumulative_variance, pca, pca_embedding = find_n_components_for_variance(
+				df,
 				variance_threshold=0.90,
-				save_path = output_dir
+				save_path=output_dir
 			)
+			pca_embedding = pca_embedding[:, :n_components]
+			df = pd.DataFrame(pca_embedding, index=df.index, columns=[f"PC{i + 1}" for i in range(pca_embedding.shape[1])])
+			#make the df now be (samples x principal components) instead of (samples x Genes)
+			print(f"  Sliced PCA embedding to {pca_embedding.shape[1]} components (90% variance subset)")
 			if FULL:
 				# check the the df is correctly aligned with the required input, non T df is samples x Genes (samples x features) now
 				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
@@ -1060,7 +1063,6 @@ if __name__ == "__main__":
 				labels_dict=labels_map,
 				sample_study_map=SAMPLE_STUDY_MAP,
 				experiment_name=file,
-				n_pca_components= n_components,
 				axis_weights=DATA_DRIVEN_WEIGHTS
 			)
 			all_dist_metrics[file] = dist_metrics

@@ -672,9 +672,9 @@ def find_n_components_for_variance(
     variance_threshold: float = 0.90,
     max_components: int | None = 1000,
     random_state: int = 42,
-    plot: bool = True,
+    plot: bool = False,
     save_path: str | None = None,
-) -> tuple[int, np.ndarray, PCA]:
+) -> tuple[int, np.ndarray, PCA, np.ndarray]:
     """
     Fit PCA on a data matrix and determine how many principal components
     are needed to explain a target fraction of variance.
@@ -717,8 +717,7 @@ def find_n_components_for_variance(
 
     print(f"  Fitting PCA with {n_fit} components (of {upper_bound} possible) on a {X.shape} matrix...")
     pca = PCA(n_components=n_fit, random_state=random_state)
-    pca.fit(X)
-
+    embedding = pca.fit_transform(X)            # <-- was pca.fit(X)
     cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
 
     # Smallest n_components hitting the threshold. If even the full fit
@@ -780,7 +779,7 @@ def find_n_components_for_variance(
         else:
             plt.close(fig)
 
-    return n_components_needed, cumulative_variance, pca
+    return n_components_needed, cumulative_variance, pca, embedding
 
 
 def run_umap(pca_embedding, n_components=2):

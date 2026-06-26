@@ -330,7 +330,6 @@ def compute_global_distance_metrics(
     labels_map: Dict[str, Dict[str, str]],
     study_map: pd.DataFrame,
     axis_weights: Optional[Dict[str, float]] = None,
-    n_pca_components: int | None = None,
     precomputed_pca: Optional[np.ndarray] = None,
     verbose: bool = True,
 ) -> Dict[str, object]:
@@ -353,22 +352,15 @@ def compute_global_distance_metrics(
     # --------------------------------------------------
     # PCA distance matrix
     # --------------------------------------------------
-    if n_pca_components:
-        dist_matrix, ordered_samples = _pca_distances(
-            expr_df,
-            n_pca_components,
-            precomputed_pca,
-        )
-    else:
-        # Samples × Genes convention:
-        # rows = samples
-        # columns = genes
-        ordered_samples = list(expr_df.index)
+    # Samples × Principal_components convention:
+    # rows = samples
+    # columns = Principal_components
+    ordered_samples = list(expr_df.index)
 
-        dist_matrix = pairwise_distances(
-            expr_df,
-            metric="euclidean",
-        )
+    dist_matrix = pairwise_distances(
+        expr_df,
+        metric="euclidean",
+    )
     print("distance matrix built")
     # --------------------------------------------------
     # Sanity checks
@@ -638,7 +630,6 @@ def run_distance_evaluation(
     labels_dict: Dict[str, Dict[str, str]],
     sample_study_map: pd.DataFrame,
     experiment_name: str = "",
-    n_pca_components: int | None = None,
     axis_weights: Optional[Dict[str, float]] = None,
     verbose: bool = True,
 ) -> pd.DataFrame:
@@ -674,7 +665,6 @@ def run_distance_evaluation(
         labels_map=labels_dict,
         study_map=sample_study_map,
         axis_weights=axis_weights,
-        n_pca_components=n_pca_components,
         verbose=verbose,
     )
 
