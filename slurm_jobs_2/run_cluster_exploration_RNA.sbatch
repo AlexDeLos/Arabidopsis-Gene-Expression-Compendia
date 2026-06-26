@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
-#SBATCH --time=8:30:00
+#SBATCH --time=4:30:00
 #SBATCH --qos=medium
 #SBATCH --mem=520G
 #SBATCH --cpus-per-task=1
@@ -30,13 +30,6 @@ if [ ! -f "${SIF}" ]; then
     find "${STORAGE}" -name "*.sif" 2>/dev/null
     exit 1
 fi
-
-# apptainer exec --nv \
-#     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
-#     --bind "$REPO_DIR":/repo \
-#     --pwd /repo \
-#     "$SIF" \
-#     python src/data_analisys/cluster_explotation_new.py
 
 echo "+++++++++++++++++ NOW RUNNING RNA DATA +++++++++++++++++"
 export OMP_NUM_THREADS=1
