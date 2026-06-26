@@ -39,6 +39,9 @@ fi
 #     python src/data_analisys/cluster_explotation_new.py
 
 echo "+++++++++++++++++ NOW RUNNING RNA DATA +++++++++++++++++"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 apptainer exec --nv \
     --bind "$BIG_STORAGE":"$BIG_STORAGE" \
     --bind "$REPO_DIR":/repo \

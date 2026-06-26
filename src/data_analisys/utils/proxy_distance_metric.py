@@ -348,7 +348,9 @@ def compute_global_distance_metrics(
 
     if axis_weights is None:
         axis_weights = DEFAULT_AXIS_WEIGHTS
-
+    nan_count = np.isnan(expr_df).sum()
+    inf_count = np.isinf(expr_df).sum()
+    print(f"DEBUG: Found {nan_count} NaNs and {inf_count} Infs in the matrix!")
     # --------------------------------------------------
     # PCA distance matrix
     # --------------------------------------------------
