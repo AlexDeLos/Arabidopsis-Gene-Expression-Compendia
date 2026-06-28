@@ -41,7 +41,7 @@ SOFT_PATH = f"{CORE_DATA_DIR}old_geo_downloads/"
 FIGURES_DIR = f"{STORAGE_DIR}/outputs/{EXPERIMENT_NAME}{'_RNA' if RNA_USED else ''}/"
 
 FILTERING_FIGURES = f"{FIGURES_DIR}filter_figures/{EXPERIMENT_NAME}/"
-CLUSTER_EXPLORATION_FIGURES_DIR = f"{FIGURES_DIR}exploration_figures_jun_29/"
+CLUSTER_EXPLORATION_FIGURES_DIR = f"{FIGURES_DIR}exploration_figures_final/"
 MODEL = "TULIP_1.2"
 if RNA_USED:
     MODEL = MODEL + "_RNA"
