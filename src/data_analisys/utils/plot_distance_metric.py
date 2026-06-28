@@ -253,87 +253,39 @@ def plot_distance_metrics(
 # 4. SIMILARITY-DISTANCE DISTRIBUTION PLOT
 # ==================================================
 def plot_similarity_distance_scatter(
-    pairwise_df: pd.DataFrame,
-    output_folder: str | None = None,
-    experiment_name: str = "SimilarityDistance",
-    show: bool = False,
-    max_points: int = 100_000,
-) -> plt.Figure:
+    pairwise_df: pd.DataFrame, 
+    output_folder: str | None = None, 
+    experiment_name: str = "SimilarityDistance", 
+    show: bool = False, 
+    max_points: int = 100_000, 
+) -> plt.Figure: 
+
+    df = pairwise_df.copy() 
+
+    if len(df) > max_points: 
+        df = df.sample(max_points, random_state=42) 
+
+    corr, pval = spearmanr(df["Distance"], df["Similarity"]) 
+
+    fig, ax = plt.subplots(figsize=(10, 8)) 
+
+    ax.scatter(df["Distance"], df["Similarity"], alpha=0.05, s=4) 
+
+    ax.set_xlabel("PCA distance") 
+    ax.set_ylabel("Biological similarity") 
     
-    df = pairwise_df.copy()
+    ax.set_title(f"Similarity vs Distance\nSpearman = {corr:.3f} (p={pval:.2e})") 
 
-    if len(df) > max_points:
-        df = df.sample(max_points, random_state=42)
+    ax.grid(linestyle=":", alpha=0.5) 
 
-    df = df.dropna(subset=["Distance", "Similarity"])
+    if output_folder is not None: 
+        os.makedirs(output_folder, exist_ok=True) 
+        path = os.path.join(output_folder, f"{experiment_name}.pdf") 
+        
+        fig.savefig(path, dpi=300, bbox_inches="tight") 
+        print(f"[DistMetrics] Scatter saved → {path}") 
 
-    corr, pval = spearmanr(df["Distance"], df["Similarity"])
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-
-    df["Similarity"] = df["Similarity"].round(4)
-    unique_sims = np.sort(df["Similarity"].unique())
-    dist_data = [df[df["Similarity"] == sim]["Distance"].values for sim in unique_sims]
-    
-    if len(unique_sims) > 1:
-        diffs = np.diff(unique_sims)
-        diffs = diffs[diffs > 0]
-        median_diff = np.median(diffs) if len(diffs) > 0 else 0.1
-        box_width = median_diff * 0.6
-    else:
-        box_width = 0.1
-
-    ax.boxplot(
-        dist_data,
-        positions=unique_sims,
-        vert=False,
-        widths=box_width,
-        patch_artist=True,        
-        showmeans=True,           
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "red",
-            "markeredgecolor": "maroon",
-            "markersize": 8
-        },
-        boxprops=dict(facecolor="#4C72B0", color="#203a61", alpha=0.6, linewidth=2),
-        medianprops=dict(color="black", linewidth=2.5),
-        flierprops=dict(marker=".", color="gray", alpha=0.1, markersize=4)
-    )
-
-    means = [np.mean(d) if len(d) > 0 else np.nan for d in dist_data]
-    ax.plot(
-        means,
-        unique_sims,
-        color="red", 
-        linestyle="--", 
-        linewidth=2.5, 
-        label="Mean Distance",
-        zorder=5                  
-    )
-
-    # Note: Axes fonts are handled globally by plt.rcParams now
-    ax.set_xlabel("PCA distance", fontweight="bold")
-    ax.set_ylabel("Biological similarity", fontweight="bold")
-    
-    ax.set_title(
-        (
-            "Similarity vs Distance Distribution\n"
-            f"Spearman ρ = {corr:.3f} (p={pval:.2e})"
-        ),
-        pad=20
-    )
-
-    ax.grid(linestyle=":", alpha=0.7, linewidth=1.5)
-    ax.legend(loc="upper right")
-
-    if output_folder is not None:
-        os.makedirs(output_folder, exist_ok=True)
-        path = os.path.join(output_folder, f"{experiment_name}.pdf")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"[DistMetrics] Distribution plot saved → {path}")
-
-    if show:
-        plt.show()
+    if show: 
+        plt.show() 
 
     return fig

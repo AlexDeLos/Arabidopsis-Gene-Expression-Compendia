@@ -295,22 +295,32 @@ def compute_global_distance_metrics(
 		for sample in ordered_samples
 	}
 	print("labels set up")
+
+	n_samples = len(ordered_samples)
+
 	# --------------------------------------------------
-	# Biological separation metric
+	# Biological separation metric (unchanged: flat pairwise)
 	# --------------------------------------------------
 
 	similar_sum = 0.0
 	dissimilar_sum = 0.0
 
 	# --------------------------------------------------
-	# Inter / intra study metrics
+	# Per-sample accumulators for Gd_inter / Gd_intra
+	#
+	# The paper defines these as an average-of-per-sample-averages:
+	# each sample s contributes ONE number (its own pool average),
+	# and those per-sample numbers are then averaged uniformly
+	# across all samples. This keeps studies of very different
+	# size (we have ~868 batches) from dominating the global score
+	# quadratically, which a flat pairwise average would allow.
 	# --------------------------------------------------
 
-	inter_weighted_sum = 0.0
-	intra_weighted_sum = 0.0
+	inter_sum_by_sample = np.zeros(n_samples, dtype=np.float64)
+	inter_count_by_sample = np.zeros(n_samples, dtype=np.int64)
 
-	inter_pairs = 0
-	intra_pairs = 0
+	intra_sum_by_sample = np.zeros(n_samples, dtype=np.float64)
+	intra_count_by_sample = np.zeros(n_samples, dtype=np.int64)
 
 	# --------------------------------------------------
 	# Similarity-distance correlation data
@@ -322,13 +332,13 @@ def compute_global_distance_metrics(
 	# Pairwise loop
 	# --------------------------------------------------
 
-	for i in range(len(ordered_samples)):
+	for i in range(n_samples):
 
 		sample_i = ordered_samples[i]
 		labels_i = label_lookup[sample_i]
 		study_i = study_lookup[sample_i]
 
-		for j in range(i + 1, len(ordered_samples)):
+		for j in range(i + 1, n_samples):
 
 			sample_j = ordered_samples[j]
 			labels_j = label_lookup[sample_j]
@@ -346,6 +356,8 @@ def compute_global_distance_metrics(
 			# Store pair for plotting/correlation
 			# ------------------------------------------
 
+			same_study = study_i == study_j
+
 			pairwise_records.append(
 				{
 					"Sample_A": sample_i,
@@ -354,12 +366,12 @@ def compute_global_distance_metrics(
 					"Study_B": study_j,
 					"Distance": distance,
 					"Similarity": float(similarity),
-					"SameStudy": study_i == study_j,
+					"SameStudy": same_study,
 				}
 			)
 
 			# ------------------------------------------
-			# Biological separation
+			# Biological separation (flat pairwise — unchanged)
 			# ------------------------------------------
 
 			similar_sum += distance * similarity
@@ -370,26 +382,32 @@ def compute_global_distance_metrics(
 			)
 
 			# ------------------------------------------
-			# Inter / intra study metrics
+			# Inter / intra study metrics — per-sample pools.
+			#
+			# Every pair (i, j) belongs to BOTH sample i's pool
+			# and sample j's pool, so it contributes to both
+			# accumulators below.
 			# ------------------------------------------
 
 			weighted_distance = (
 				distance * similarity
 			)
 
-			if study_i == study_j:
+			if same_study:
 
-				intra_weighted_sum += (
-					weighted_distance
-				)
-				intra_pairs += 1
+				intra_sum_by_sample[i] += weighted_distance
+				intra_count_by_sample[i] += 1
+
+				intra_sum_by_sample[j] += weighted_distance
+				intra_count_by_sample[j] += 1
 
 			else:
 
-				inter_weighted_sum += (
-					weighted_distance
-				)
-				inter_pairs += 1
+				inter_sum_by_sample[i] += weighted_distance
+				inter_count_by_sample[i] += 1
+
+				inter_sum_by_sample[j] += weighted_distance
+				inter_count_by_sample[j] += 1
 
 	# --------------------------------------------------
 	# Pairwise dataframe
@@ -444,32 +462,70 @@ def compute_global_distance_metrics(
 	)
 
 	# --------------------------------------------------
-	# G_d_inter
+	# G_d_inter — average over samples of each sample's
+	# own inter-study pool average.
 	# --------------------------------------------------
 
-	G_d_inter = (
-		(inter_weighted_sum / inter_pairs)
-		/ dist_bar
-		if inter_pairs > 0 and dist_bar > 0
-		else float("nan")
-	)
+	valid_inter = inter_count_by_sample > 0
+
+	if valid_inter.any() and dist_bar > 0:
+
+		per_sample_inter_avg = (
+			inter_sum_by_sample[valid_inter]
+			/ inter_count_by_sample[valid_inter]
+		)
+
+		# Denominator is |S|, i.e. ALL samples, per the paper —
+		# not just the ones with a non-empty inter pool. A sample
+		# with no inter-study comparisons (e.g. singleton study
+		# pool ... actually inter pool is rarely empty, but guard
+		# anyway) contributes 0 implicitly only if we choose to;
+		# here we average only over samples that *have* a valid
+		# pool, matching the sum-over-s-in-S formula under the
+		# assumption every sample has at least one inter partner.
+		G_d_inter = (
+			per_sample_inter_avg.sum()
+			/ n_samples
+		) / dist_bar
+
+	else:
+
+		G_d_inter = float("nan")
 
 	# --------------------------------------------------
-	# G_d_intra
+	# G_d_intra — average over samples of each sample's
+	# own intra-study pool average.
 	# --------------------------------------------------
 
-	G_d_intra = (
-		(intra_weighted_sum / intra_pairs)
-		/ dist_bar
-		if intra_pairs > 0 and dist_bar > 0
-		else float("nan")
-	)
+	valid_intra = intra_count_by_sample > 0
+
+	if valid_intra.any() and dist_bar > 0:
+
+		per_sample_intra_avg = (
+			intra_sum_by_sample[valid_intra]
+			/ intra_count_by_sample[valid_intra]
+		)
+
+		# Samples in a singleton study (no other sample in the
+		# same study) have no intra pool and are excluded from
+		# the sum, consistent with X_intra(s) being undefined/
+		# empty for those samples.
+		G_d_intra = (
+			per_sample_intra_avg.sum()
+			/ n_samples
+		) / dist_bar
+
+	else:
+
+		G_d_intra = float("nan")
 
 	# --------------------------------------------------
 	# Logging
 	# --------------------------------------------------
 
 	if verbose:
+
+		n_singleton_studies = int((~valid_intra).sum())
 
 		print(
 			f"[DistMetrics] Dist_bar(S) = "
@@ -484,6 +540,12 @@ def compute_global_distance_metrics(
 		print(
 			f"[DistMetrics] G_d_intra = "
 			f"{G_d_intra:.6f}"
+		)
+
+		print(
+			f"[DistMetrics] Samples with no intra-study partner "
+			f"(excluded from G_d_intra numerator, still counted "
+			f"in |S| denominator) = {n_singleton_studies}"
 		)
 
 		print(
