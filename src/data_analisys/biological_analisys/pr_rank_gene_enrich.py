@@ -369,7 +369,8 @@ def perform_gsea_enrichment(
 		outdir=f"{out_path}{stress}_gsea_prerank_results",
 		ascending=False,
 		verbose=True,
-		max_size=1000
+		min_size=70,
+		max_size=782
 	)
 
 	# ------------------------------------------------------------------

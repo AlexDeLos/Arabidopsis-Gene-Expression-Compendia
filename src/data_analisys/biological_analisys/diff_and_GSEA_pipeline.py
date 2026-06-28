@@ -81,6 +81,7 @@ STRESS_IDS: set[str] = set(STRESS_GO_ROOTS.keys())
 obodag, geneid2gos = get_go_data(
 	GO_OBO_FILE,
 	ANNOTATION_FILE,
+	namespaces={"biological_process"},
 	stress_root_go_ids=STRESS_IDS,
 )
 #: Sample IDs used for the single-study sanity check (subset of GSE36649).
@@ -635,7 +636,7 @@ def run_diff_exp_and_enrichment(
 										rank_col="rank",
 										obodag=obodag,
 										geneid2gos=geneid2gos,
-										keys=list(map(lambda x: x[0],list(STRESS_GO_ROOTS_RAW.values()))),
+										keys= None, #list(map(lambda x: x[0],list(STRESS_GO_ROOTS_RAW.values()))),
 										stress=stress,
 										out_path=gsea_outdir,
 										permutations=ITERATIONS,
@@ -705,15 +706,15 @@ def run_diff_exp_and_enrichment(
 			# ------------------------------------------------------------------
 			# Spider plots — one set per (filter × pure) combination
 			# ------------------------------------------------------------------
-			spider_dir = build_spider_dir(fil, pure_str)
-			get_spider_plots(
-				path=spider_dir,
-				data_types=data_types,
-				Fulls=Fulls,
-				tissues=tissues,
-				pure_val=pure,
-				filter_val=fil
-			)
+			# spider_dir = build_spider_dir(fil, pure_str)
+			# get_spider_plots(
+			# 	path=spider_dir,
+			# 	data_types=data_types,
+			# 	Fulls=Fulls,
+			# 	tissues=tissues,
+			# 	pure_val=pure,
+			# 	filter_val=fil
+			# )
 			print("[INFO] PLotting general plots")
 			# ------------------------------------------------------------------
 			# Pathway recovery overview plots — one pair per (tissue × Full)
@@ -748,7 +749,7 @@ def run_diff_exp_and_enrichment(
 						treatments=TREATMENTS,
 						normalizations=data_types,
 						filter_options=filter_low_combination,
-						sig_threshold=0.01,
+						sig_threshold=0.25,
 					)
 					plot_pathway_recovery_binary(
 						recovery_df,
@@ -757,7 +758,7 @@ def run_diff_exp_and_enrichment(
 						treatments=TREATMENTS,
 						normalizations=data_types,
 						filter_options=filter_low_combination,
-						sig_threshold=0.01,
+						sig_threshold=0.25,
 					)
 
 	print("Pipeline complete.")
@@ -816,8 +817,10 @@ if __name__ == "__main__":
 		just_plot=False,
 		data_types=['filter_norm', 'combat_norm', 'rankin'],
 		Fulls=[True] if RNA_USED else [True],
-		filter_low_combination=[0,10],
-		pures=[False,True],
+		# filter_low_combination=[0,10],
+		# pures=[False,True],
+		filter_low_combination=[0],
+		pures=[False],
 		tissues=[None],
 		experiment_version="matched_control_limited_treat_set_v3",
 		# experiment_version - "matched_control_and_ORA_v1" -> version with all the treatments

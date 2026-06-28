@@ -20,11 +20,7 @@ from typing import Dict, Optional
 from scipy.stats import spearmanr, pearsonr
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
-from sklearn.metrics import pairwise_distances
 
-from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
-from src.constants import RNA_USED
 # ---------------------------------------------------------------------------
 # Label axis weights  (edit to reflect biological importance)
 # ---------------------------------------------------------------------------
@@ -246,78 +242,6 @@ def _build_label_lookup(
 	return lookup
 
 
-# ---------------------------------------------------------------------------
-# PCA distance helper
-# ---------------------------------------------------------------------------
-
-def _pca_distances(
-	expr_df: pd.DataFrame,
-	n_components: int = 50,
-	use_precomputed_pca: Optional[np.ndarray] = None,
-) -> tuple[np.ndarray, list[str]]:
-	"""
-	Project expr_df (samples × genes) into PCA space and return:
-
-		- distance matrix (n_samples × n_samples)
-		- ordered list of sample IDs matching matrix rows/cols
-	"""
-
-	samples = list(expr_df.index)
-
-	# Samples × Genes
-	X = expr_df.values
-
-	if use_precomputed_pca is not None:
-
-		coords = use_precomputed_pca
-
-		if coords.shape[0] != len(samples):
-			raise ValueError(
-				"Precomputed PCA rows do not match number of samples. "
-				f"Got {coords.shape[0]} rows for {len(samples)} samples."
-			)
-
-	else:
-
-		n_comp = min(
-			n_components,
-			X.shape[0] - 1,
-			X.shape[1],
-		)
-
-		pca = PCA(n_components=n_comp)
-
-		# returns (n_samples, n_components)
-		coords = pca.fit_transform(X)
-
-	dist_matrix = pairwise_distances(
-		coords,
-		metric="euclidean",
-	)
-
-	return dist_matrix, samples
-
-def compute_mean_pairwise_distance(
-	dist_matrix: np.ndarray,
-) -> float:
-	"""
-	Mean distance across all unique sample pairs.
-	"""
-
-	n = dist_matrix.shape[0]
-
-	if n < 2:
-		warnings.warn(
-			"Cannot compute mean pairwise distance "
-			"with fewer than 2 samples."
-		)
-		return float("nan")
-
-	total_distance = dist_matrix.sum() / 2.0
-
-	n_pairs = n * (n - 1) / 2.0
-
-	return float(total_distance / n_pairs)
 
 # ---------------------------------------------------------------------------
 # Main metric function
@@ -326,11 +250,12 @@ def compute_mean_pairwise_distance(
 
 
 def compute_global_distance_metrics(
-	expr_df: pd.DataFrame,
+	dist_matrix: np.ndarray,
+	dist_bar,
+	ordered_samples:list,
 	labels_map: Dict[str, Dict[str, str]],
 	study_map: pd.DataFrame,
-	axis_weights: Optional[Dict[str, float]] = None,
-	precomputed_pca: Optional[np.ndarray] = None,
+	axis_weights: Dict[str, float],
 	verbose: bool = True,
 ) -> Dict[str, object]:
 	"""
@@ -346,24 +271,6 @@ def compute_global_distance_metrics(
 			Genes/features
 	"""
 
-	if axis_weights is None:
-		axis_weights = DEFAULT_AXIS_WEIGHTS
-	nan_count = np.isnan(expr_df).sum()
-	inf_count = np.isinf(expr_df).sum()
-	print(f"DEBUG: Found {nan_count} NaNs and {inf_count} Infs in the matrix!")
-	# --------------------------------------------------
-	# PCA distance matrix
-	# --------------------------------------------------
-	# Samples × Principal_components convention:
-	# rows = samples
-	# columns = Principal_components
-	ordered_samples = list(expr_df.index)
-
-	dist_matrix = pairwise_distances(
-		expr_df,
-		metric="euclidean",
-	)
-	print("distance matrix built")
 	# --------------------------------------------------
 	# Sanity checks
 	# --------------------------------------------------
@@ -389,12 +296,6 @@ def compute_global_distance_metrics(
 		for sample in ordered_samples
 	}
 	print("labels set up")
-	
-	dist_bar = compute_mean_pairwise_distance(
-		dist_matrix
-	)
-	print("mean distance calculated")
-
 	# --------------------------------------------------
 	# Biological separation metric
 	# --------------------------------------------------
@@ -628,11 +529,13 @@ def compute_global_distance_metrics(
 # ---------------------------------------------------------------------------
 
 def run_distance_evaluation(
-	data_df: pd.DataFrame,
+	dist_matrix: np.ndarray,
+	dist_bar,
+	ordered_samples:list,
 	labels_dict: Dict[str, Dict[str, str]],
 	sample_study_map: pd.DataFrame,
-	experiment_name: str = "",
-	axis_weights: Optional[Dict[str, float]] = None,
+	experiment_name: str,
+	axis_weights: Dict[str, float],
 	verbose: bool = True,
 ) -> pd.DataFrame:
 	"""
@@ -653,17 +556,10 @@ def run_distance_evaluation(
 	)
 	all_dist_metrics[file] = dist_metrics
 	"""
-	if verbose:
-		print(f"\n[DistMetrics] Running for stage: '{experiment_name}'")
-	if RNA_USED:
-		data_df.index = [get_gsm_id(col.split('_')[1]) for col in data_df.index]
-	if RNA_USED:
-		try:
-			sample_study_map.index = [get_gsm_id(ind.split('_')[1]) for ind in sample_study_map.index]
-		except IndexError:
-			pass
 	results = compute_global_distance_metrics(
-		expr_df=data_df,
+		dist_matrix=dist_matrix,
+		dist_bar=dist_bar,
+		ordered_samples=ordered_samples,
 		labels_map=labels_dict,
 		study_map=sample_study_map,
 		axis_weights=axis_weights,
@@ -672,3 +568,4 @@ def run_distance_evaluation(
 
 	row = {"experiment": experiment_name, **results}
 	return pd.DataFrame([row])
+

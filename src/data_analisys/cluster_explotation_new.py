@@ -1,9 +1,12 @@
 import json
 import os
 import sys
+import random
+import itertools
+import warnings
 
-import numpy as np
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.cluster import MiniBatchKMeans
@@ -11,9 +14,12 @@ from sklearn.metrics import adjusted_rand_score, silhouette_score
 from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier
 
+from sklearn.metrics import pairwise_distances
+
 module_dir = "./"
 sys.path.append(module_dir)
 
+from src.data_analisys.utils.cluster_exploration_utils_final import get_gsm_id  # noqa: E402
 from src.constants import CLUSTER_EXPLORATION_FIGURES_DIR, LABELS_PATH, RNA_USED, SAMPLE_STUDY_MAP, STORAGE_DIR	# noqa: E402
 from src.constants_labeling import LABELS as LABEL_AXES	# noqa: E402
 from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E402
@@ -764,6 +770,29 @@ def _build_enhancement_script(js_data, categories):
 """
 
 
+def compute_mean_pairwise_distance(
+	dist_matrix: np.ndarray,
+) -> float:
+	"""
+	Mean distance across all unique sample pairs.
+	"""
+
+	n = dist_matrix.shape[0]
+
+	if n < 2:
+		warnings.warn(
+			"Cannot compute mean pairwise distance "
+			"with fewer than 2 samples."
+		)
+		return float("nan")
+
+	total_distance = dist_matrix.sum() / 2.0
+
+	n_pairs = n * (n - 1) / 2.0
+
+	return float(total_distance / n_pairs)
+
+
 # ==========================================
 # --- CORE PIPELINE FUNCTION ---
 # ==========================================
@@ -948,13 +977,12 @@ def run_exploration_on_dataframe(data_df: pd.DataFrame, labels_dict: dict, exper
 
 if __name__ == "__main__":
 	# parser = argparse.ArgumentParser()
-	# # parser.add_argument("--ma", action="store_true", default=False)
 	# parser.add_argument("--rna", action="store_true", default=False)
 	# args = parser.parse_args()
-	N_SAMPLES = None
+	N_SAMPLES = 1000
 	FULL = True
 	LIGHT_WEIGHT = True
-	DATA_DRIVEN_WEIGHTS = None
+	
 	all_metrics = {}
 	all_bulk_metrics = {}
 	all_umaps = {}
@@ -962,71 +990,95 @@ if __name__ == "__main__":
 	all_metas = {}
 	all_bulk = {}
 	all_dist_metrics = {}
-	DATA_DRIVEN_WEIGHTS ={
-		"tissue": 1,
-		"developmental_stage": 1,
-		"treatment": 1,
-		# "ecotype": 1,
-		# "modification": 1,
-		"medium": 1,
-		"treatment_intensity": 1,
+	best_weights_per_stage = {}  # Tracks the optimal weights for each stage
+
+# --- [WEIGHT TESTING CONSTRAINTS] ---
+	# Set to 1 or 0 to LOCK the axis to that specific value.
+	# Set to None to leave it UNLOCKED (the code will test both 0 and 1).
+	WEIGHT_CONSTRAINTS = {
+		"tissue": 1,				  # LOCKED: Always active
+		"developmental_stage": 1,	 # LOCKED: Always active
+		"treatment": None,			# UNLOCKED: Test both 0 and 1
+		"ecotype": 1,				 # LOCKED: Always disabled
+		"modification": 0,		 # UNLOCKED: Test both 0 and 1
+		"medium": 0,			   # UNLOCKED: Test both 0 and 1
+		"treatment_intensity": None,  # UNLOCKED: Test both 0 and 1
 	}
-	print("RUnning a light version of the code")
+	
+	weight_keys = list(WEIGHT_CONSTRAINTS.keys())
+	
+	# 1. Dynamically build the search pool per category
+	# If locked, list holds 1 element (e.g., [1]). If unlocked, list holds 2 elements ([0, 1]).
+	choices = [
+		[WEIGHT_CONSTRAINTS[k]] if WEIGHT_CONSTRAINTS[k] is not None else [0, 1]
+		for k in weight_keys
+	]
+	
+	# 2. Unpack choices (*) to generate ONLY the permitted combinations
+	binary_combinations = []
+	for comb in itertools.product(*choices):
+		# Create a temporary mapping to perform a safety check
+		temp_weights = {weight_keys[i]: comb[i] for i in range(len(weight_keys))}
+		if any(temp_weights.values()):  # Prevents testing an all-zero vector
+			binary_combinations.append(comb)
+			
+	print(f"🔒 Applied constraints. Generated {len(binary_combinations)} targeted combinations to test.")
+
+	print("Running a light version of the code")
 	print(f"Loading Labels Map from {LABELS_PATH}...")
 	labels_map = make_df_from_labels(load_labels_study(LABELS_PATH)).to_dict()
-	# "Salmon_RNAseq_Combined_TPM", 
+	
 	stages = ["filter_norm", "combat_norm", "rankin"] if RNA_USED else ["filter_norm", "combat_norm", "rankin"]
+	
 	for file in stages:
 		data_path = f"{STORAGE_DIR}final_data/rnaseq_processed/{file}.csv" if RNA_USED else f"{STORAGE_DIR}final_data/{file}.csv"
 
 		if os.path.exists(data_path):
 			print(f"\n{'=' * 50}\nProcessing {file}\n{'=' * 50}")
-			# df = pd.read_csv(data_path, index_col=0)
+			
+			# --- [DATA LOADING & PCA PROCESSING (Done ONCE per stage)] ---
 			if N_SAMPLES is not None:
-				# imputed.csv is genes * samples, so columns 1..N_SAMPLES+1 = first N samples
-				print(f"Loading first {data_path} samples (memory-saving mode)...")
-				df = pd.read_csv(data_path, index_col=0, usecols=list(range(N_SAMPLES + 1)))
+				print(f"Loading a random selection of {N_SAMPLES} samples (memory-saving mode)...")
+				header = pd.read_csv(data_path, nrows=0)
+				total_columns = len(header.columns)
+				n_to_sample = min(N_SAMPLES, total_columns - 1)
+				random_col_indices = random.sample(range(1, total_columns), n_to_sample)
+				final_usecols = [0] + random_col_indices
+				df = pd.read_csv(data_path, index_col=0, usecols=final_usecols)
 			else:
 				df = pd.read_csv(data_path, index_col=0)
-			# df = df.iloc[:, :200]
 
-			print("	Cleaning sample IDs...")
+			print(" Cleaning sample IDs...")
 			df.columns = [c.split(".")[0].upper() for c in df.columns]
 
-			print("	Backfilling missing study_ids using get_study()...")
+			print(" Backfilling missing study_ids using get_study()...")
 			if "study_id" not in labels_map:
 				labels_map["study_id"] = {}
 
 			count_filled = 0
 			for sample in df.columns:
 				if sample not in labels_map["study_id"]:
-					# Look up the sample in the map's index; default to "Unknown_Study" if missing
 					study_val = str(SAMPLE_STUDY_MAP.at[sample, "StudyID"]) if sample in SAMPLE_STUDY_MAP.index else "Unknown_Study"
-
 					labels_map["study_id"][sample.upper()] = study_val
 					count_filled += 1
 			print(f"	-> Added study_id labels for {count_filled} samples.")
 
-			n_components = None
 			output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/interactive_plots/{file}"
 			os.makedirs(output_dir, exist_ok=True)
 
-
-			# df needs to be samples x Genes (samples x features)
 			df = df.T
 			print(f"df is now {df.shape}")
 			n_components, cumulative_variance, pca, pca_embedding = find_n_components_for_variance(
-				df,
-				variance_threshold=0.90,
-				save_path=output_dir
+				df, variance_threshold=0.90, save_path=output_dir
 			)
 			pca_embedding = pca_embedding[:, :n_components]
 			df = pd.DataFrame(pca_embedding, index=df.index, columns=[f"PC{i + 1}" for i in range(pca_embedding.shape[1])])
-			#make the df now be (samples x principal components) instead of (samples x Genes)
 			print(f"  Sliced PCA embedding to {pca_embedding.shape[1]} components (90% variance subset)")
+			
 			if FULL:
-				# check the the df is correctly aligned with the required input, non T df is samples x Genes (samples x features) now
-				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir,light_weight=LIGHT_WEIGHT)
+				metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(
+					data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir, light_weight=LIGHT_WEIGHT
+				)
 				all_metrics[file] = metrics_df
 				if not LIGHT_WEIGHT:
 					all_bulk_metrics[file] = bulk_metrics_df
@@ -1034,64 +1086,126 @@ if __name__ == "__main__":
 					all_tsnes[file] = embeddings["TSNE"]
 					all_bulk[file] = embeddings["bulk"]
 				all_metas[file] = meta_df
-			
-			# if file == "filter_norm":
-			# 	# metrics_df, bulk_metrics_df, embeddings, meta_df = run_exploration_on_dataframe(data_df=df, labels_dict=labels_map, experiment_name=file, output_folder=output_dir)
-			# 	DATA_DRIVEN_WEIGHTS = estimate_axis_weights(metrics_df)
-			# 	print(f"Weights: {DATA_DRIVEN_WEIGHTS}")
-			# 	print("\nEstimated biological axis weights:")
-			# 	for k, v in sorted(
-			# 		DATA_DRIVEN_WEIGHTS.items(),
-			# 		key=lambda x: x[1],
-			# 		reverse=True,
-			# 	):
-			# 		print(f"{k:25s} {v:.3f}")
 
-			# assert DATA_DRIVEN_WEIGHTS is not None
+			# --- [COMBINATIONS SWEEP FOR WEIGHTS CORRELATION] ---
+			print(f"\n--> Starting grid search over {len(binary_combinations)} binary weight vectors...")
+			stage_results = []
 
-			# Estimated biological axis weights for full run on microarray:
-			# tissue                    1.934
-			# developmental_stage       1.643
-			# ecotype                   1.047
-			# treatment                 0.850
-			# modification              0.645
-			# medium                    0.441
-			# treatment_intensity       0.441
+			print(f"\n[DistMetrics] Running for stage: '{file}'")
+			if RNA_USED:
+				df.index = [get_gsm_id(col.split('_')[1]) for col in df.index]
+			if RNA_USED:
+				try:
+					SAMPLE_STUDY_MAP.index = [get_gsm_id(ind.split('_')[1]) for ind in SAMPLE_STUDY_MAP.index]
+				except IndexError:
+					pass
+			nan_count = np.isnan(df).sum()
+			inf_count = np.isinf(df).sum()
+			print(f"DEBUG: Found {nan_count} NaNs and {inf_count} Infs in the matrix!")
+			# --------------------------------------------------
+			# PCA distance matrix
+			# --------------------------------------------------
+			# Samples × Principal_components convention:
+			# rows = samples
+			# columns = Principal_components
+			ordered_samples = list(df.index)
 
-			dist_metrics = run_distance_evaluation(
-				data_df=df,
-				labels_dict=labels_map,
-				sample_study_map=SAMPLE_STUDY_MAP,
-				experiment_name=file,
-				axis_weights=DATA_DRIVEN_WEIGHTS
+			dist_matrix = pairwise_distances(
+				df,
+				metric="euclidean",
 			)
-			all_dist_metrics[file] = dist_metrics
+			print("distance matrix built")
+
+			dist_bar = compute_mean_pairwise_distance(
+				dist_matrix
+			)
+			print("mean distance calculated")
+
+			for combo in binary_combinations:
+				# Map the current binary tuple back to its descriptive dictionary keys
+				current_weights = {weight_keys[i]: combo[i] for i in range(len(weight_keys))}
+				
+				# Execute the evaluation on the already-computed PCA data frame
+				dist_metrics = run_distance_evaluation(
+					dist_matrix=dist_matrix,
+					dist_bar=dist_bar,
+					ordered_samples=ordered_samples,
+					labels_dict=labels_map,
+					sample_study_map=SAMPLE_STUDY_MAP,
+					experiment_name=file,
+					axis_weights=current_weights
+				)
+				
+				try:
+					current_corr = dist_metrics.get("SimilarityDistanceSpearman").values[0]
+				except Exception:
+					current_corr = 0 
+				
+				# Store the correlation, the weights, and the full metric payload together
+				stage_results.append({
+					"correlation": current_corr,
+					"weights": current_weights,
+					"dist_metrics": dist_metrics
+				})
+
+			# Sort all combinations by correlation in descending order (highest first)
+			stage_results.sort(key=lambda x: x["correlation"], reverse=False)
+
+			# Print out the Top 10 directly to your stdout logs
+			print(f"\n📊 Top 10 weight combinations for stage '{file}':")
+			for rank, res in enumerate(stage_results[:10], 1):
+				# Extra formatting trick: show which keys are turned "ON" (equal to 1)
+				active_axes = [k for k, v in res["weights"].items() if v == 1]
+				print(f"  Rank {rank:2d} | Corr: {res['correlation']:.4f} | Active Axes: {active_axes}")
+			
+			# Extract the absolute best run to pass seamlessly into your downstream plotting assets
+			all_dist_metrics[file] = stage_results[0]["dist_metrics"]
+			best_weights_per_stage[file] = stage_results[0]["weights"]
+			
+			# Save the clean, sorted list of records (minus the heavy metric objects) to export to text
+			if 'all_ranked_runs' not in locals() and 'all_ranked_runs' not in globals():
+				all_ranked_runs = {}
+			all_ranked_runs[file] = [
+				{"rank": i+1, "correlation": round(res["correlation"], 4), "weights": res["weights"]} 
+				for i, res in enumerate(stage_results)
+			]
 
 		else:
 			print(f"Error: Data file not found at {data_path}")
 
-	# Generate the Comparison Plots
+	# --- [GENERATING COMPARISON PLOTS & SAVING COMPLETE RANKINGS] ---
 	comparison_output_dir = f"{CLUSTER_EXPLORATION_FIGURES_DIR}/Comparisons"
+	os.makedirs(comparison_output_dir, exist_ok=True)
+	
 	try:
-		geeky_file = open(comparison_output_dir+'/geekyfile.txt', 'wt')
-		geeky_file.write(str(DATA_DRIVEN_WEIGHTS))
-		geeky_file.close()
-
+		# Instead of just dumping a single dict, write out a beautifully formatted ranking report
+		with open(os.path.join(comparison_output_dir, 'geekyfile.txt'), 'wt') as geeky_file:
+			import json
+			geeky_file.write("=====================================================================\n")
+			geeky_file.write("	  COMPLETE SIMILARITY WEIGHTS COMBINATION RANKING REPORT		\n")
+			geeky_file.write("=====================================================================\n\n")
+			# Uses json.dumps for clean human-readable indentation of the 128 runs per stage
+			geeky_file.write(json.dumps(all_ranked_runs, indent=4))
+		print(f"💾 Full ranked report successfully written to {comparison_output_dir}/geekyfile.txt")
 	except Exception as e:
 		print(f"Unable to write to file because {e}")
-	os.makedirs(comparison_output_dir, exist_ok=True)
 	for el in all_dist_metrics:
-		plot_similarity_distance_scatter(all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],output_folder=comparison_output_dir,experiment_name= f"dist-sim-plot_{el}")
+		plot_similarity_distance_scatter(
+			all_dist_metrics[el]["PairwiseSimilarityDistanceDF"].iloc[0],
+			output_folder=comparison_output_dir,
+			experiment_name=f"dist-sim-plot_{el}"
+		)
+	
 	plot_distance_metrics(
 		all_dist_metrics=all_dist_metrics,
 		output_folder=comparison_output_dir,
-		experiment_name="Distance_Metrics_Comparison_weighted_tissue_treatment",
+		experiment_name="Distance_Metrics_Comparison_Optimal_Grid_Search",
 		plot_ratio=True
 	)
+	
 	if FULL:
 		print("\nGenerating Metric Comparisons (gene expression space)...")
 		combined_meta = pd.concat(all_metas.values())
-		# Only deduplicate if all columns are hashable
 		try:
 			combined_meta = combined_meta.drop_duplicates()
 		except TypeError:
@@ -1101,10 +1215,8 @@ if __name__ == "__main__":
 		if not LIGHT_WEIGHT:
 			print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
 			plot_metrics_comparison(metrics_dict=all_bulk_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir, experiment_name="Bulk_Latent_Comparison")
-
 			print("Generating linked multi-stage UMAP comparison...")
 			plot_combined_interactive_projections(embeddings_dict=all_umaps, meta_dicts=all_metas, title="UMAP Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_UMAP.html")
-
 			print("Generating linked multi-stage t-SNE comparison...")
 			plot_combined_interactive_projections(embeddings_dict=all_tsnes, meta_dicts=all_metas, title="t-SNE Cross-Stage Comparison", output_path=f"{comparison_output_dir}/Combined_TSNE.html")
 			print("Generating Bulk comparison...")

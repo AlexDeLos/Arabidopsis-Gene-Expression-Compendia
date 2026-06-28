@@ -24,7 +24,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
+from sklearn.preprocessing import MultiLabelBinarizer
 # from torch_sparse import SparseTensor  # pyright: ignore[reportMissingImports]
 from tqdm import tqdm
 
@@ -586,6 +586,8 @@ def load_labels_study_old(labels_dir: str) -> dict:
                 axis_map[axis][gsm_id.upper()] = str(values)
 
     return axis_map
+
+
 
 
 def make_df_from_labels(labels_dict: dict) -> pd.DataFrame:
