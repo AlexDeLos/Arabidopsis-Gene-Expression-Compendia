@@ -15,7 +15,6 @@ comparable samples.
 
 from __future__ import annotations
 
-import warnings
 from typing import Dict, Optional
 from scipy.stats import spearmanr, pearsonr
 import numpy as np

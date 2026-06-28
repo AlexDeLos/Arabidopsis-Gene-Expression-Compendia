@@ -31,7 +31,7 @@ from scipy.stats import spearmanr
 # GLOBAL FONT SIZE SETTINGS
 # Adjust these values to scale text across ALL plots in this file
 # ---------------------------------------------------------------------------
-AXIS_LABEL_SIZE = 320
+AXIS_LABEL_SIZE = 32
 TICK_LABEL_SIZE = 26
 VALUE_LABEL_SIZE = 24
 TITLE_SIZE = 34
