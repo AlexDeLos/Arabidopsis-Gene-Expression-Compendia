@@ -1019,6 +1019,7 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
         combined_data.append(df_copy)
 
     plot_df = pd.concat(combined_data, ignore_index=True)
+    
     # --- DEFINE BACKGROUND COLORS ---
     unique_categories = plot_df["Category"].unique()
     # Use a pastel palette so it doesn't clash with the main bar colors
@@ -1045,61 +1046,72 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
 
     confounding_df = pd.DataFrame(confounding_data)
 
-    sns.set_theme(style="whitegrid", context="talk")
-    # total_plots = len(plot_df) + 1
-    # num_cols = 3
-    # num_rows = math.ceil(total_plots / num_cols)
-    fig, axes = plt.subplots(2, 3, figsize=(24, 12))
+    # --- MASSIVE GLOBAL FONT SCALING FOR PAPER EMBEDDING ---
+    # Increased font_scale to 2.0 to ensure readability when shrunk to A4/Letter size
+    sns.set_theme(style="whitegrid", context="poster", font_scale=2.0)
+    
+    # Explicit sizes bumped significantly
+    TITLE_FS = 44
+    LABEL_FS = 38
+    TICK_FS = 34
+    ANNO_FS = 36
+    LEGEND_TITLE_FS = 40
+    LEGEND_FS = 36
 
-    # Moved the title up slightly to make room for the new legend
-    fig.suptitle("Batch Correction Evaluation & Confounding Check\n(Calculated exclusively on valid known labels)", fontsize=20, fontweight="bold", y=0.98)
+    # 3x2 Grid
+    fig, axes = plt.subplots(3, 2, figsize=(24, 32))
 
-    # Set zorder=3 for barplots so they appear ON TOP of the background bands
+    # Removed the fig.suptitle completely as requested
+
+    # ROW 0
     sns.barplot(data=plot_df, x="Category", y="multinomial_logistic_accuracy", hue="Stage", ax=axes[0, 0], palette="Set2", zorder=3)
-    axes[0, 0].set_title("A. Multinomial Logistic Accuracy (Higher = More Influence)")
-    axes[0, 0].set_ylabel("R² Score")
+    axes[0, 0].set_title("A. Multinomial Logistic Accuracy\n(Higher = More Influence)", fontsize=TITLE_FS, pad=20)
+    axes[0, 0].set_ylabel("R² Score", fontsize=LABEL_FS)
 
     sns.barplot(data=plot_df, x="Category", y="KNN_Purity", hue="Stage", ax=axes[0, 1], palette="Set2", zorder=3)
-    axes[0, 1].set_title("B. KNN Purity (Higher = Better Local Grouping)")
-    axes[0, 1].set_ylabel("Purity Score")
+    axes[0, 1].set_title("B. KNN Purity\n(Higher = Better Local Grouping)", fontsize=TITLE_FS, pad=20)
+    axes[0, 1].set_ylabel("Purity Score", fontsize=LABEL_FS)
     axes[0, 1].set_ylim(0, 1.1)
 
+    # ROW 1
     bio_only_df = plot_df[plot_df["Category"] != "study_id"]
-    sns.barplot(data=bio_only_df, x="Category", y="Batch_ASW_within_Bio", hue="Stage", ax=axes[0, 2], palette="Set2", zorder=3)
-    axes[0, 2].set_title("C. Batch ASW within Bio (Lower = +Study Mixing)")
-    axes[0, 2].set_ylabel("Silhouette Score of Batch")
+    sns.barplot(data=bio_only_df, x="Category", y="Batch_ASW_within_Bio", hue="Stage", ax=axes[1, 0], palette="Set2", zorder=3)
+    axes[1, 0].set_title("C. Batch ASW within Bio\n(Lower = +Study Mixing)", fontsize=TITLE_FS, pad=20)
+    axes[1, 0].set_ylabel("Silhouette Score of Batch", fontsize=LABEL_FS)
 
-    sns.barplot(data=plot_df, x="Category", y="ARI", hue="Stage", ax=axes[1, 0], palette="Set2", zorder=3)
-    axes[1, 0].set_title("D. Adjusted Rand Index (Align. w. clutsers)")
-    axes[1, 0].set_ylabel("ARI Score")
+    sns.barplot(data=plot_df, x="Category", y="ARI", hue="Stage", ax=axes[1, 1], palette="Set2", zorder=3)
+    axes[1, 1].set_title("D. Adjusted Rand Index\n(Align. w. clusters)", fontsize=TITLE_FS, pad=20)
+    axes[1, 1].set_ylabel("ARI Score", fontsize=LABEL_FS)
 
-    sns.barplot(data=plot_df, x="Category", y="Silhouette", hue="Stage", ax=axes[1, 1], palette="Set2", zorder=3)
-    axes[1, 1].set_title("E. Silhouette Score (Higher = Tighter Clusters)")
-    axes[1, 1].set_ylabel("Silhouette Score")
+    # ROW 2
+    sns.barplot(data=plot_df, x="Category", y="Silhouette", hue="Stage", ax=axes[2, 0], palette="Set2", zorder=3)
+    axes[2, 0].set_title("E. Silhouette Score\n(Higher = Tighter Clusters)", fontsize=TITLE_FS, pad=20)
+    axes[2, 0].set_ylabel("Silhouette Score", fontsize=LABEL_FS)
 
-    ax_conf = axes[1, 2]
+    ax_conf = axes[2, 1]
     if not confounding_df.empty:
         sns.barplot(data=confounding_df, x="Variable", y="Cramers_V", ax=ax_conf, color=sns.color_palette("deep")[0], zorder=3)
-        ax_conf.set_title("F. Inherent Confounding: Study ID vs. Biology")
-        ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)")
+        ax_conf.set_title("F. Inherent Confounding:\nStudy ID vs. Biology", fontsize=TITLE_FS, pad=20)
+        ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)", fontsize=LABEL_FS)
         ax_conf.set_ylim(0, 1.1)
 
         for p in ax_conf.patches:
-            ax_conf.annotate(f"{p.get_height():.2f}", (p.get_x() + p.get_width() / 2.0, p.get_height()), ha="center", va="center", xytext=(0, 9), textcoords="offset points", fontsize=12)
+            # Massive annotations for the bar labels
+            ax_conf.annotate(f"{p.get_height():.2f}", (p.get_x() + p.get_width() / 2.0, p.get_height()), ha="center", va="center", xytext=(0, 20), textcoords="offset points", fontsize=ANNO_FS, fontweight="bold")
     else:
-        ax_conf.text(0.5, 0.5, "Metadata missing or insufficient data\nfor confounding check.", ha="center", va="center")
-        ax_conf.set_title("F. Inherent Confounding Check")
+        ax_conf.text(0.5, 0.5, "Metadata missing or insufficient data\nfor confounding check.", ha="center", va="center", fontsize=TITLE_FS)
+        ax_conf.set_title("F. Inherent Confounding Check", fontsize=TITLE_FS, pad=20)
 
-    # --- APPLY BACKGROUNDS & REMOVE X-LABELS ---
+    # --- APPLY BACKGROUNDS, Y-TICKS & REMOVE X-LABELS ---
     active_axes = axes.flatten()
     for i, ax in enumerate(active_axes):
         ax.set_xlabel("")
+        ax.tick_params(axis='y', labelsize=TICK_FS)
 
         # Get the categories from the current axes to paint backgrounds
         ticks = [t.get_text() for t in ax.get_xticklabels()]
 
         for idx, tick_text in enumerate(ticks):
-            # Normalization to match Plot F's capitalized 'Variable' names back to base categories
             clean_name = tick_text.replace(" (Missing)", "").lower()
             match_cat = next((c for c in unique_categories if c.lower() == clean_name), None)
 
@@ -1109,36 +1121,46 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
 
         # Clear out the text on the X-axis completely
         ax.set_xticks([])
-        ax.grid(True, axis="y", zorder=1)  # Ensure Y gridlines stay visible
+        ax.grid(True, axis="y", zorder=1) 
 
-        # Handle the existing 'Stage' legend
+        # Handle the existing 'Stage' legend and explicitly scale it
         if ax.get_legend() is not None:
             if i == 0:
-                ax.legend(title="Pipeline Stage", loc="upper right", bbox_to_anchor=(1.0, 1.05))
+                leg = ax.legend(title="Pipeline Stage", loc="upper right", bbox_to_anchor=(1.0, 1.05), fontsize=LEGEND_FS)
+                leg.get_title().set_fontsize(LEGEND_TITLE_FS)
             else:
                 ax.get_legend().remove()
 
-    # --- ADD THE NEW SECONDARY CATEGORY LEGEND ---
+    # --- SPLIT THE CATEGORY LEGEND INTO 2 LINES ---
     category_patches = [mpatches.Patch(color=color, alpha=0.4, label=cat.replace("_", " ").capitalize()) for cat, color in bg_color_dict.items()]
 
-    # Place it centrally at the very top, under the main title
-    fig.legend(handles=category_patches, title="Label Type (Background Group)", loc="upper center", ncol=len(unique_categories), bbox_to_anchor=(0.5, 0.93), frameon=True, fontsize=12)
+    # Calculate exact midpoint to split into 2 rows dynamically
+    ncol_split = (len(unique_categories) + 1) // 2
 
-    # Adjusted top rect boundary (0.88 instead of 0.96) to make space for the new legend
-    plt.tight_layout(rect=[0, 0.03, 1, 0.88])
+    # Place it centrally at the very top (using the space left by the removed suptitle)
+    fig.legend(
+        handles=category_patches, 
+        title="Label Type (Background Group)", 
+        loc="upper center", 
+        ncol=ncol_split, 
+        bbox_to_anchor=(0.5, 1.0), 
+        frameon=True, 
+        fontsize=LEGEND_FS, 
+        title_fontsize=LEGEND_TITLE_FS
+    )
+
+    # Adjust top rect boundary heavily to fit the 2-line legend up top
+    plt.tight_layout(rect=[0, 0.03, 1, 0.94])
 
     output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
     try:
         plt.savefig(output_path, format="svg", bbox_inches="tight")
-        plt.savefig(output_path, format="svg", bbox_inches="tight", dpi=300)
     except Exception as e:
         print(f"[Warning] Could not save with tight bbox layout: {e}. Saving standard layout.")
         plt.savefig(output_path, format="svg")
-        plt.savefig(output_path, format="svg", dpi=300)
 
-    print(f"  -> Saved comparison plots to {output_path.replace('.svg', '.pdf')}")
+    print(f"  -> Saved comparison plots to {output_path}")
     plt.close()
-
 
 module_dir = "./"
 sys.path.append(module_dir)
