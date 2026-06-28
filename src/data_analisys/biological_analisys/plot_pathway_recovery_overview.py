@@ -91,6 +91,14 @@ def plot_pathway_recovery_percentile(
     Significant cells get a distinct red star next to the percentage.
     The top of each column displays the Median % Recovery and the fraction of significant hits.
     """
+    
+    # --- NEW: MAP RAW PIPELINE STAGES TO CLEAN LABELS ---
+    STAGE_MAPPING = {
+        "filter_norm": "Unnormalized",
+        "combat_norm": "ComBat",
+        "rankin": "Rank-In"
+    }
+
     row_order = treatments if treatments else sorted(recovery_df["treatment"].unique())
     col_order = normalizations if normalizations else sorted(recovery_df["norm_method"].unique())
     row_order = [t for t in row_order if t in recovery_df["treatment"].unique()]
@@ -120,7 +128,11 @@ def plot_pathway_recovery_percentile(
 
     # Standard Major Labels (Bottom)
     ax.set_xticks(range(len(col_order)))
-    ax.set_xticklabels(col_order, rotation=30, ha="right")
+    
+    # --- APPLY MAPPING ONLY FOR VISUAL LABELS ---
+    display_cols = [STAGE_MAPPING.get(c, c) for c in col_order]
+    ax.set_xticklabels(display_cols, rotation=30, ha="right")
+    
     ax.set_yticks(range(len(row_order)))
     ax.set_yticklabels(row_order)
 

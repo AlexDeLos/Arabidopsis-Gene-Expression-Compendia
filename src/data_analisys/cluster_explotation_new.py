@@ -979,7 +979,7 @@ if __name__ == "__main__":
 	# parser = argparse.ArgumentParser()
 	# parser.add_argument("--rna", action="store_true", default=False)
 	# args = parser.parse_args()
-	N_SAMPLES = 1000
+	N_SAMPLES = None
 	FULL = True
 	LIGHT_WEIGHT = True
 	
@@ -998,11 +998,11 @@ if __name__ == "__main__":
 	WEIGHT_CONSTRAINTS = {
 		"tissue": 1,				  # LOCKED: Always active
 		"developmental_stage": 1,	 # LOCKED: Always active
-		"treatment": None,			# UNLOCKED: Test both 0 and 1
+		"treatment": 1,			# UNLOCKED: Test both 0 and 1
 		"ecotype": 1,				 # LOCKED: Always disabled
 		"modification": 0,		 # UNLOCKED: Test both 0 and 1
 		"medium": 0,			   # UNLOCKED: Test both 0 and 1
-		"treatment_intensity": None,  # UNLOCKED: Test both 0 and 1
+		"treatment_intensity": 0,  # UNLOCKED: Test both 0 and 1
 	}
 	
 	weight_keys = list(WEIGHT_CONSTRAINTS.keys())

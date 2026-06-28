@@ -76,11 +76,22 @@ def plot_distance_metrics(
     if not all_dist_metrics:
         raise ValueError("all_dist_metrics is empty.")
 
+    # --- NEW: MAP RAW PIPELINE STAGES TO CLEAN LABELS ---
+    STAGE_MAPPING = {
+        "filter_norm": "Unnormalized",
+        "combat_norm": "ComBat",
+        "rankin": "Rank-In"
+    }
+
     # --------------------------------------------------
     # Extract data
     # --------------------------------------------------
 
     stages = list(all_dist_metrics.keys())
+    
+    # Create mapped labels for the plots
+    display_stages = [STAGE_MAPPING.get(s, s) for s in stages]
+    
     rows = [_extract_row(all_dist_metrics[s]) for s in stages]
 
     inter = np.array(
@@ -181,7 +192,8 @@ def plot_distance_metrics(
                 )
 
     ax_dist.set_xticks(x)
-    ax_dist.set_xticklabels(stages, rotation=15, ha="right")
+    # Apply mapped labels here
+    ax_dist.set_xticklabels(display_stages, rotation=15, ha="right")
     ax_dist.set_ylabel("Normalized weighted distance")
     ax_dist.set_title("Inter-study and intra-study biological distances", pad=20)
     ax_dist.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
@@ -229,7 +241,8 @@ def plot_distance_metrics(
                 )
 
         ax_sep.set_xticks(x)
-        ax_sep.set_xticklabels(stages, rotation=15, ha="right")
+        # Apply mapped labels here
+        ax_sep.set_xticklabels(display_stages, rotation=15, ha="right")
         ax_sep.set_ylabel("Separation score")
         ax_sep.set_title("Biological separation metric")
         ax_sep.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
@@ -278,7 +291,8 @@ def plot_distance_metrics(
             )
 
     ax_corr.set_xticks(x)
-    ax_corr.set_xticklabels(stages, rotation=15, ha="right")
+    # Apply mapped labels here
+    ax_corr.set_xticklabels(display_stages, rotation=15, ha="right")
     ax_corr.set_ylabel("Spearman correlation")
     ax_corr.set_title("Similarity vs distance relationship")
     ax_corr.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")

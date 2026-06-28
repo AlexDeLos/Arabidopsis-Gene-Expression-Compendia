@@ -998,6 +998,11 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    STAGE_MAPPING = {
+        "filter_norm": "Unnormalized",
+        "combat_norm": "ComBat",
+        "rankin": "Rank-In"
+    }
     combined_data = []
     for stage_name, df in metrics_dict.items():
         df_copy = df.copy()
@@ -1007,11 +1012,13 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
             df_copy = df_copy.pivot(index="Label_Axis", columns="Metric", values="Value").reset_index()
             df_copy = df_copy.rename(columns={"Label_Axis": "Category"})
 
-        df_copy["Stage"] = stage_name
+        # Apply the mapping here (defaults to the raw name if not found in the dictionary)
+        display_name = STAGE_MAPPING.get(stage_name, stage_name)
+        df_copy["Stage"] = display_name
+        
         combined_data.append(df_copy)
 
     plot_df = pd.concat(combined_data, ignore_index=True)
-
     # --- DEFINE BACKGROUND COLORS ---
     unique_categories = plot_df["Category"].unique()
     # Use a pastel palette so it doesn't clash with the main bar colors
@@ -1049,7 +1056,7 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
 
     # Set zorder=3 for barplots so they appear ON TOP of the background bands
     sns.barplot(data=plot_df, x="Category", y="multinomial_logistic_accuracy", hue="Stage", ax=axes[0, 0], palette="Set2", zorder=3)
-    axes[0, 0].set_title("A. multinomial logistic accuracy (Higher = More Influence)")
+    axes[0, 0].set_title("A. Multinomial Logistic Accuracy (Higher = More Influence)")
     axes[0, 0].set_ylabel("R² Score")
 
     sns.barplot(data=plot_df, x="Category", y="KNN_Purity", hue="Stage", ax=axes[0, 1], palette="Set2", zorder=3)
