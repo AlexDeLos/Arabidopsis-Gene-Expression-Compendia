@@ -1180,7 +1180,6 @@ if __name__ == "__main__":
 	try:
 		# Instead of just dumping a single dict, write out a beautifully formatted ranking report
 		with open(os.path.join(comparison_output_dir, 'geekyfile.txt'), 'wt') as geeky_file:
-			import json
 			geeky_file.write("=====================================================================\n")
 			geeky_file.write("	  COMPLETE SIMILARITY WEIGHTS COMBINATION RANKING REPORT		\n")
 			geeky_file.write("=====================================================================\n\n")
