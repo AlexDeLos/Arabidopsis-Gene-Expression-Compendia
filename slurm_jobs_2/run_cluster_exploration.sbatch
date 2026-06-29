@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=ewi-insy-prb
 #SBATCH --partition=general
-#SBATCH --time=12:00:00
-#SBATCH --qos=medium
+#SBATCH --time=1:00:00
+#SBATCH --qos=short
 #SBATCH --mem=100G
 #SBATCH --cpus-per-task=1
 #SBATCH --output=./logs_slurm/stdout-%x-%A_%a.txt
