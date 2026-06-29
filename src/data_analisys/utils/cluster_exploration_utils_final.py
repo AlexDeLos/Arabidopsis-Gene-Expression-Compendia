@@ -1158,7 +1158,7 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
         loc="upper center", 
         ncol=ncol_split, 
         bbox_to_anchor=(0.5, 0.93), 
-        frameon=True, 
+        frameon=True,
         fontsize=LEGEND_FS, 
         title_fontsize=LEGEND_TITLE_FS
     )

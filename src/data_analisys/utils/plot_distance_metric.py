@@ -97,6 +97,7 @@ def plot_distance_metrics(
 
     inter = np.array([r["G_d_inter"] for r in rows], dtype=float)
     intra = np.array([r["G_d_intra"] for r in rows], dtype=float)
+    dist_bar = np.array([r.get("Dist_bar", np.nan) for r in rows], dtype=float)   # NEW
     sep = np.array([r["BiologicalSeparation"] for r in rows], dtype=float)
     spearman = np.array([r.get("SimilarityDistanceSpearman", np.nan) for r in rows], dtype=float)
     spearman_p = np.array([r.get("SimilarityDistanceSpearmanP", np.nan) for r in rows], dtype=float)
@@ -144,12 +145,23 @@ def plot_distance_metrics(
 
     ax_dist.set_xticks(x)
     ax_dist.set_xticklabels(display_stages, rotation=15, ha="right")
-    ax_dist.set_ylabel("Normalized weighted distance")
+    ax_dist.set_ylabel("Distance")
     ax_dist.set_title("Inter-study and intra-study biological distances", pad=20)
+    for xi, db in zip(x, dist_bar):
+        if np.isfinite(db):
+            ax_dist.text(
+                xi,
+                -ymax * 0.22,
+                f"$\\overline{{\\mathrm{{Dist}}}}(S)$={db:.1f}",
+                ha="center",
+                va="top",
+                fontsize=VALUE_LABEL_SIZE - 1,
+                color="#666666",
+            )
     ax_dist.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
     ax_dist.spines[["top", "right"]].set_visible(False)
     ax_dist.legend(framealpha=0.8)
-    
+    fig_dist.subplots_adjust(bottom=0.28)
     fig_dist.tight_layout()
     figs["distance"] = fig_dist
 
@@ -231,7 +243,7 @@ def plot_distance_metrics(
     ax_corr.set_xticks(x)
     ax_corr.set_xticklabels(display_stages, rotation=15, ha="right")
     ax_corr.set_ylabel("Spearman correlation")
-    ax_corr.set_title("Similarity vs distance relationship")
+    ax_corr.set_title("Similarity VS distance relationship")
     ax_corr.grid(axis="y", linestyle=":", linewidth=1, color="#cccccc")
     ax_corr.spines[["top", "right"]].set_visible(False)
     
@@ -274,7 +286,7 @@ def plot_similarity_distance_scatter(
     ax.set_xlabel("PCA distance") 
     ax.set_ylabel("Biological similarity") 
     
-    ax.set_title(f"Similarity vs Distance\nSpearman = {corr:.3f} (p={pval:.2e})") 
+    ax.set_title(f"Similarity VS Distance\nSpearman = {corr:.3f} (p={pval:.2e})") 
 
     ax.grid(linestyle=":", alpha=0.5) 
 
