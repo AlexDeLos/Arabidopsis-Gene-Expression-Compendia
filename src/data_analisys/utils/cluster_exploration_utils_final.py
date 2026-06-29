@@ -1123,16 +1123,30 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
         ax.set_xticks([])
         ax.grid(True, axis="y", zorder=1) 
 
-        # Handle the existing 'Stage' legend and explicitly scale it
+        # Remove all subplot legends
         if ax.get_legend() is not None:
-            if i == 0:
-                leg = ax.legend(title="Pipeline Stage", loc="upper right", bbox_to_anchor=(1.0, 1.05), fontsize=LEGEND_FS)
-                leg.get_title().set_fontsize(LEGEND_TITLE_FS)
-            else:
-                ax.get_legend().remove()
+            ax.get_legend().remove()
 
     # --- SPLIT THE CATEGORY LEGEND INTO 2 LINES ---
     category_patches = [mpatches.Patch(color=color, alpha=0.4, label=cat.replace("_", " ").capitalize()) for cat, color in bg_color_dict.items()]
+
+    # Pipeline stage legend
+    stage_handles = [
+        mpatches.Patch(color=color, label=label)
+        for color, label in zip(sns.color_palette("Set2", 3),
+                                ["Unnormalized", "ComBat", "Rank-In"])
+    ]
+
+    fig.legend(
+        handles=stage_handles,
+        title="Pipeline Stage",
+        loc="upper center",
+        ncol=3,
+        bbox_to_anchor=(0.5, 1.00),
+        frameon=True,
+        fontsize=LEGEND_FS,
+        title_fontsize=LEGEND_TITLE_FS
+    )
 
     # Calculate exact midpoint to split into 2 rows dynamically
     ncol_split = (len(unique_categories) + 1) // 2
@@ -1143,14 +1157,14 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
         title="Label Type (Background Group)", 
         loc="upper center", 
         ncol=ncol_split, 
-        bbox_to_anchor=(0.5, 1.0), 
+        bbox_to_anchor=(0.5, 0.93), 
         frameon=True, 
         fontsize=LEGEND_FS, 
         title_fontsize=LEGEND_TITLE_FS
     )
 
     # Adjust top rect boundary heavily to fit the 2-line legend up top
-    plt.tight_layout(rect=[0, 0.03, 1, 0.94])
+    plt.tight_layout(rect=[0, 0.03, 1, 0.86])
 
     output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
     try:
@@ -1162,8 +1176,6 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
     print(f"  -> Saved comparison plots to {output_path}")
     plt.close()
 
-module_dir = "./"
-sys.path.append(module_dir)
 
 # --- NEW BULKFORMER IMPORTS ---
 
