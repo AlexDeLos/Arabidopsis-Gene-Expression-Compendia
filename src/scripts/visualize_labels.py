@@ -13,6 +13,11 @@ mpl.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 
+# --- ACADEMIC TYPESETTING SETTINGS ---
+# Set font to a clean sans-serif common in academic papers
+plt.rcParams['font.family'] = 'sans-serif'
+plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
+
 # Ensure the script can find your src modules if run from the root directory
 sys.path.append(os.path.abspath("./"))
 from src.constants import FIGURES_DIR, LABELS_PATH, RNA_USED, EXPR_PATH
@@ -30,6 +35,7 @@ _IGNORE_KEYS = {"val", "value", "confidence", "reasoning", "evidence", "explanat
 _IGNORE_WORDS = {"none", "unspecified", "unknown", "na", "n/a", "null", "", "false", "undefined"}
 
 # Intensity level display config: IntensityEnum int value -> (legend label, hex colour)
+# Adjusted slightly to ensure they print well
 _INTENSITY_STYLE = {
     IntensityEnum.CONTROL.value:  ("Control (0)",  "#4CAF50"),  # green
     IntensityEnum.MILD.value:     ("Mild (1)",      "#FF9800"),  # orange
@@ -218,7 +224,7 @@ def aggregate_treatment_intensity_counts(samples):
 # ---------------------------------------------------------------------------
 
 def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
-    """Standard horizontal bar chart for a single label category."""
+    """Standard horizontal bar chart for a single label category with ultra-compressed layout."""
     top_counts = counts.most_common(top_n)
     if not top_counts:
         print(f"  [SKIP] No data for label '{label}'.")
@@ -227,17 +233,18 @@ def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
     terms = [t[0] for t in top_counts][::-1]
     frequencies = [t[1] for t in top_counts][::-1]
 
-    fig_height = max(5, len(terms) * 0.45 + 1.5)
-    fig, ax = plt.subplots(figsize=(14, fig_height))
+    # MAXIMUM COMPRESSION: Pushed multiplier to 0.28 and base padding to 1.0
+    fig_height = max(3.8, len(terms) * 0.28 + 1.0)
+    fig, ax = plt.subplots(figsize=(15, fig_height))
 
     colors = [
         "#cccccc" if any(w in t.lower() for w in ("unspecified", "unknown")) else "#4C72B0"
         for t in terms
     ]
 
-    ax.barh(terms, frequencies, color=colors, edgecolor="none", alpha=0.85)
+    ax.barh(terms, frequencies, color=colors, edgecolor="none", alpha=0.85, zorder=3)
 
-    x_pad = max(frequencies) * 0.012
+    x_pad = max(frequencies) * 0.015
     for i, freq in enumerate(frequencies):
         ax.text(
             freq + x_pad,
@@ -245,19 +252,32 @@ def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
             str(freq),
             va="center",
             ha="left",
-            fontsize=12,
-            color="#444444",
+            fontsize=14,
+            color="#333333",
+            fontweight="bold"
         )
+        
     prefix_str = f"{prefix} -- " if prefix else ""
     ax.set_title(f"{prefix_str}Distribution of {label.replace('_', ' ').capitalize()} labels",
-                 fontsize=18, pad=15)
-    ax.set_xlabel("Number of samples", fontsize=11)
-    ax.set_ylabel(f"{label.replace('_', ' ').capitalize()} term", fontsize=11)
-    ax.set_xlim(right=max(frequencies) * 1.12)
+                 fontsize=20, pad=12, color="#333333", fontweight="bold")
     
+    # Upgraded Axis Labels
+    ax.set_xlabel("Number of samples", fontsize=18, fontweight="bold", labelpad=8, color="#333333")
+    ax.set_ylabel(f"{label.replace('_', ' ').capitalize()} term", fontsize=18, fontweight="bold", labelpad=8, color="#333333")
+    ax.set_xlim(right=max(frequencies) * 1.15)
+    
+    # Clean spines and add background grid
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=9)
+    ax.spines["bottom"].set_color("#555555")
+    ax.spines["left"].set_color("#555555")
+    
+    ax.tick_params(axis="y", labelsize=18, colors="#333333")
+    ax.tick_params(axis="x", labelsize=16, colors="#333333")
+    plt.setp(ax.get_yticklabels(), fontweight="bold")
+    
+    ax.xaxis.grid(True, linestyle='--', which='major', color='grey', alpha=0.25, zorder=0)
+    ax.set_axisbelow(True)
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -267,24 +287,21 @@ def plot_label_distribution(counts, label, top_n, output_path, prefix=""):
 
 def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
     """
-    Horizontal stacked bar chart: each bar = one treatment type, split by intensity.
-      green  = Control (0)
-      orange = Mild (1)
-      red    = Moderate (2)
-      dark red = Severe (3)
-    Bars are sorted by total sample count, highest at the top.
+    Horizontal stacked bar chart with ultra-compressed layout and academic print styling.
     """
     totals = {name: sum(ic.values()) for name, ic in treatment_counts.items()}
     sorted_names = sorted(totals, key=totals.get, reverse=True)[:top_n]
-    sorted_names = sorted_names[::-1]  # reverse so highest bar sits at top
+    sorted_names = sorted_names[::-1]
 
     if not sorted_names:
         print("  [SKIP] No treatment data found.")
         return
 
     max_total = max(totals[n] for n in sorted_names)
-    fig_height = max(5, len(sorted_names) * 0.45 + 1.5)
-    fig, ax = plt.subplots(figsize=(14, fig_height))
+    
+    # MAXIMUM COMPRESSION: Pushed multiplier to 0.30 and base padding to 1.0
+    fig_height = max(4.0, len(sorted_names) * 0.30 + 1.0)
+    fig, ax = plt.subplots(figsize=(16, fig_height))
 
     lefts = [0] * len(sorted_names)
     legend_patches = []
@@ -294,44 +311,58 @@ def plot_treatment_intensity(treatment_counts, top_n, output_path, prefix=""):
         values = [treatment_counts[name].get(intensity, 0) for name in sorted_names]
 
         bars = ax.barh(sorted_names, values, left=lefts, color=color,
-                       edgecolor="none", alpha=0.88)
+                       edgecolor="none", alpha=0.88, zorder=3)
 
-        # White count label inside segment — only if segment is wide enough to read
-        min_width_for_label = max_total * 0.04
+        # Count label inside segment — adjusted text alignment slightly for tight spaces
+        min_width_for_label = max_total * 0.045
         for bar, val in zip(bars, values):
             if val > 0 and bar.get_width() >= min_width_for_label:
                 ax.text(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_y() + bar.get_height() / 2,
                     str(val), va="center", ha="center",
-                    fontsize=11, color="white", fontweight="bold",
+                    fontsize=12, color="white", fontweight="bold",
                 )
 
         lefts = [left + val for left, val in zip(lefts, values)]
         legend_patches.append(mpatches.Patch(color=color, label=label_str))
 
     # Total count label to the right of each full bar
-    x_pad = max_total * 0.012
+    x_pad = max_total * 0.015
     for i, name in enumerate(sorted_names):
         ax.text(totals[name] + x_pad, i, str(totals[name]),
-                va="center", ha="left", fontsize=12, color="#444444")
+                va="center", ha="left", 
+                fontsize=15, color="#333333", fontweight="bold")
 
     prefix_str = f"{prefix} -- " if prefix else ""
-    ax.set_title(f"{prefix_str}Treatment distribution by intensity", fontsize=18, pad=15)
-    ax.set_xlabel("Number of samples", fontsize=16)
-    ax.set_ylabel("Treatment", fontsize=16)
-    ax.set_xlim(right=max_total * 1.14)
+    ax.set_title(f"{prefix_str}Treatment distribution by intensity", fontsize=22, pad=12, color="#333333", fontweight="bold")
+    
+    # Upgraded Axis Labels
+    ax.set_xlabel("Number of samples", fontsize=18, fontweight="bold", labelpad=8, color="#333333")
+    ax.set_ylabel("Treatment", fontsize=18, fontweight="bold", labelpad=8, color="#333333")
+    ax.set_xlim(right=max_total * 1.16)
+    
+    # Clean spines and add background grid
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=13)
-    ax.legend(handles=legend_patches, loc="lower right", fontsize=12,
-              title="Intensity", title_fontsize=12, framealpha=0.7)
+    ax.spines["bottom"].set_color("#555555")
+    ax.spines["left"].set_color("#555555")
+    
+    ax.tick_params(axis="y", labelsize=18, colors="#333333")
+    ax.tick_params(axis="x", labelsize=16, colors="#333333")
+    plt.setp(ax.get_yticklabels(), fontweight="bold")
+    
+    ax.xaxis.grid(True, linestyle='--', which='major', color='grey', alpha=0.25, zorder=0)
+    ax.set_axisbelow(True)
+    
+    # Shifted legend bounding box slightly to avoid clipping near the tightly compressed bottom row
+    ax.legend(handles=legend_patches, loc="lower right", fontsize=14,
+              title="Intensity", title_fontsize=14, framealpha=0.9, edgecolor="#cccccc")
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  Saved -> {output_path}")
-
 
 # ---------------------------------------------------------------------------
 # Entry point

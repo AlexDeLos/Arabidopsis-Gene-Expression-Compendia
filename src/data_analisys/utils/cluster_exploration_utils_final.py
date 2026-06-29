@@ -992,190 +992,321 @@ def calculate_multilabel_association(study_series: pd.Series, multilabel_series:
     return float(np.mean(v_scores))
 
 
-def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, output_folder: str, bio_targets: list, experiment_name: str = "Normalization_Comparison"):
-
+def plot_metrics_comparison(
+    metrics_dict: dict,
+    metadata_df: pd.DataFrame,
+    output_folder: str,
+    bio_targets: list,
+    labels_to_show: list = ["tissue", "study_id", "developmental_stage"],
+    experiment_name: str = "Normalization_Comparison",
+):
     print("\n[Generating Metric Comparison Plots...]")
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    # ---------------------------------------------------------------------------
+    # 1. EXPORT FULL DICTIONARY TO FILE (metrics_dict.txt)
+    # ---------------------------------------------------------------------------
+    metrics_txt_path = os.path.join(output_folder, "metrics_dict.txt")
+    try:
+        with open(metrics_txt_path, "w", encoding="utf-8") as f:
+            f.write("==================================================\n")
+            f.write(f"  METRICS DICTIONARY EXPORT: {experiment_name}\n")
+            f.write("==================================================\n\n")
+            for stage_name, df_item in metrics_dict.items():
+                f.write(f"STAGE: {stage_name}\n")
+                f.write("-" * (7 + len(stage_name)) + "\n")
+                if isinstance(df_item, pd.DataFrame):
+                    f.write(df_item.to_string(index=True))
+                else:
+                    f.write(str(df_item))
+                f.write("\n\n" + "=" * 50 + "\n\n")
+        print(f"  -> Saved full metric dictionary text to: {metrics_txt_path}")
+    except Exception as e:
+        print(f"  [WARN] Failed to write metrics dictionary text file: {e}")
+
+    # ---------------------------------------------------------------------------
+    # 2. DATA PROCESSING & STANDARDIZATION
+    # ---------------------------------------------------------------------------
     STAGE_MAPPING = {
         "filter_norm": "Unnormalized",
         "combat_norm": "ComBat",
-        "rankin": "Rank-In"
+        "rankin": "Rank-In",
     }
     combined_data = []
     for stage_name, df in metrics_dict.items():
         df_copy = df.copy()
 
-        # If the dataframe is in long format, pivot it back to wide format for Seaborn
         if "Metric" in df_copy.columns and "Value" in df_copy.columns:
-            df_copy = df_copy.pivot(index="Label_Axis", columns="Metric", values="Value").reset_index()
+            df_copy = df_copy.pivot(
+                index="Label_Axis", columns="Metric", values="Value"
+            ).reset_index()
             df_copy = df_copy.rename(columns={"Label_Axis": "Category"})
 
-        # Apply the mapping here (defaults to the raw name if not found in the dictionary)
         display_name = STAGE_MAPPING.get(stage_name, stage_name)
         df_copy["Stage"] = display_name
-        
         combined_data.append(df_copy)
 
     plot_df = pd.concat(combined_data, ignore_index=True)
-    
-    # --- DEFINE BACKGROUND COLORS ---
-    unique_categories = plot_df["Category"].unique()
-    # Use a pastel palette so it doesn't clash with the main bar colors
-    bg_palette = sns.color_palette("Pastel1", n_colors=len(unique_categories))
-    bg_color_dict = dict(zip(unique_categories, bg_palette, strict=False))
 
+    plot_df["Category"] = (
+        plot_df["Category"]
+        .str.replace("_", " ")
+        .str.strip()
+        .str.title()
+        .replace({"Study Id": "Study ID"})
+    )
+
+    # ---------------------------------------------------------------------------
+    # 3. FILTERING BY REQUESTED LABELS
+    # ---------------------------------------------------------------------------
+    if labels_to_show is not None:
+        standardized_labels = [
+            str(lbl).replace("_", " ").strip().title().replace("Study Id", "Study ID")
+            for lbl in labels_to_show
+        ]
+        plot_df = plot_df[plot_df["Category"].isin(standardized_labels)]
+
+        if plot_df.empty:
+            print("  [SKIP] No data left to plot after filtering. Check your labels_to_show.")
+            return
+
+    # ---------------------------------------------------------------------------
+    # 4. FIXED CATEGORICAL GROUPING & DYNAMIC HIGHLIGHTING
+    # ---------------------------------------------------------------------------
+    CORE_ORDER = ["Study ID", "Tissue", "Treatment", "Developmental Stage"]
+    existing_cats = list(plot_df["Category"].unique())
+    
+    full_axis_order = [c for c in CORE_ORDER if c in existing_cats] + [
+        c for c in existing_cats if c not in CORE_ORDER
+    ]
+    
+    plot_df["Category"] = pd.Categorical(
+        plot_df["Category"], categories=full_axis_order, ordered=True
+    )
+    plot_df = plot_df.sort_values("Category")
+
+    num_categories = len(full_axis_order)
+    dynamic_palette = sns.color_palette("pastel", n_colors=num_categories).as_hex()
+    bg_color_dict = dict(zip(full_axis_order, dynamic_palette))
+
+    # ---------------------------------------------------------------------------
+    # 5. CONFOUNDING METADATA CALCULATION & FILTERING
+    # ---------------------------------------------------------------------------
     confounding_data = []
     if "study_id" in metadata_df.columns:
         for target in bio_targets:
             if target in metadata_df.columns:
                 target_data = metadata_df[target]
-                has_lists = target_data.apply(lambda x: isinstance(x, (list, tuple, set))).any()
+                has_lists = target_data.apply(
+                    lambda x: isinstance(x, (list, tuple, set))
+                ).any()
 
                 if has_lists:
-                    v_score = calculate_multilabel_association(metadata_df["study_id"], target_data)
+                    v_score = calculate_multilabel_association(
+                        metadata_df["study_id"], target_data
+                    )
                 elif target_data.nunique() > 1:
-                    v_score = calculate_cramers_v(metadata_df["study_id"], target_data)
+                    v_score = calculate_cramers_v(
+                        metadata_df["study_id"], target_data
+                    )
                 else:
                     v_score = 0.0
 
-                confounding_data.append({"Variable": target.capitalize(), "Cramers_V": v_score})
+                var_name = target.replace("_", " ").title().replace("Study Id", "Study ID")
+                confounding_data.append({"Variable": var_name, "Cramers_V": v_score})
             else:
-                confounding_data.append({"Variable": target.capitalize() + " (Missing)", "Cramers_V": 0})
+                var_name = target.replace("_", " ").title().replace("Study Id", "Study ID")
+                confounding_data.append({"Variable": f"{var_name} (Missing)", "Cramers_V": 0})
 
     confounding_df = pd.DataFrame(confounding_data)
+    if not confounding_df.empty:
+        confounding_df["Clean_Var"] = confounding_df["Variable"].apply(
+            lambda x: x.replace(" (Missing)", "")
+        )
+        if labels_to_show is not None:
+            confounding_df = confounding_df[confounding_df["Clean_Var"].isin(standardized_labels)]
 
-    # --- MASSIVE GLOBAL FONT SCALING FOR PAPER EMBEDDING ---
-    # Increased font_scale to 2.0 to ensure readability when shrunk to A4/Letter size
+        confounding_df["Clean_Var"] = pd.Categorical(
+            confounding_df["Clean_Var"], categories=full_axis_order, ordered=True,
+        )
+        confounding_df = confounding_df.sort_values("Clean_Var")
+
+    # ---------------------------------------------------------------------------
+    # 6. HIGH-SCALE VISUALIZATION LAYOUT (3x2 Grid)
+    # ---------------------------------------------------------------------------
     sns.set_theme(style="whitegrid", context="poster", font_scale=2.0)
-    
-    # Explicit sizes bumped significantly
+
     TITLE_FS = 44
     LABEL_FS = 38
     TICK_FS = 34
     ANNO_FS = 36
+    NA_FS = 30  # Slightly smaller font for the N/A tag so it fits the column nicely
     LEGEND_TITLE_FS = 40
     LEGEND_FS = 36
 
-    # 3x2 Grid
     fig, axes = plt.subplots(3, 2, figsize=(24, 32))
 
-    # Removed the fig.suptitle completely as requested
-
-    # ROW 0
-    sns.barplot(data=plot_df, x="Category", y="multinomial_logistic_accuracy", hue="Stage", ax=axes[0, 0], palette="Set2", zorder=3)
+    # Panel A
+    sns.barplot(
+        data=plot_df, x="Category", y="multinomial_logistic_accuracy", hue="Stage", 
+        ax=axes[0, 0], palette="Set2", zorder=3, order=full_axis_order
+    )
     axes[0, 0].set_title("A. Multinomial Logistic Accuracy\n(Higher = More Influence)", fontsize=TITLE_FS, pad=20)
     axes[0, 0].set_ylabel("R² Score", fontsize=LABEL_FS)
 
-    sns.barplot(data=plot_df, x="Category", y="KNN_Purity", hue="Stage", ax=axes[0, 1], palette="Set2", zorder=3)
+    # Panel B
+    sns.barplot(
+        data=plot_df, x="Category", y="KNN_Purity", hue="Stage", 
+        ax=axes[0, 1], palette="Set2", zorder=3, order=full_axis_order
+    )
     axes[0, 1].set_title("B. KNN Purity\n(Higher = Better Local Grouping)", fontsize=TITLE_FS, pad=20)
     axes[0, 1].set_ylabel("Purity Score", fontsize=LABEL_FS)
     axes[0, 1].set_ylim(0, 1.1)
 
-    # ROW 1
-    bio_only_df = plot_df[plot_df["Category"] != "study_id"]
-    sns.barplot(data=bio_only_df, x="Category", y="Batch_ASW_within_Bio", hue="Stage", ax=axes[1, 0], palette="Set2", zorder=3)
+    # Panel C
+    bio_only_df = plot_df[plot_df["Category"] != "Study ID"]
+    if not bio_only_df.empty:
+        sns.barplot(
+            data=bio_only_df, x="Category", y="Batch_ASW_within_Bio", hue="Stage", 
+            ax=axes[1, 0], palette="Set2", zorder=3, order=full_axis_order
+        )
     axes[1, 0].set_title("C. Batch ASW within Bio\n(Lower = +Study Mixing)", fontsize=TITLE_FS, pad=20)
     axes[1, 0].set_ylabel("Silhouette Score of Batch", fontsize=LABEL_FS)
 
-    sns.barplot(data=plot_df, x="Category", y="ARI", hue="Stage", ax=axes[1, 1], palette="Set2", zorder=3)
+    # ---> MARKING STUDY ID AS N/A IN PANEL C <---
+    if "Study ID" in full_axis_order:
+        s_idx = full_axis_order.index("Study ID")
+        ymin, ymax = axes[1, 0].get_ylim()
+        y_mid = (ymin + ymax) / 2 if ymax > ymin else 0.5 
+        axes[1, 0].text(
+            s_idx, y_mid, "N/A\n(Technical)", ha="center", va="center", 
+            fontsize=NA_FS, fontweight="bold", color="dimgray", zorder=5,
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.1')
+        )
+
+    # Panel D
+    sns.barplot(
+        data=plot_df, x="Category", y="ARI", hue="Stage", 
+        ax=axes[1, 1], palette="Set2", zorder=3, order=full_axis_order
+    )
     axes[1, 1].set_title("D. Adjusted Rand Index\n(Align. w. clusters)", fontsize=TITLE_FS, pad=20)
     axes[1, 1].set_ylabel("ARI Score", fontsize=LABEL_FS)
 
-    # ROW 2
-    sns.barplot(data=plot_df, x="Category", y="Silhouette", hue="Stage", ax=axes[2, 0], palette="Set2", zorder=3)
+    # Panel E
+    sns.barplot(
+        data=plot_df, x="Category", y="Silhouette", hue="Stage", 
+        ax=axes[2, 0], palette="Set2", zorder=3, order=full_axis_order
+    )
     axes[2, 0].set_title("E. Silhouette Score\n(Higher = Tighter Clusters)", fontsize=TITLE_FS, pad=20)
     axes[2, 0].set_ylabel("Silhouette Score", fontsize=LABEL_FS)
 
+    # Panel F
     ax_conf = axes[2, 1]
+    
+    # Exclude Study ID from the Cramér's V plot data to prevent an overlapping bar
     if not confounding_df.empty:
-        sns.barplot(data=confounding_df, x="Variable", y="Cramers_V", ax=ax_conf, color=sns.color_palette("deep")[0], zorder=3)
+        conf_bio_only = confounding_df[confounding_df["Clean_Var"] != "Study ID"]
+    else:
+        conf_bio_only = pd.DataFrame()
+
+    if not conf_bio_only.empty:
+        sns.barplot(
+            data=conf_bio_only, x="Clean_Var", y="Cramers_V",
+            ax=ax_conf, color=sns.color_palette("deep")[0], zorder=3, order=full_axis_order
+        )
         ax_conf.set_title("F. Cramér's V correlation:\nStudy ID vs. Biology", fontsize=TITLE_FS, pad=20)
         ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)", fontsize=LABEL_FS)
         ax_conf.set_ylim(0, 1.1)
 
         for p in ax_conf.patches:
-            # Massive annotations for the bar labels
-            ax_conf.annotate(f"{p.get_height():.2f}", (p.get_x() + p.get_width() / 2.0, p.get_height()), ha="center", va="center", xytext=(0, 20), textcoords="offset points", fontsize=ANNO_FS, fontweight="bold")
+            h = p.get_height()
+            if pd.isna(h):  
+                continue
+            ax_conf.annotate(
+                f"{h:.2f}", (p.get_x() + p.get_width() / 2.0, h),
+                ha="center", va="center", xytext=(0, 20),
+                textcoords="offset points", fontsize=ANNO_FS, fontweight="bold",
+            )
     else:
-        ax_conf.text(0.5, 0.5, "Metadata missing or insufficient data\nfor confounding check.", ha="center", va="center", fontsize=TITLE_FS)
+        ax_conf.text(
+            0.5, 0.5, "Metadata missing, filtered out,\nor insufficient data for confounding check.",
+            ha="center", va="center", fontsize=TITLE_FS,
+        )
         ax_conf.set_title("F. Inherent Confounding Check", fontsize=TITLE_FS, pad=20)
 
-    # --- APPLY BACKGROUNDS, Y-TICKS & REMOVE X-LABELS ---
+    # ---> MARKING STUDY ID AS N/A IN PANEL F <---
+    if "Study ID" in full_axis_order and not confounding_df.empty:
+        s_idx = full_axis_order.index("Study ID")
+        ymin, ymax = ax_conf.get_ylim()
+        y_mid = (ymin + ymax) / 2 if ymax > ymin else 0.5 
+        ax_conf.text(
+            s_idx, y_mid, "N/A\n(Technical)", ha="center", va="center", 
+            fontsize=NA_FS, fontweight="bold", color="dimgray", zorder=5,
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.1')
+        )
+
+    # ---------------------------------------------------------------------------
+    # 7. CHROMATIC SPAN BACKGROUND RENDERING & CLEANUP
+    # ---------------------------------------------------------------------------
     active_axes = axes.flatten()
-    for i, ax in enumerate(active_axes):
+    for ax in active_axes:
         ax.set_xlabel("")
-        ax.tick_params(axis='y', labelsize=TICK_FS)
+        ax.tick_params(axis="y", labelsize=TICK_FS)
 
-        # Get the categories from the current axes to paint backgrounds
-        ticks = [t.get_text() for t in ax.get_xticklabels()]
+        for idx, cat_name in enumerate(full_axis_order):
+            ax.axvspan(
+                idx - 0.5, idx + 0.5,
+                color=bg_color_dict[cat_name], alpha=0.45, zorder=0,
+            )
 
-        for idx, tick_text in enumerate(ticks):
-            clean_name = tick_text.replace(" (Missing)", "").lower()
-            match_cat = next((c for c in unique_categories if c.lower() == clean_name), None)
+        ax.set_xticks([])  
+        ax.grid(True, axis="y", linestyle="--", alpha=0.7, zorder=1)
 
-            if match_cat:
-                # Add a vertical shaded band behind the bars
-                ax.axvspan(idx - 0.5, idx + 0.5, color=bg_color_dict[match_cat], alpha=0.4, zorder=0)
-
-        # Clear out the text on the X-axis completely
-        ax.set_xticks([])
-        ax.grid(True, axis="y", zorder=1) 
-
-        # Remove all subplot legends
         if ax.get_legend() is not None:
             ax.get_legend().remove()
 
-    # --- SPLIT THE CATEGORY LEGEND INTO 2 LINES ---
-    category_patches = [mpatches.Patch(color=color, alpha=0.4, label=cat.replace("_", " ").capitalize()) for cat, color in bg_color_dict.items()]
+    # ---------------------------------------------------------------------------
+    # 8. DUAL-ROW HIGH-DEFINITION LEGENDS
+    # ---------------------------------------------------------------------------
+    category_patches = [
+        mpatches.Patch(color=color, alpha=0.45, label=cat)
+        for cat, color in bg_color_dict.items()
+    ]
 
-    # Pipeline stage legend
     stage_handles = [
         mpatches.Patch(color=color, label=label)
-        for color, label in zip(sns.color_palette("Set2", 3),
-                                ["Unnormalized", "ComBat", "Rank-In"])
+        for color, label in zip(
+            sns.color_palette("Set2", 3), ["Unnormalized", "ComBat", "Rank-In"]
+        )
     ]
 
     fig.legend(
-        handles=stage_handles,
-        title="Pipeline Stage",
-        loc="upper center",
-        ncol=3,
-        bbox_to_anchor=(0.5, 1.00),
-        frameon=True,
-        fontsize=LEGEND_FS,
-        title_fontsize=LEGEND_TITLE_FS
+        handles=stage_handles, title="Pipeline Stage", loc="upper center",
+        ncol=3, bbox_to_anchor=(0.5, 1.00), frameon=True,
+        fontsize=LEGEND_FS, title_fontsize=LEGEND_TITLE_FS,
     )
 
-    # Calculate exact midpoint to split into 2 rows dynamically
-    ncol_split = (len(unique_categories) + 1) // 2
-
-    # Place it centrally at the very top (using the space left by the removed suptitle)
+    ncol_split = (len(full_axis_order) + 1) // 2
     fig.legend(
-        handles=category_patches, 
-        title="Label Type (Background Group)", 
-        loc="upper center", 
-        ncol=ncol_split, 
-        bbox_to_anchor=(0.5, 0.93), 
-        frameon=True,
-        fontsize=LEGEND_FS, 
-        title_fontsize=LEGEND_TITLE_FS
+        handles=category_patches, title="Label Type (Background Group Focus)",
+        loc="upper center", ncol=max(1, ncol_split), bbox_to_anchor=(0.5, 0.93),
+        frameon=True, fontsize=LEGEND_FS, title_fontsize=LEGEND_TITLE_FS,
     )
 
-    # Adjust top rect boundary heavily to fit the 2-line legend up top
     plt.tight_layout(rect=[0, 0.03, 1, 0.86])
 
-    output_path = os.path.join(output_folder, f"{experiment_name}_Summary_with_Confounding.svg")
+    output_path = os.path.join(
+        output_folder, f"{experiment_name}_Summary_with_Confounding.svg"
+    )
     try:
         plt.savefig(output_path, format="svg", bbox_inches="tight")
     except Exception as e:
-        print(f"[Warning] Could not save with tight bbox layout: {e}. Saving standard layout.")
+        print(f"[Warning] Tight layout bounding check failed: {e}. Defaulting to standard stream output.")
         plt.savefig(output_path, format="svg")
 
-    print(f"  -> Saved comparison plots to {output_path}")
+    print(f"  -> Saved high-definition canvas visualization to: {output_path}")
     plt.close()
-
 
 # --- NEW BULKFORMER IMPORTS ---
 
