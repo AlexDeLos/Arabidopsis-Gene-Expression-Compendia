@@ -1091,7 +1091,7 @@ def plot_metrics_comparison(metrics_dict: dict, metadata_df: pd.DataFrame, outpu
     ax_conf = axes[2, 1]
     if not confounding_df.empty:
         sns.barplot(data=confounding_df, x="Variable", y="Cramers_V", ax=ax_conf, color=sns.color_palette("deep")[0], zorder=3)
-        ax_conf.set_title("F. Inherent Confounding:\nStudy ID vs. Biology", fontsize=TITLE_FS, pad=20)
+        ax_conf.set_title("F. Cramér's V correlation:\nStudy ID vs. Biology", fontsize=TITLE_FS, pad=20)
         ax_conf.set_ylabel("Association (Cramer's V)\n(1.0 = Perfect Confounding)", fontsize=LABEL_FS)
         ax_conf.set_ylim(0, 1.1)
 
