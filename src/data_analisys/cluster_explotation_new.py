@@ -30,6 +30,7 @@ from src.data_analisys.utils.cluster_exploration_utils_final import (	# noqa: E4
 	load_labels_study,
 	make_df_from_labels,
 	plot_metrics_comparison,
+	plot_metrics_comparison_new,
 	run_bulkformer,
 	run_pca,
 	run_tsne,
@@ -1253,6 +1254,7 @@ if __name__ == "__main__":
 		except TypeError:
 			combined_meta = combined_meta.drop_duplicates(subset=[c for c in combined_meta.columns if combined_meta[c].apply(lambda x: isinstance(x, str)).all()])
 		plot_metrics_comparison(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir)
+		plot_metrics_comparison_new(metrics_dict=all_metrics, metadata_df=combined_meta, bio_targets=LABEL_AXES, output_folder=comparison_output_dir,labels_to_show=["tissue", "study_id", "developmental_stage"])
 
 		if not LIGHT_WEIGHT:
 			print("\nGenerating Metric Comparisons (BulkFormer latent space)...")
