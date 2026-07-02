@@ -344,9 +344,9 @@ class RNASeq_processor:
         os.makedirs(batch_out_dir, exist_ok=True)
         project_root = os.getcwd()
         if old:
-            config_path = os.path.join(project_root, ".new_nextflow.config")
+            config_path = os.path.join(project_root, ".multi_nextflow.config")
         else:
-            config_path = os.path.join(project_root, ".new_nextflow.config")
+            config_path = os.path.join(project_root, ".multi_nextflow.config")
         print(f"using config: {config_path}")
         # Unique log file inside batch_out_dir — safe across concurrent array jobs
         batch_name = os.path.basename(batch_out_dir)
