@@ -119,7 +119,7 @@ if __name__ == "__main__":
     # Group B Comparison
     group_b_files = [
         (os.path.join(FOLDER_B, "rankin.csv"), "Rankin Norm"),
-        (os.path.join(FOLDER_B, "filter.csv"), "Filter Norm"),
+        (os.path.join(FOLDER_B, "filter_norm.csv"), "Filter Norm"),
         (os.path.join(FOLDER_B, "combat_norm.csv"), "ComBat Norm"),
         (os.path.join(FOLDER_B, "combat_norm_cov.csv"), "ComBat Cov")
 

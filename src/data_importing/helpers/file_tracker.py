@@ -168,10 +168,6 @@ class FileTracker:
     # ---------------- PLOTTING METHODS ----------------
 
     def get_pie_charts(self, save_path=f"{STORAGE_DIR}/outputs/scanner_plots/RNA-seq/tracker_pie_charts.svg"):
-        """
-        Function 1: Produces pie charts showing SRA (Raw Data) availability
-        for both Studies and Samples.
-        """
         df = self.generate_detailed_report()
         if df.empty:
             return
@@ -180,15 +176,16 @@ class FileTracker:
 
         # --- Chart 1: Studies with SRA ---
         study_counts = df["has_raw"].value_counts()
-        labels = [f"Raw Data ({study_counts.get(True, 0)})", f"No Raw ({study_counts.get(False, 0)})"]
-        axes[0].pie(study_counts, labels=labels, autopct="%1.1f%%", colors=["#66b3ff", "#ff9999"], startangle=90)
+        # Create labels based on the actual categories present in the data
+        labels_1 = [f"{'Raw Data' if val else 'No Raw'} ({count})" for val, count in study_counts.items()]
+        axes[0].pie(study_counts, labels=labels_1, autopct="%1.1f%%", colors=["#66b3ff", "#ff9999"], startangle=90)
         axes[0].set_title("Studies with SRA Available")
 
         # --- Chart 2: Samples with SRA ---
-        # Group by availability and sum the number of samples
         sample_counts = df.groupby("has_raw")["num_samples"].sum()
-        labels_samp = [f"Raw Data ({sample_counts.get(True, 0)})", f"No Raw ({sample_counts.get(False, 0)})"]
-        axes[1].pie(sample_counts, labels=labels_samp, autopct="%1.1f%%", colors=["#99ff99", "#ffcc99"], startangle=90)
+        # Create labels based on the actual categories present in the data
+        labels_2 = [f"{'Raw Data' if val else 'No Raw'} ({count})" for val, count in sample_counts.items()]
+        axes[1].pie(sample_counts, labels=labels_2, autopct="%1.1f%%", colors=["#99ff99", "#ffcc99"], startangle=90)
         axes[1].set_title("Samples with SRA Available")
 
         plt.tight_layout()
