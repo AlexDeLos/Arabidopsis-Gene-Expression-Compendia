@@ -162,6 +162,7 @@ apptainer exec \
     --bind /tudelft.net/staff-umbrella/GeneExpressionStorage:/tudelft.net/staff-umbrella/GeneExpressionStorage \
     --bind /home/nfs/alexdelossanto/Dataset_fusion_Microarray:/repo \
     --env LD_LIBRARY_PATH="/usr/lib64:/usr/lib64/slurm" \
+    --bind /opt/slurm:/opt/slurm
     --env SLURM_CONF="/etc/slurm/slurm.conf" \
     --env JAVA_HOME="$HOME/java" \
     --env NXF_HOME="$NXF_HOME" \
