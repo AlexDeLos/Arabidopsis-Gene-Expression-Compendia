@@ -66,10 +66,10 @@ RNASEQ_QUERY = (
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--out_dir", help="output_dir", default="./new_storage/")
-    parser.add_argument("-b", "--batch_size", help="output_dir", default=100, type=int)
-    parser.add_argument("--array_index", type=int, default=10, help="SLURM Array Task ID")
+    parser.add_argument("-b", "--batch_size", help="output_dir", default=1, type=int)
+    parser.add_argument("--array_index", type=int, default=0, help="SLURM Array Task ID")
     parser.add_argument("--ma", action="store_true", default=False)
-    parser.add_argument("--rna", action="store_true", default=False)
+    parser.add_argument("--rna", action="store_true", default=True)
     parser.add_argument("--container", action="store_true", default=False)
     parser.add_argument("--old", action="store_true", default=False)
     args = parser.parse_args()
@@ -138,7 +138,7 @@ if __name__ == "__main__":
             # --- PARALLEL BATCH MODE ---
             # Logic: Array Index 0 processes IDs 0-4, Index 1 processes 5-9, etc.
 
-            start_idx: int = int(args.array_index + 1130) * BATCH_SIZE #TODO cahnge the offset to something automatic
+            start_idx: int = int(args.array_index + 1129) * BATCH_SIZE #TODO cahnge the offset to something automatic
             end_idx: int = start_idx + BATCH_SIZE
 
             # Use rnaseq_ids (from file) or query_ids (from search) depending on your goal
